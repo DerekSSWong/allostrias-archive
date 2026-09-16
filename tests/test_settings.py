@@ -36,10 +36,18 @@ for key in ('game', 'saves', 'iagd'):
     value = getattr(real, key)
     assert value is None or os.path.exists(value), f'{key} does not exist'
     print(f'  {key:6} ok')
-assert os.path.isfile(real.arz_path), 'arz_path missing'
-assert os.path.isfile(real.text_arc_path), 'text_arc_path missing'
-print(f'  arz    ok  ({os.path.getsize(real.arz_path) / 1e6:.0f} MB)')
-print(f'  text   ok  ({os.path.getsize(real.text_arc_path) / 1e3:.0f} KB)')
+# Four databases and four text archives, in load order. The order is the
+# invariant: a later archive patches an earlier one, so a sorted or globbed
+# list would silently produce a stale catalogue rather than an empty one.
+assert os.path.isfile(real.arz_path), 'base archive missing'
+assert [os.path.relpath(p, real.game) for p in real.arz_paths] == \
+    list(S.ARZ_RELPATHS), real.arz_paths
+assert [os.path.relpath(p, real.game) for p in real.text_arc_paths] == \
+    list(S.TEXT_ARC_RELPATHS), real.text_arc_paths
+print(f'  arz    ok  {len(real.arz_paths)} archives in load order '
+      f'({sum(os.path.getsize(p) for p in real.arz_paths) / 1e6:.0f} MB)')
+print(f'  text   ok  {len(real.text_arc_paths)} archives in load order '
+      f'({sum(os.path.getsize(p) for p in real.text_arc_paths) / 1e3:.0f} KB)')
 
 # catalogue and profile must be distinct files: rebuild drops one, keeps the other.
 assert real.catalogue_db != real.profile_db
@@ -72,5 +80,9 @@ open(os.path.join(pct, 'database', 'database.arz'), 'w').close()
 got = S.load(write_ini(f'[paths]\ngame = {pct}\nsaves = {pct}\n'))
 assert got.game == pct, got.game
 print("  '%' in a path survives (interpolation disabled)")
+
+# An unowned expansion is absent, not an error: arz_paths lists what exists.
+assert len(got.arz_paths) == 1, got.arz_paths
+print('  missing expansions are skipped, not fatal')
 
 print('\nSTEP 1 PASS')

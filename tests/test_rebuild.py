@@ -46,7 +46,8 @@ for suffix in ('', '-wal', '-shm'):
 out = run('rebuild')
 print('first build:', out.strip().splitlines()[-1])
 assert os.path.isfile(cfg.catalogue_db), 'no catalogue written'
-assert '82448 records' in out, out
+assert 'records     82448' in out, out
+assert 'items' in out, out
 
 # -- 2. a profile the rebuild must not harm --------------------------------
 # Stands in for real saves and preferences, which Phase 4 will write here.
@@ -107,5 +108,14 @@ assert after_restore is not None, 'staleness ignored a reverted mtime'
 print(f'reverted mtime detected too: {after_restore}')
 
 run('rebuild', '--force')
-print(f'\ncatalogue {os.path.getsize(cfg.catalogue_db) / 1024:.0f} KB (schema only, no records yet)')
+# The catalogue must contain the item spine, not just an empty schema: a
+# rebuild that produced a valid but blank database would otherwise pass here.
+conn = catalogue.connect(cfg.catalogue_db, create=False)
+n_items = conn.execute('SELECT count(*) FROM item').fetchone()[0]
+n_stats = conn.execute('SELECT count(*) FROM item_stat').fetchone()[0]
+conn.close()
+assert n_items == 9891, n_items
+assert n_stats > 300_000, n_stats
+print(f'\ncatalogue {os.path.getsize(cfg.catalogue_db) / 1e6:.1f} MB, '
+      f'{n_items} items, {n_stats} stat rows')
 print('\nSTEP 4 PASS')

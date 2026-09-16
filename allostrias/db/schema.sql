@@ -23,3 +23,60 @@ CREATE TABLE IF NOT EXISTS source_archive (
     size     INTEGER NOT NULL,
     mtime_ns INTEGER NOT NULL
 );
+
+-- ---------------------------------------------------------------------------
+-- Items
+--
+-- One row per OBTAINABLE record under records/items/. That folder is mostly
+-- not items: of 26,001 records, 12,528 are loot machinery (drop tables,
+-- randomizers, chests) and only ~9,000 are things a character can hold. The
+-- split is by `Class`, enumerated explicitly in extract/items.py rather than
+-- inferred, so a class added by a game update fails the build instead of
+-- being silently dropped.
+--
+-- There is deliberately NO is_mi / is_craftable / is_vendor column here. None
+-- of those is a property of the item record -- an MI is defined by which
+-- monsters drop it, craftability by a blueprint pointing at it. They arrive
+-- as views once drops and recipes exist. Guessing them from record shape is
+-- how faction vendor gear gets mislabelled as Monster Infrequent.
+CREATE TABLE IF NOT EXISTS item (
+    id             INTEGER PRIMARY KEY,
+    path           TEXT NOT NULL UNIQUE,   -- records/items/....dbr
+    class          TEXT NOT NULL,          -- ArmorProtective_Head, ItemRelic, ...
+    family         TEXT NOT NULL,          -- ArmorProtective, ItemRelic, ...
+    slot           TEXT,                   -- Head, Axe2h, ... NULL off-equipment
+    folder         TEXT NOT NULL,          -- gearhead, faction, materia, ...
+    is_equipment   INTEGER NOT NULL,       -- 1 if it occupies a gear slot
+    name_tag       TEXT,                   -- itemNameTag, else description
+    name           TEXT,                   -- resolved English, NULL if untagged
+    classification TEXT,                   -- Rare / Epic / Legendary / ...
+    level_req      INTEGER,
+    set_path       TEXT                    -- lootsets/*.dbr, resolved in a later step
+);
+
+CREATE INDEX IF NOT EXISTS item_name_idx           ON item(name);
+CREATE INDEX IF NOT EXISTS item_class_idx          ON item(class);
+CREATE INDEX IF NOT EXISTS item_classification_idx ON item(classification, level_req);
+CREATE INDEX IF NOT EXISTS item_folder_idx         ON item(folder);
+
+-- Every non-default field of every item, one row per value.
+--
+-- Long form because item fields are sparse and hundreds wide: a wide table
+-- would be ~430 columns of which 37 are set. `idx` preserves array order,
+-- which matters because the array-valued fields are the ones that join
+-- records together (affixCheckList, lootTable, records).
+--
+-- num and txt are exclusive: numbers stay comparable without CAST, strings
+-- stay joinable. A missing row means the field is at its default, which for
+-- this data means zero -- never "unknown".
+CREATE TABLE IF NOT EXISTS item_stat (
+    item_id INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
+    field   TEXT    NOT NULL,
+    idx     INTEGER NOT NULL,
+    num     REAL,
+    txt     TEXT,
+    PRIMARY KEY (item_id, field, idx)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS item_stat_field_idx ON item_stat(field, num);
+CREATE INDEX IF NOT EXISTS item_stat_txt_idx   ON item_stat(field, txt);

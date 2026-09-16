@@ -18,6 +18,7 @@ import time
 from allostrias import settings as S
 from allostrias.archive import arc, arz
 from allostrias.db import catalogue
+from allostrias.db.extract import items
 
 
 def backup_profile(cfg: S.Settings) -> str | None:
@@ -97,17 +98,20 @@ def cmd_rebuild(cfg: S.Settings, args) -> int:
     conn = catalogue.connect(cfg.catalogue_db)
     try:
         catalogue.apply_schema(conn)
+        tags = arc.load_tags(cfg.text_arc_paths)
+        print(f'  tags        {len(tags)}')
         with arz.Database(cfg.arz_paths) as db:
-            records = len(db)
-            overrides = db.override_count
-        tags = len(arc.load_tags(cfg.text_arc_paths))
+            print(f'  records     {len(db)} '
+                  f'({db.override_count} patched by an expansion)')
+            for label, count in items.extract(conn, db, tags).items():
+                print(f'  {label:11} {count}')
         # Stamped last, on purpose: a stamp written before the data would mark
         # a build that then failed as fresh.
         catalogue.stamp(conn, cfg.game, cfg.arz_paths)
     finally:
         conn.close()
-    print(f'{records} records ({overrides} patched by an expansion), '
-          f'{tags} tags, in {time.time() - t0:.1f}s')
+    size = os.path.getsize(cfg.catalogue_db) / 1e6
+    print(f'built in {time.time() - t0:.1f}s, {size:.1f} MB')
     return 0
 
 
