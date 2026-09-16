@@ -126,3 +126,25 @@ CREATE TABLE IF NOT EXISTS affix_stat (
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS affix_stat_field_idx ON affix_stat(field);
+
+-- ---------------------------------------------------------------------------
+-- Affix eligibility: which item classes an affix can roll onto.
+--
+-- An affix record says nothing about where it can appear. The game states it
+-- the other way round, in the drop tables: a Class=LootItemTable_DynWeight
+-- record names BOTH the item bases it drops (lootName<N>) and the affix pools
+-- that apply to them (prefixTableName<N> / rarePrefixTableName<N> and the
+-- suffix equivalents). Joining those two lists is the eligibility fact, and
+-- the game has already computed it.
+--
+-- Stored as item CLASS, not as a display label, so it joins directly to
+-- item.class and no second slot vocabulary has to be kept in step.
+CREATE TABLE IF NOT EXISTS affix_eligibility (
+    affix_id   INTEGER NOT NULL REFERENCES affix(id) ON DELETE CASCADE,
+    item_class TEXT    NOT NULL,     -- ArmorProtective_Waist, WeaponMelee_Axe, ...
+    tier       TEXT    NOT NULL,     -- 'magical' or 'rare': which pool reached it
+    PRIMARY KEY (affix_id, item_class, tier)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS affix_eligibility_class_idx
+    ON affix_eligibility(item_class);

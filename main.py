@@ -18,7 +18,7 @@ import time
 from allostrias import settings as S
 from allostrias.archive import arc, arz
 from allostrias.db import catalogue
-from allostrias.db.extract import affixes, items
+from allostrias.db.extract import affixes, eligibility, items
 
 
 def backup_profile(cfg: S.Settings) -> str | None:
@@ -103,7 +103,7 @@ def cmd_rebuild(cfg: S.Settings, args) -> int:
         with arz.Database(cfg.arz_paths) as db:
             print(f'  records     {len(db)} '
                   f'({db.override_count} patched by an expansion)')
-            for extractor in (items, affixes):
+            for extractor in (items, affixes, eligibility):
                 for label, count in extractor.extract(conn, db, tags).items():
                     print(f'  {label:22} {count}')
         # Stamped last, on purpose: a stamp written before the data would mark
