@@ -1,0 +1,12 @@
+# Local machine paths -- contains the user's home dir and Steam ID.
+settings.ini
+
+# Derived from the game archives (catalogue) and from the user's saves
+# (profile). Neither belongs in a public repo: the catalogue is Crate's data,
+# the profile is personal.
+cache/
+
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
