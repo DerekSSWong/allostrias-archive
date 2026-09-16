@@ -75,11 +75,37 @@ faction_rare = one("SELECT count(*) FROM item "
 columns = {r[1] for r in conn.execute('PRAGMA table_info(item)')}
 print(f'\nfaction gear classified Rare: {faction_rare}')
 assert faction_rare > 0, 'expected some; the trap needs to exist to be trapped'
-assert 'is_mi' not in columns, \
-    'an is_mi column exists before drops are extracted -- it cannot be right'
 assert not {'is_craftable', 'is_vendor'} & columns, \
     'craftability/vendor flags cannot be derived from the item record'
-print('  no is_mi / is_craftable / is_vendor column: those need drops and recipes')
+
+# `is_mi` DOES exist now -- extract/mi.py fills it once the drop graph is
+# built, because the craftable exclusion it needs depends on the loot-table
+# walk. What must stay true is that THIS extractor cannot set it: nothing in
+# an item record says whether a monster drops it, and faction vendor gear is
+# Rare-classified proof of that. Checked by running the extractor into a
+# scratch database rather than by reading the code.
+scratch = os.path.join(cfg.cache_dir, 'test_items_scratch.sqlite')
+for suffix in ('', '-wal', '-shm'):
+    if os.path.exists(scratch + suffix):
+        os.remove(scratch + suffix)
+scratch_conn = catalogue.connect(scratch)
+try:
+    catalogue.apply_schema(scratch_conn)
+    with A.Database(cfg.arz_paths) as db:
+        items.extract(scratch_conn, db, C.load_tags(cfg.text_arc_paths))
+    total_scratch = scratch_conn.execute(
+        'SELECT count(*) FROM item').fetchone()[0]
+    set_by_items = scratch_conn.execute(
+        'SELECT count(*) FROM item WHERE is_mi IS NOT NULL').fetchone()[0]
+finally:
+    scratch_conn.close()
+    for suffix in ('', '-wal', '-shm'):
+        if os.path.exists(scratch + suffix):
+            os.remove(scratch + suffix)
+print(f'  items.extract alone: {total_scratch} items, {set_by_items} with is_mi set')
+assert set_by_items == 0, \
+    'the item extractor set is_mi -- MI-ness is not in the item record'
+print('  no is_craftable / is_vendor column; is_mi left for extract/mi.py')
 
 # -- 4. stats round-trip --------------------------------------------------
 with A.Database(cfg.arz_paths) as db:

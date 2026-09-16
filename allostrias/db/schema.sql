@@ -51,7 +51,11 @@ CREATE TABLE IF NOT EXISTS item (
     name           TEXT,                   -- resolved English, NULL if untagged
     classification TEXT,                   -- Rare / Epic / Legendary / ...
     level_req      INTEGER,
-    set_path       TEXT                    -- lootsets/*.dbr, resolved in a later step
+    set_path       TEXT,                   -- lootsets/*.dbr, resolved in a later step
+    -- Monster Infrequent. Derived in extract/mi.py AFTER drops exist, because
+    -- the exclusion it depends on (a blueprint pointing at the record) needs
+    -- the loot-table walk. NULL until that step runs.
+    is_mi          INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS item_name_idx           ON item(name);
@@ -159,3 +163,80 @@ CREATE TABLE IF NOT EXISTS affix_eligibility (
 
 CREATE INDEX IF NOT EXISTS affix_eligibility_class_idx
     ON affix_eligibility(item_class);
+
+-- ---------------------------------------------------------------------------
+-- The drop graph: who can hand out which item.
+--
+-- The archives never state this directly. An item names nobody; a loot table
+-- names items and other tables; a creature or chest names a table. So "what
+-- drops this" is a reachability question over three record kinds.
+--
+-- A HOLDER IS ANY RECORD THAT NAMES A TABLE AND IS NOT ITSELF ONE -- not just
+-- a creature. Boss chests under records/items/lootchests/, Shattered Realm
+-- bosses under records/endlessdungeon/, and a handful of live bosses that
+-- still ship under records/sandbox/ (The Dread, Namadea) all hold tables.
+-- Filtering to /creatures/ looks obviously right and loses 53 items.
+CREATE TABLE IF NOT EXISTS loot_table (
+    id    INTEGER PRIMARY KEY,
+    path  TEXT NOT NULL UNIQUE,
+    class TEXT NOT NULL      -- LootItemTable_DynWeight / LootMasterTable / LevelTable
+);
+
+CREATE TABLE IF NOT EXISTS holder (
+    id         INTEGER PRIMARY KEY,
+    path       TEXT NOT NULL UNIQUE,
+    class      TEXT NOT NULL,
+    kind       TEXT NOT NULL,    -- top-level folder: creatures, items, sandbox, ...
+    is_monster INTEGER NOT NULL, -- Class=Monster, as opposed to a chest or object
+    name_tag   TEXT,             -- `description`, the creature's name tag
+    name       TEXT,             -- resolved English, NULL when the game names it nowhere
+    -- Monster-only, NULL on chests and objects. classification is the rarity
+    -- the farm ranking weights by: SuperBoss > Boss > Hero > Champion > Common.
+    classification TEXT,         -- monsterClassification
+    min_level  INTEGER,
+    max_level  INTEGER,
+    experience INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS holder_name_idx    ON holder(name);
+CREATE INDEX IF NOT EXISTS holder_monster_idx ON holder(is_monster);
+
+-- One row per (item, holder) pair the graph reaches.
+CREATE TABLE IF NOT EXISTS item_drop (
+    item_id   INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
+    holder_id INTEGER NOT NULL REFERENCES holder(id) ON DELETE CASCADE,
+    PRIMARY KEY (item_id, holder_id)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS item_drop_holder_idx ON item_drop(holder_id);
+
+-- ---------------------------------------------------------------------------
+-- Spawn zones. THE ONE TABLE NOT DERIVED FROM THE GAME ARCHIVES.
+--
+-- Map placement lives in Grim Dawn's compiled level files, which nothing here
+-- parses. grimtools.com computes it from the same game data and publishes it
+-- client-side; `spawn_meta` records exactly which download these rows came
+-- from, because unlike everything else in this catalogue they cannot be
+-- re-derived locally.
+--
+-- Keyed by monster DESCRIPTION TAG, not by creature record: the tag is the one
+-- identifier both sides already speak, so this table depends on grimtools
+-- alone and survives a game re-extract. The join to holders is done in SQL.
+--
+-- A FAILED FETCH LEAVES THESE EMPTY AND THE BUILD SUCCEEDS. Zones are then
+-- visibly absent rather than guessed, which is the honest outcome for the one
+-- thing this repo cannot compute for itself.
+CREATE TABLE IF NOT EXISTS monster_zone (
+    monster_tag TEXT    NOT NULL,
+    zone_tag    TEXT    NOT NULL,
+    zone_name   TEXT,               -- resolved English, NULL if the tag is unknown
+    placements  INTEGER NOT NULL,   -- summed across creature records sharing a tag
+    PRIMARY KEY (monster_tag, zone_tag)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS monster_zone_zone_idx ON monster_zone(zone_name);
+
+CREATE TABLE IF NOT EXISTS spawn_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
