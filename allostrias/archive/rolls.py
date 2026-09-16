@@ -59,3 +59,279 @@ def roll_band(value: float, jitter: float) -> tuple[float, float]:
         return (value, value)
     half = max(1, math.floor(abs(value) * jitter / 100.0))
     return (value - half, value + half)
+
+
+# ---------------------------------------------------------------------------
+# Which fields roll, and which take the item scale.
+#
+# Ported from gd-lib's rolls.py, itself ported from Item Assistant
+# (github.com/marius00/iagd, MIT). The lists there are a DRAW ORDER and the
+# order is load-bearing for replaying a specific item's seed. Here only
+# MEMBERSHIP is used -- a band needs to know whether a field rolls, not when --
+# so the lists are kept in their original order but nothing depends on it.
+#
+# A field absent from every list is NOT assumed fixed. It comes back as
+# 'unmodeled' with no band, because inventing a range for a stat that does not
+# roll is a believable wrong answer, and so is hiding a range that does.
+# ---------------------------------------------------------------------------
+BASE_JITTER = 20.0          # every item base jitters at 20%; affixes carry their own
+
+_CHAR = (
+    'characterStrength', 'characterDexterity', 'characterIntelligence',
+    'characterLife', 'characterMana', 'characterStrengthModifier',
+    'characterDexterityModifier', 'characterIntelligenceModifier',
+    'characterLifeModifier', 'characterManaModifier', 'characterLifeMultModifier',
+    'characterOffensiveAbility', 'characterDefensiveAbility',
+    'characterOffensiveAbilityModifier', 'characterDefensiveAbilityModifier',
+    'characterLifeRegen', 'characterLifeRegenModifier', 'characterManaRegenModifier',
+    'characterConstitutionModifier', 'characterHealIncreasePercent',
+    'characterTotalSpeedModifier', 'characterAttackSpeedModifier',
+    'characterAttackSpeedMaxModifier', 'characterSpellCastSpeedModifier',
+    'characterSpellCastSpeedMaxModifier', 'characterRunSpeedModifier',
+    'characterRunSpeedMaxModifier', 'characterDefensiveBlockRecoveryReduction',
+    'characterEnergyAbsorptionPercent', 'characterDodgePercent',
+    'characterDeflectProjectile', 'characterManaLimitReserve',
+    'characterManaLimitReserveModifier',
+)
+# Flat added damage, stored as a Min/Max pair. offensivePhysical is the weapon's
+# OWN damage on a Weapon* class -- fixed there, a real rolled pair on armour and
+# jewellery -- so it is gated on the item's Class, not on the field name.
+_FLAT = (
+    'offensivePhysical', 'offensiveBonusPhysical', 'offensivePierce',
+    'offensiveFire', 'offensiveCold', 'offensiveLightning', 'offensivePoison',
+    'offensiveLife', 'offensiveAether', 'offensiveChaos', 'offensiveElemental',
+)
+_SLOW_FLAT = (
+    'offensiveSlowPhysical', 'offensiveSlowBleeding', 'offensiveSlowFire',
+    'offensiveSlowCold', 'offensiveSlowLightning', 'offensiveSlowPoison',
+    'offensiveSlowLife', 'offensiveSlowAether', 'offensiveSlowChaos',
+    'offensiveSlowLifeLeach', 'offensiveSlowManaLeach',
+)
+_DMG = (
+    'offensiveTotalDamageModifier', 'offensiveCritDamageModifier',
+    'offensivePhysicalModifier', 'offensivePierceModifier', 'offensiveFireModifier',
+    'offensiveColdModifier', 'offensiveLightningModifier', 'offensivePoisonModifier',
+    'offensiveLifeModifier', 'offensiveAetherModifier', 'offensiveChaosModifier',
+    'offensiveElementalModifier', 'offensiveSlowPhysicalModifier',
+    'offensiveSlowPhysicalDurationModifier', 'offensiveSlowBleedingModifier',
+    'offensiveSlowBleedingDurationModifier', 'offensiveSlowFireModifier',
+    'offensiveSlowFireDurationModifier', 'offensiveSlowColdModifier',
+    'offensiveSlowColdDurationModifier', 'offensiveSlowLightningModifier',
+    'offensiveSlowLightningDurationModifier', 'offensiveSlowPoisonModifier',
+    'offensiveSlowPoisonDurationModifier', 'offensiveSlowLifeModifier',
+    'offensiveSlowLifeDurationModifier', 'offensiveSlowAetherModifier',
+    'offensiveSlowChaosModifier',
+)
+_LEECH = ('offensiveLifeLeech',)
+_OFF_REFLEX = ('offensiveStun', 'offensiveKnockdown', 'offensiveSleep',
+               'offensiveFreeze', 'offensivePetrify')
+# (field, takes the item scale). Speed slows scale; ability reductions do not.
+_OFF_SLOW = (
+    ('offensiveSlowTotalSpeed', True), ('offensiveSlowAttackSpeed', True),
+    ('offensiveSlowSpellCastSpeed', True), ('offensiveSlowRunSpeed', True),
+    ('offensiveSlowOffensiveAbility', False), ('offensiveSlowDefensiveAbility', False),
+)
+_OFF_REDUC = (
+    'offensivePhysicalReductionPercent', 'offensiveElementalReductionPercent',
+    'offensiveTotalDamageReductionPercent', 'offensiveTotalDamageReductionAbsolute',
+    'offensiveTotalResistanceReductionPercent',
+    'offensiveTotalResistanceReductionAbsolute',
+    'offensivePhysicalResistanceReductionPercent',
+    'offensivePhysicalResistanceReductionAbsolute',
+    'offensiveElementalResistanceReductionPercent',
+    'offensiveElementalResistanceReductionAbsolute',
+)
+_RETAL_FLAT = (
+    'retaliationPhysical', 'retaliationPierce', 'retaliationFire', 'retaliationCold',
+    'retaliationLightning', 'retaliationPoison', 'retaliationLife',
+    'retaliationAether', 'retaliationChaos', 'retaliationElemental',
+)
+_RETAL_DUR = (
+    'retaliationSlowPhysical', 'retaliationSlowPierce', 'retaliationSlowFire',
+    'retaliationSlowCold', 'retaliationSlowLightning', 'retaliationSlowPoison',
+    'retaliationSlowLife', 'retaliationSlowAether', 'retaliationSlowChaos',
+    'retaliationSlowBleeding',
+)
+_RETAL_DUR_PCT = ('retaliationSlowAttackSpeed', 'retaliationSlowRunSpeed')
+_RETAL_MOD = (
+    'retaliationTotalDamageModifier', 'retaliationPhysicalModifier',
+    'retaliationPierceModifier', 'retaliationFireModifier', 'retaliationColdModifier',
+    'retaliationLightningModifier', 'retaliationPoisonModifier',
+    'retaliationLifeModifier', 'retaliationAetherModifier', 'retaliationChaosModifier',
+    'retaliationElementalModifier', 'retaliationDamageMultModifier',
+)
+_RETAL_REFLEX = ('retaliationStun', 'retaliationFreeze', 'retaliationConfusion')
+# The resistance CAPS (defensive*MaxResist) draw nothing and are absent by design.
+_DEF = (
+    'defensiveBlockModifier', 'defensiveBlockAmountModifier',
+    'defensiveProtectionModifier', 'defensiveAbsorptionModifier',
+    'defensivePhysical', 'defensivePierce', 'defensiveFire', 'defensiveCold',
+    'defensiveLightning', 'defensivePoison', 'defensiveLife', 'defensiveAether',
+    'defensiveChaos', 'defensiveElementalResistance', 'defensiveBleeding',
+    'defensiveSlowLifeLeach', 'defensiveSlowManaLeach', 'defensiveManaBurn',
+    'defensiveAllResistance', 'defensivePhysicalModifier', 'defensivePierceModifier',
+    'defensiveFireModifier', 'defensiveColdModifier', 'defensiveLightningModifier',
+    'defensivePoisonModifier', 'defensiveLifeModifier', 'defensiveAetherModifier',
+    'defensiveChaosModifier', 'defensiveElementalModifier', 'defensiveBleedingModifier',
+    'defensiveSlowLifeLeachModifier', 'defensiveSlowManaLeachModifier',
+    'defensivePhysicalDuration', 'defensiveFireDuration', 'defensiveColdDuration',
+    'defensiveLightningDuration', 'defensivePoisonDuration', 'defensiveLifeDuration',
+    'defensiveAetherDuration', 'defensiveChaosDuration', 'defensiveBleedingDuration',
+    'defensiveSlowLifeLeachDuration', 'defensiveSlowManaLeachDuration',
+    'defensivePhysicalDurationModifier', 'defensiveFireDurationModifier',
+    'defensiveColdDurationModifier', 'defensiveLightningDurationModifier',
+    'defensivePoisonDurationModifier', 'defensiveLifeDurationModifier',
+    'defensiveAetherDurationModifier', 'defensiveChaosDurationModifier',
+    'defensiveBleedingDurationModifier', 'defensiveSlowLifeLeachDurationModifier',
+    'defensiveSlowManaLeachDurationModifier', 'defensiveDisruption', 'defensiveStun',
+    'defensiveStunModifier', 'defensiveFreeze', 'defensiveTrap', 'defensivePetrify',
+    'defensiveSleep', 'defensiveSleepModifier', 'defensiveKnockdown',
+    'defensiveKnockdownModifier', 'defensiveTaunt', 'defensiveFear',
+    'defensiveConfusion', 'defensiveConvert', 'defensiveTotalSpeedResistance',
+    'defensiveCrowdControl', 'defensiveReflect', 'defensiveReflectModifier',
+    'defensivePercentCurrentLife', 'defensivePercentReflectionResistance',
+)
+_CONV = ('conversionPercentage', 'conversionPercentage2')
+_SKILL = (
+    'skillCooldownReduction', 'skillManaCostReduction',
+    'skillComboChargeSpendReduction', 'skillProjectileSpeedModifier',
+    'skillCooldownReductionModifier', 'skillManaCostReductionModifier',
+)
+# These two modifiers ignore the item scale even though their peers take it.
+_NON_SCALING = frozenset({'offensiveCritDamageModifier',
+                          'offensiveTotalDamageModifier'})
+
+# Present on items, never drawn: echoed at the record value, unscaled.
+FIXED = frozenset({
+    'characterBaseAttackSpeed', 'characterManaRegen', 'characterConstitution',
+    'characterAttackSpeed', 'characterSpellCastSpeed', 'characterRunSpeed',
+    'characterIncreasedExperience', 'characterIncreasedGold',
+    'characterLightRadius', 'characterGlobalReqReduction',
+    'characterLevelReqReduction', 'characterModifierPoints',
+    'defensiveProtection',          # armour: 0 draws
+    'defensiveBlock', 'defensiveBlockChance', 'blockAbsorption', 'blockRecoveryTime',
+})
+
+# Suffixes that turn a base field name into the actual record fields.
+_PAIR_KINDS = {'flat': ('Min', 'Max')}
+_COMP_KINDS = {
+    'retal_dur': ('Min', 'DurationMin', 'Chance'),
+    'retal_reflex': ('Min', 'Chance'),
+    'off_reflex': ('Min', 'Chance'),
+    'off_slow': ('Min', 'DurationMin', 'Chance'),
+    'leech': ('Min',),
+    'off_reduc': ('Min', 'DurationMin'),
+}
+
+
+def _expand(fields, suffixes):
+    return {f + s for f in fields for s in suffixes}
+
+
+# field -> takes the item scale
+_SCALES: dict[str, bool] = {}
+for _f in _CHAR:
+    _SCALES[_f] = False
+for _f in _expand(_FLAT, _PAIR_KINDS['flat']):
+    _SCALES[_f] = True
+for _f in _expand(_SLOW_FLAT, _PAIR_KINDS['flat']):
+    _SCALES[_f] = True
+for _f in _DMG:
+    _SCALES[_f] = _f not in _NON_SCALING
+for _f in _expand(_LEECH, _COMP_KINDS['leech']):
+    _SCALES[_f] = False
+for _f in _expand(_OFF_REFLEX, _COMP_KINDS['off_reflex']):
+    _SCALES[_f] = False
+for _f, _sc in _OFF_SLOW:
+    for _s in _COMP_KINDS['off_slow']:
+        _SCALES[_f + _s] = _sc
+for _f in _expand(_OFF_REDUC, _COMP_KINDS['off_reduc']):
+    _SCALES[_f] = False
+for _f in _expand(_RETAL_FLAT, _PAIR_KINDS['flat']):
+    _SCALES[_f] = False
+for _f in _expand(_RETAL_DUR + _RETAL_DUR_PCT, _COMP_KINDS['retal_dur']):
+    _SCALES[_f] = False
+for _f in _RETAL_MOD:
+    _SCALES[_f] = False
+for _f in _expand(_RETAL_REFLEX, _COMP_KINDS['retal_reflex']):
+    _SCALES[_f] = False
+for _f in _DEF:
+    _SCALES[_f] = False
+for _f in _CONV:
+    _SCALES[_f] = False
+for _f in _SKILL:
+    _SCALES[_f] = False
+
+ROLLED = frozenset(_SCALES)
+CONVERSION = frozenset(_CONV)
+
+# Statuses a band can carry. Anything not positively known is 'unmodeled', and
+# an unmodeled field gets NO band rather than a guessed one.
+ROLLED_STATUS, FIXED_STATUS, UNMODELED_STATUS = 'rolled', 'fixed', 'unmodeled'
+
+
+def is_fixed(field: str, item_class: str = '') -> bool:
+    """True when the field is present on items but never drawn.
+
+    `item_class` matters for exactly one family: a weapon's own physical
+    damage is its stated range and draws nothing, while the same field on
+    armour or jewellery is a real rolled pair.
+    """
+    if field in FIXED:
+        return True
+    if field.startswith('offensivePhysical') and field[-3:] in ('Min', 'Max') \
+            and item_class.startswith('Weapon'):
+        return True
+    if field.startswith('character') and field.endswith('ReqReduction'):
+        return True
+    if field.startswith('offensiveBase') and field[-3:] in ('Min', 'Max'):
+        return True                      # weapon base damage
+    if field.startswith('offensiveSlow') and field.endswith('DurationMin'):
+        return True
+    # Resistance CAPS. Upstream's note says they draw no RNG; ASSUMED fixed on
+    # that alone, not verified against a max-resist reading in game.
+    if field.startswith('defensive') and field.endswith('MaxResist'):
+        return True
+    if field.startswith('offensive') and field.endswith('RatioMin'):
+        return True
+    if (field.endswith('Chance') and not field.endswith('GlobalChance')
+            and field.startswith(('offensive', 'retaliation', 'skill'))):
+        return True                      # per-proc chance companion
+    if field in ('offensiveGlobalChance', 'retaliationGlobalChance'):
+        return True
+    if field.startswith(('offensive', 'retaliation')) and field.endswith('Global'):
+        return True                      # grouped-proc flag
+    return False
+
+
+def scale(value: float, scale_pct: float) -> int:
+    """attributeScalePercent applied, then truncated -- as the game does it."""
+    return int(value * (100.0 + scale_pct) / 100.0)
+
+
+def band(field: str, value: float, jitter: float = BASE_JITTER,
+         scale_pct: float = 0.0,
+         item_class: str = '') -> tuple[float | None, float | None, str]:
+    """(lo, hi, status) for one stored stat value.
+
+    Returns no band for anything not positively known to roll. A field this
+    module has never heard of comes back 'unmodeled' with lo/hi None, which is
+    visibly missing; giving it the value as a fixed point would claim it does
+    not roll, and giving it a band would claim it does.
+    """
+    if is_fixed(field, item_class):
+        return (value, value, FIXED_STATUS)
+    if field in CONVERSION:
+        # Damage conversion jitters MULTIPLICATIVELY, unlike everything else,
+        # and clamps to 0..100.
+        if jitter <= 0.0:
+            return (value, value, ROLLED_STATUS)
+        frac = jitter * 0.01
+        return (max(0.0, value * (1.0 - frac)),
+                min(100.0, value * (1.0 + frac)), ROLLED_STATUS)
+    if field not in ROLLED:
+        return (None, None, UNMODELED_STATUS)
+    lo, hi = roll_band(value, jitter)
+    if _SCALES[field] and scale_pct:
+        lo, hi = scale(lo, scale_pct), scale(hi, scale_pct)
+    return (lo, hi, ROLLED_STATUS)

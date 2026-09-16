@@ -14,7 +14,7 @@ import os
 import sqlite3
 
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema.sql')
-SCHEMA_VERSION = '1'
+SCHEMA_VERSION = '2'   # item_stat gained lo/hi/roll
 
 
 def connect(path: str, create: bool = True) -> sqlite3.Connection:

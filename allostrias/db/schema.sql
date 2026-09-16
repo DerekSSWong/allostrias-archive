@@ -69,12 +69,23 @@ CREATE INDEX IF NOT EXISTS item_folder_idx         ON item(folder);
 -- num and txt are exclusive: numbers stay comparable without CAST, strings
 -- stay joinable. A missing row means the field is at its default, which for
 -- this data means zero -- never "unknown".
+--
+-- lo/hi are the band the stat actually rolls between; `num` is the stored
+-- MIDPOINT, which is not what the game shows. `roll` says which of three
+-- cases produced them, because two of them look alike in the numbers:
+--   'rolled'    lo/hi are the real band
+--   'fixed'     the field draws nothing; lo = hi = num, exactly
+--   'unmodeled' NOT KNOWN to roll. lo/hi are NULL on purpose -- a band would
+--               claim it rolls and a fixed point would claim it does not.
 CREATE TABLE IF NOT EXISTS item_stat (
     item_id INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
     field   TEXT    NOT NULL,
     idx     INTEGER NOT NULL,
     num     REAL,
     txt     TEXT,
+    lo      REAL,
+    hi      REAL,
+    roll    TEXT,
     PRIMARY KEY (item_id, field, idx)
 ) WITHOUT ROWID;
 

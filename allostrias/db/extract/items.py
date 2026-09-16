@@ -17,6 +17,7 @@ pattern. Two reasons:
 Equipment classes are `Family_Slot`, so the 23 of them are also the slot
 taxonomy -- no second mapping to keep in sync.
 """
+from ...archive import rolls as R
 from ...archive import values as V
 
 # Equipment: the Class is 'Family_Slot' and the record occupies a gear slot.
@@ -148,17 +149,27 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
             V.first(attrs, 'levelRequirement'),
             V.first_str(attrs, 'itemSetName'),
         ))
-        stat_rows.extend(
-            (item_id, row.field, row.idx, row.num, row.txt)
-            for row in V.stat_rows(attrs))
+        # Every item base jitters at a flat 20%; attributeScalePercent then
+        # scales the fields that take it. Both come from the record, so the
+        # band is a property of the base and not of a particular drop.
+        scale_pct = V.first(attrs, 'attributeScalePercent', 0.0) or 0.0
+        for row in V.stat_rows(attrs):
+            if row.txt is not None:
+                stat_rows.append((item_id, row.field, row.idx, None, row.txt,
+                                  None, None, None))
+                continue
+            lo, hi, status = R.band(row.field, row.num, R.BASE_JITTER,
+                                    scale_pct, record_class)
+            stat_rows.append((item_id, row.field, row.idx, row.num, None,
+                              lo, hi, status))
 
     conn.executemany(
         'INSERT INTO item (id, path, class, family, slot, folder, '
         'is_equipment, name_tag, name, classification, level_req, set_path) '
         'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', item_rows)
     conn.executemany(
-        'INSERT INTO item_stat (item_id, field, idx, num, txt) '
-        'VALUES (?,?,?,?,?)', stat_rows)
+        'INSERT INTO item_stat (item_id, field, idx, num, txt, lo, hi, roll) '
+        'VALUES (?,?,?,?,?,?,?,?)', stat_rows)
     conn.commit()
     return {'items': len(item_rows), 'stats': len(stat_rows),
             'machinery skipped': skipped}
