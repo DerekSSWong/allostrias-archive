@@ -80,3 +80,49 @@ CREATE TABLE IF NOT EXISTS item_stat (
 
 CREATE INDEX IF NOT EXISTS item_stat_field_idx ON item_stat(field, num);
 CREATE INDEX IF NOT EXISTS item_stat_txt_idx   ON item_stat(field, txt);
+
+-- ---------------------------------------------------------------------------
+-- Affixes
+--
+-- One row per LootRandomizer record under records/items/lootaffixes/. These
+-- are NOT items and are deliberately not in the `item` table: an affix has no
+-- slot of its own, it modifies whatever it rolls onto.
+--
+-- NOTHING IS DEDUPLICATED HERE. 738 records are byte-identical to a sibling
+-- and sit in the same pool tables (the _b/_c class-prefix pairs). Two entries
+-- in one pool may be HOW that affix rolls twice as often, so collapsing them
+-- would silently halve those rates. They are stored in full and grouped only
+-- at display time, where the decision is reversible.
+CREATE TABLE IF NOT EXISTS affix (
+    id       INTEGER PRIMARY KEY,
+    path     TEXT NOT NULL UNIQUE,
+    kind     TEXT NOT NULL,      -- Prefix / Suffix, from the folder
+    name_tag TEXT,
+    name     TEXT,               -- resolved English; several records share one
+    rarity   TEXT,               -- itemClassification
+    level_req INTEGER,
+    jitter   REAL,               -- lootRandomizerJitter: the roll half-width %
+    cost     INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS affix_name_idx ON affix(name);
+CREATE INDEX IF NOT EXISTS affix_kind_idx ON affix(kind, rarity);
+
+-- Every non-default field of an affix, with the band it rolls between.
+--
+-- `value` is the game's stored number and is the MIDPOINT, not the roll.
+-- lo/hi come from rolls.roll_band and are NULL for text fields, which do not
+-- roll. Storing all three means a query can show "18 (14-22)" without
+-- recomputing, and a wrong band is visible next to the value it came from.
+CREATE TABLE IF NOT EXISTS affix_stat (
+    affix_id INTEGER NOT NULL REFERENCES affix(id) ON DELETE CASCADE,
+    field    TEXT    NOT NULL,
+    idx      INTEGER NOT NULL,
+    value    REAL,
+    lo       REAL,
+    hi       REAL,
+    txt      TEXT,
+    PRIMARY KEY (affix_id, field, idx)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS affix_stat_field_idx ON affix_stat(field);
