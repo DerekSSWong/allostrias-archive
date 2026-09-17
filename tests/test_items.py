@@ -151,16 +151,24 @@ for row in nameless[:6]:
 #   * ~115 records pointing at a tag (tagTorsoA001, tagMedalB101) that is
 #     defined in no archive, console files included. Dangling references in
 #     the game data; nothing to resolve them to.
-all_tags = set(C.load_tags(cfg.text_arc_paths))
+#   * a tag that IS defined but whose text is EMPTY (tagTorsoB004=''). The key
+#     exists and the name does not. Previously this stored as an empty-string
+#     name, which is a name as far as any query is concerned; clean_name now
+#     turns it into NULL, which is what it always was.
+# Kept as a MAP, not a set: "the key exists" and "the key has text" are
+# different facts here, and only the second makes an unresolved name a bug.
+all_tags = dict(C.load_tags(cfg.text_arc_paths))
 for path in cfg.text_arc_paths:
     with C.Arc(path) as archive:
         for _name, text in archive.iter_text_files(skip_console=False):
-            all_tags.update(tag for tag, _v in C.parse_tag_lines(text))
+            for tag, value in C.parse_tag_lines(text):
+                all_tags.setdefault(tag, value)
 
 unexplained = [
     row['path'] for row in conn.execute(
         'SELECT path, name_tag FROM item WHERE name IS NULL')
-    if row['name_tag'] is not None and row['name_tag'] in all_tags]
+    if row['name_tag'] is not None
+    and (all_tags.get(row['name_tag']) or '').strip()]
 no_tag = one('SELECT count(*) FROM item '
              'WHERE name IS NULL AND name_tag IS NULL')
 dangling = missing - no_tag

@@ -105,7 +105,7 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
             if path in db:
                 tag = V.first_str(V.non_default(db.read(path)),
                                   'skillDisplayName')
-                name = tags.get(tag) if tag else None
+                name = V.clean_name(tags.get(tag)) if tag else None
             skill_name_cache[path] = name
         return skill_name_cache[path]
 
@@ -141,9 +141,19 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
                 level = V.first(attrs, level_field + suffix)
                 if level is None and not suffix:
                     level = V.first(attrs, level_field + 'Eq')
-                skill_rows.append((
-                    item_id, relation, target.lower(), skill_name(target.lower()),
-                    int(level) if isinstance(level, (int, float)) else None))
+                # A level field may be a STRING: the game allows expressions
+                # there ('charLevel/4+1'), and a plain '1' arrives as text
+                # too. A literal number is kept; an expression is left NULL
+                # rather than being evaluated or guessed at.
+                if isinstance(level, bool):
+                    level = None
+                elif isinstance(level, str):
+                    level = int(level) if level.strip().lstrip('-').isdigit() \
+                        else None
+                elif isinstance(level, (int, float)):
+                    level = int(level)
+                skill_rows.append((item_id, relation, target.lower(),
+                                   skill_name(target.lower()), level))
 
     conn.executemany('INSERT INTO bonus (id, path, kind, jitter) '
                      'VALUES (?,?,?,?)', bonus_rows)

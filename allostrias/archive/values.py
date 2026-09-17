@@ -22,6 +22,7 @@ Two facts about Grim Dawn's records drive this module:
    Collapsing them would flatten the eligibility and drop graphs, so position
    is preserved and every value gets its own row.
 """
+import re
 from typing import Iterator, NamedTuple
 
 # A field is dropped when every one of its values is in here. Copied from the
@@ -98,3 +99,19 @@ def first(attrs: dict[str, list], field: str, default=None):
 def first_str(attrs: dict[str, list], field: str) -> str | None:
     value = first(attrs, field)
     return value if isinstance(value, str) and value else None
+
+
+# Grim Dawn's inline colour markup: a caret and one letter, e.g. '^k' on
+# 'Mark of the Myrmidon'. It is presentation, not identity -- the rarity it
+# hints at is already in itemClassification -- and leaving it in makes every
+# name comparison and every search miss.
+COLOUR_CODE = re.compile(r'\^[a-zA-Z]')
+
+
+def clean_name(text: str | None) -> str | None:
+    """A display name with colour markup removed. Lossless: the raw string is
+    still recoverable from the tag it came from."""
+    if not text:
+        return None
+    stripped = COLOUR_CODE.sub('', text).strip()
+    return stripped or None

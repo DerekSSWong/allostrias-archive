@@ -65,7 +65,8 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
         tag = V.first_str(attrs, 'lootRandomizerName')
         jitter = V.first(attrs, 'lootRandomizerJitter', 0.0) or 0.0
         affix_rows.append((
-            affix_id, path, kind, tag, tags.get(tag) if tag else None,
+            affix_id, path, kind, tag,
+            V.clean_name(tags.get(tag)) if tag else None,
             V.first_str(attrs, 'itemClassification'),
             V.first(attrs, 'levelRequirement'),
             jitter,

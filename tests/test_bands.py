@@ -11,7 +11,12 @@ result can be wrong while still looking right:
   2. A field nobody has modelled must come back UNMODELED with NO band. Both
      alternatives are lies: a band claims it rolls, a fixed point claims it
      does not.
-  3. Scaling applies to flat damage and damage modifiers ONLY. Resistances
+  3. ONLY EQUIPMENT ROLLS AT ALL. Components, augments and relics are read at
+     their stored values -- verified against grimdb, where Mark of the
+     Myrmidon shows a flat +120 Health and this code once reported 96-144.
+     Their rows carry 'unrolled', which is distinct from 'fixed': fixed is a
+     field that draws nothing on a record that does roll.
+  4. Scaling applies to flat damage and damage modifiers ONLY. Resistances
      and retaliation modifiers are flagged scales=False in the draw order, so
      a resistance that moved when attributeScalePercent was applied would be
      a silent inflation of every armour piece in the catalogue.
@@ -50,9 +55,31 @@ print(f'{len(R.ROLLED)} fields modelled; 8 band cases exact, '
 status = dict(conn.execute(
     'SELECT roll, count(*) FROM item_stat WHERE roll IS NOT NULL GROUP BY roll'))
 print(f'\nitem_stat rows by roll status: {status}')
-assert set(status) == {'rolled', 'fixed', 'unmodeled'}, status
-for name in ('rolled', 'fixed', 'unmodeled'):
+assert set(status) == {'rolled', 'fixed', 'unmodeled', 'unrolled'}, status
+for name in ('rolled', 'fixed', 'unmodeled', 'unrolled'):
     assert status[name] > 0, f'no {name} rows at all'
+
+# Every 'unrolled' row must be on a non-equipment item, and no equipment row
+# may be 'unrolled'. This is the invariant the grimdb mismatch came from.
+leaked = one("SELECT count(*) FROM item_stat s JOIN item i ON i.id=s.item_id "
+             "WHERE s.roll='unrolled' AND i.is_equipment=1")
+banded = one("SELECT count(*) FROM item_stat s JOIN item i ON i.id=s.item_id "
+             "WHERE s.roll='rolled' AND i.is_equipment=0")
+print(f'  equipment marked unrolled: {leaked}, non-equipment given a band: {banded}')
+assert leaked == 0, 'an equipment base was treated as not rolling'
+assert banded == 0, 'a component/augment/relic was given a roll band'
+
+# The case that exposed it, checked by value.
+for field, want in (('characterLife', 120), ('characterDefensiveAbility', 25),
+                    ('characterDefensiveBlockRecoveryReduction', 15),
+                    ('retaliationPhysicalMin', 180)):
+    row = conn.execute(
+        "SELECT num, lo, hi, roll FROM item_stat s JOIN item i ON i.id=s.item_id "
+        "WHERE i.path='records/items/materia/compb_markofthemyrmidon.dbr' "
+        'AND s.field=?', (field,)).fetchone()
+    assert row['num'] == want and row['lo'] == row['hi'] == want, \
+        f'Mark of the Myrmidon {field}: {dict(row)}, grimdb says a flat {want}'
+print('  Mark of the Myrmidon matches grimdb on all four stats, flat')
 
 # -- 3. no band may exist without a status, and vice versa -----------------
 banded_no_status = one(
@@ -73,19 +100,26 @@ assert text_banded == 0, 'a text value was given a numeric band'
 
 # -- 3b. the unmodelled set is PINNED, not merely small ---------------------
 # Almost all unmodelled rows are cosmetics and bookkeeping (maxTransparency,
-# physicsMass, itemLevel) and correctly carry no band. Only 79 rows across the
-# whole catalogue are actual STATS this module cannot place, on 15 fields.
+# physicsMass, itemLevel) and correctly carry no band. Only a couple of dozen
+# rows across the whole catalogue are actual STATS this module cannot place.
+# The set shrank from 15 fields to 11 when non-equipment stopped rolling: four
+# of them occur only on components and relics, which are now 'unrolled'
+# rather than unknown.
 # They are pinned BY NAME: a count would let a game update add a new rollable
 # stat and have it silently join the no-band pile, which is the one outcome
 # that looks identical to working.
 UNMODELLED_STATS = {
-    'defensiveBonusProtection', 'defensiveElementalResistanceChance',
-    'defensiveFreezeChance', 'defensivePhysicalChance',
-    'defensiveProtectionChance', 'offensiveConfusionMin', 'offensiveFreezeMax',
-    'offensiveFumbleDurationMin', 'offensiveFumbleMin',
-    'offensivePercentCurrentLifeMin', 'offensiveStunModifier',
-    'retaliationFearMin', 'retaliationSlowManaLeachDurationMin',
-    'retaliationSlowManaLeachMin', 'skillLevel',
+    'defensiveBonusProtection',
+    'defensiveElementalResistanceChance',
+    'defensivePhysicalChance',
+    'defensiveProtectionChance',
+    'offensiveFreezeMax',
+    'offensiveFumbleDurationMin',
+    'offensiveFumbleMin',
+    'offensivePercentCurrentLifeMin',
+    'retaliationFearMin',
+    'retaliationSlowManaLeachDurationMin',
+    'retaliationSlowManaLeachMin',
 }
 found = {row[0] for row in conn.execute(
     "SELECT DISTINCT field FROM item_stat WHERE roll='unmodeled' AND ("
@@ -104,11 +138,15 @@ assert found == UNMODELLED_STATS, (
 print('  exactly the pinned set -- no stat quietly joined the no-band pile')
 
 # -- 4. armour never rolls -------------------------------------------------
+# 'unrolled' is fine here too: two relics carry armour, and on a record that
+# never rolls the field is unrolled rather than fixed. What must never appear
+# is 'rolled'.
 armour = dict(conn.execute(
     "SELECT roll, count(*) FROM item_stat WHERE field='defensiveProtection' "
     "GROUP BY roll"))
 print(f"\ndefensiveProtection (armour) statuses: {armour}")
-assert set(armour) == {'fixed'}, armour
+assert set(armour) <= {'fixed', 'unrolled'}, armour
+assert armour.get('fixed', 0) > 1000, armour
 
 # -- 5. resistances must NOT take attributeScalePercent --------------------
 # If they did, every scaled armour piece would report inflated resists. Check

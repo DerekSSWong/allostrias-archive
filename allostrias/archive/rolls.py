@@ -268,6 +268,19 @@ CONVERSION = frozenset(_CONV)
 # Statuses a band can carry. Anything not positively known is 'unmodeled', and
 # an unmodeled field gets NO band rather than a guessed one.
 ROLLED_STATUS, FIXED_STATUS, UNMODELED_STATUS = 'rolled', 'fixed', 'unmodeled'
+# A whole record kind that the game never jitters -- distinct from 'fixed',
+# which is a field that draws nothing on a record that DOES roll.
+UNROLLED_STATUS = 'unrolled'
+
+# Only these three sources are jittered at generation time: the equipment
+# base, its prefix and its suffix. Components, augments, relics, blueprints
+# and completion bonuses are read at their stored values.
+#
+# VERIFIED AGAINST grimdb, 2026-09-17: Mark of the Myrmidon (a component)
+# shows +120 Health, +25 Defensive Ability, -15% Shield Recovery and 180
+# Physical Retaliation -- flat, no ranges. Applying BASE_JITTER to it produced
+# 96-144 / 20-30 / 12-18 / 144-216, every one of them wrong and every one of
+# them plausible.
 
 
 def is_fixed(field: str, item_class: str = '') -> bool:
@@ -310,15 +323,20 @@ def scale(value: float, scale_pct: float) -> int:
 
 
 def band(field: str, value: float, jitter: float = BASE_JITTER,
-         scale_pct: float = 0.0,
-         item_class: str = '') -> tuple[float | None, float | None, str]:
+         scale_pct: float = 0.0, item_class: str = '',
+         rolls: bool = True) -> tuple[float | None, float | None, str]:
     """(lo, hi, status) for one stored stat value.
+
+    `rolls=False` means the whole RECORD is never jittered -- a component,
+    augment or relic -- and every value is exactly what is stored.
 
     Returns no band for anything not positively known to roll. A field this
     module has never heard of comes back 'unmodeled' with lo/hi None, which is
     visibly missing; giving it the value as a fixed point would claim it does
     not roll, and giving it a band would claim it does.
     """
+    if not rolls:
+        return (value, value, UNROLLED_STATUS)
     if is_fixed(field, item_class):
         return (value, value, FIXED_STATUS)
     if field in CONVERSION:

@@ -143,7 +143,7 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
         holder_rows.append((
             holder_id, path, record_class, path.split('/')[1],
             1 if record_class == MONSTER_CLASS else 0,
-            tag, tags.get(tag) if tag else None,
+            tag, V.clean_name(tags.get(tag)) if tag else None,
             classification, min_lvl, max_lvl, xp))
         if roots not in memo:
             memo[roots] = expand(roots)

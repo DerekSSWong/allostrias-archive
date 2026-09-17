@@ -144,14 +144,17 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
             path.split('/')[2],
             1 if is_equipment else 0,
             tag,
-            tags.get(tag) if tag else None,
+            V.clean_name(tags.get(tag)) if tag else None,
             V.first_str(attrs, 'itemClassification'),
             V.first(attrs, 'levelRequirement'),
             V.first_str(attrs, 'itemSetName'),
         ))
-        # Every item base jitters at a flat 20%; attributeScalePercent then
-        # scales the fields that take it. Both come from the record, so the
-        # band is a property of the base and not of a particular drop.
+        # ONLY EQUIPMENT ROLLS. An equipment base jitters at a flat 20% and
+        # attributeScalePercent then scales the fields that take it; a
+        # component, augment, relic or blueprint is read at its stored value.
+        # Jittering those produced ranges that were wrong and believable --
+        # Mark of the Myrmidon reported 96-144 Health where the game gives a
+        # flat 120.
         scale_pct = V.first(attrs, 'attributeScalePercent', 0.0) or 0.0
         for row in V.stat_rows(attrs):
             if row.txt is not None:
@@ -159,7 +162,8 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
                                   None, None, None))
                 continue
             lo, hi, status = R.band(row.field, row.num, R.BASE_JITTER,
-                                    scale_pct, record_class)
+                                    scale_pct, record_class,
+                                    rolls=bool(is_equipment))
             stat_rows.append((item_id, row.field, row.idx, row.num, None,
                               lo, hi, status))
 
