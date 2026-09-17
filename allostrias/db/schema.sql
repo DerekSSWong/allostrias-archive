@@ -298,3 +298,52 @@ CREATE TABLE IF NOT EXISTS item_skill (
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS item_skill_name_idx ON item_skill(skill_name);
+
+-- ---------------------------------------------------------------------------
+-- Factions.
+--
+-- The id is the game's own `myFaction` value -- 'User9', 'Survivors' -- and it
+-- is what items point at through `factionSource`. The display name comes from
+-- the tag `tagFaction<id>`, which is what the game itself renders.
+--
+-- THE RECORD FILENAME IS NOT THE NAME. factiongdx3_dread.dbr declares
+-- myFaction=User19, and tagFactionUser19 reads 'Traps'; factiongdx3_traps.dbr
+-- declares User20, which reads 'The Dread'. The two are swapped relative to
+-- their filenames. The tag wins, because the tag is what the player sees.
+CREATE TABLE IF NOT EXISTS faction (
+    id   TEXT PRIMARY KEY,       -- myFaction: User9, Survivors, Aetherials...
+    name TEXT,                   -- resolved from tagFaction<id>
+    path TEXT NOT NULL UNIQUE
+);
+
+-- ---------------------------------------------------------------------------
+-- Faction vendors and the stock they reliably carry.
+--
+-- STATIC STOCK ONLY. `marketStaticItems` is a fixed list -- what the vendor
+-- always has. The other market fields (marketFileName's random tables,
+-- marketAxeTable and friends) describe what MIGHT roll into the shop, which
+-- is a different claim; recording those as "sold by" would make nearly every
+-- vendor sell nearly everything.
+--
+-- Standing comes from the FIELD NAME on the faction market record --
+-- friendlyNormalTable, respectedNormalTable, honoredNormalTable,
+-- reveredNormalTable -- not from the stock table's filename. The game states
+-- the tier structurally and that is what is read.
+--
+-- The vendor's faction comes from its own `factions` field, resolved through
+-- the faction record's myFaction. No filename prefix is interpreted.
+CREATE TABLE IF NOT EXISTS vendor (
+    id         INTEGER PRIMARY KEY,
+    path       TEXT NOT NULL UNIQUE,
+    name       TEXT,
+    faction_id TEXT REFERENCES faction(id)
+);
+
+CREATE TABLE IF NOT EXISTS vendor_stock (
+    vendor_id INTEGER NOT NULL REFERENCES vendor(id) ON DELETE CASCADE,
+    item_id   INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
+    standing  TEXT    NOT NULL,   -- Friendly / Respected / Honored / Revered
+    PRIMARY KEY (vendor_id, item_id, standing)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS vendor_stock_item_idx ON vendor_stock(item_id);
