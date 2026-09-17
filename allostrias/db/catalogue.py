@@ -14,7 +14,7 @@ import os
 import sqlite3
 
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema.sql')
-SCHEMA_VERSION = '7'   # only equipment rolls; names stripped of colour codes
+SCHEMA_VERSION = '8'   # relics roll too; retaliationFear modelled
 
 
 def connect(path: str, create: bool = True) -> sqlite3.Connection:

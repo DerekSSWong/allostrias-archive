@@ -149,13 +149,12 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
             V.first(attrs, 'levelRequirement'),
             V.first_str(attrs, 'itemSetName'),
         ))
-        # ONLY EQUIPMENT ROLLS. An equipment base jitters at a flat 20% and
-        # attributeScalePercent then scales the fields that take it; a
-        # component, augment, relic or blueprint is read at its stored value.
-        # Jittering those produced ranges that were wrong and believable --
-        # Mark of the Myrmidon reported 96-144 Health where the game gives a
-        # flat 120.
+        # Equipment bases and relics jitter at a flat 20%; components,
+        # augments and blueprints are read at their stored values. See
+        # rolls.ROLLING_CLASSES -- both halves are verified against grimdb,
+        # and both were wrong at some point in opposite directions.
         scale_pct = V.first(attrs, 'attributeScalePercent', 0.0) or 0.0
+        record_rolls = is_equipment or record_class in R.ROLLING_CLASSES
         for row in V.stat_rows(attrs):
             if row.txt is not None:
                 stat_rows.append((item_id, row.field, row.idx, None, row.txt,
@@ -163,7 +162,7 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
                 continue
             lo, hi, status = R.band(row.field, row.num, R.BASE_JITTER,
                                     scale_pct, record_class,
-                                    rolls=bool(is_equipment))
+                                    rolls=record_rolls)
             stat_rows.append((item_id, row.field, row.idx, row.num, None,
                               lo, hi, status))
 

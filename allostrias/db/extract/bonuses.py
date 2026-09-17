@@ -28,7 +28,7 @@ fallback that copied the modified skill's name onto the modifier would read
 as two separate skills with one name.
 """
 from ...archive import values as V
-from ...archive.rolls import roll_band
+from ...archive import rolls as R
 
 POOL_FIELD = 'bonusTableName'
 PET_FIELD = 'petBonusName'
@@ -54,18 +54,24 @@ BOOKKEEPING = frozenset({
 
 
 def _stat_rows(bonus_id, attrs, jitter):
+    """Rows for one bonus record, banded through the SAME model as items.
+
+    Banding every numeric field because the record declares a jitter is wrong,
+    and wrong in a way that reads as data: a relic completion bonus granting
+    `augmentSkillLevel1 = 1` came out as "0 to 2", i.e. a +1 skill bonus that
+    might give nothing. Skill levels are not among the fields the char jitter
+    applies to, so they must go through rolls.band() like everything else and
+    come back unbanded.
+    """
     for row in V.stat_rows(attrs):
         if row.field in BOOKKEEPING:
             continue
         if row.txt is not None:
             yield (bonus_id, row.field, row.idx, None, None, None, row.txt)
-        elif jitter:
-            lo, hi = roll_band(row.num, jitter)
-            yield (bonus_id, row.field, row.idx, row.num, lo, hi, None)
-        else:
-            # No jitter means a fixed value, so the band collapses to a point
-            # rather than being left blank or invented.
-            yield (bonus_id, row.field, row.idx, row.num, row.num, row.num, None)
+            continue
+        lo, hi, _status = R.band(row.field, row.num, jitter,
+                                 rolls=bool(jitter))
+        yield (bonus_id, row.field, row.idx, row.num, lo, hi, None)
 
 
 def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
@@ -74,13 +80,20 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
 
     items = {row['id']: row['path']
              for row in conn.execute('SELECT id, path FROM item')}
+    # A pet bonus carries no jitter of its own, but it rolls when the item
+    # holding it rolls: Dirge of Arkovia's pet bonus stores 50/100/15 and the
+    # game shows 40-60 / 80-120 / 12-18. So the parent decides.
+    item_rolls = {row['id']: bool(row['is_equipment'])
+                  or row['class'] in R.ROLLING_CLASSES
+                  for row in conn.execute(
+                      'SELECT id, is_equipment, class FROM item')}
 
     bonus_id_of: dict[str, int] = {}
     bonus_rows, bonus_stats, item_bonus_rows, skill_rows = [], [], [], []
     skill_name_cache: dict[str, str | None] = {}
     missing_targets = 0
 
-    def bonus_for(path: str, kind: str) -> int | None:
+    def bonus_for(path: str, kind: str, pet_jitter: float | None = None) -> int | None:
         """Register a bonus record, reading it once. None if it is not here."""
         nonlocal missing_targets
         if path in bonus_id_of:
@@ -92,7 +105,7 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
         # A completion member states its own jitter; a pet bonus has none, and
         # NULL is kept rather than 0 -- see the module docstring.
         jitter = (V.first(attrs, 'lootRandomizerJitter', 0.0) or 0.0
-                  if kind == 'completion' else None)
+                  if kind == 'completion' else pet_jitter)
         new_id = len(bonus_rows) + 1
         bonus_rows.append((new_id, path, kind, jitter))
         bonus_stats.extend(_stat_rows(new_id, attrs, jitter or 0.0))
@@ -129,7 +142,8 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
 
         pet = V.first_str(attrs, PET_FIELD)
         if pet:
-            found = bonus_for(pet.lower(), 'pet')
+            found = bonus_for(pet.lower(), 'pet',
+                              R.BASE_JITTER if item_rolls.get(item_id) else None)
             if found is not None:
                 item_bonus_rows.append((item_id, found, 'pet', None))
 

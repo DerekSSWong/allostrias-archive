@@ -81,6 +81,40 @@ for field, want in (('characterLife', 120), ('characterDefensiveAbility', 25),
         f'Mark of the Myrmidon {field}: {dict(row)}, grimdb says a flat {want}'
 print('  Mark of the Myrmidon matches grimdb on all four stats, flat')
 
+# The other half: RELICS DO ROLL, and so do the pet bonuses they carry. Both
+# numbers below are read off grimdb, and both were wrong at some point -- once
+# by banding what does not roll, then by un-banding what does.
+for field, want in (('defensiveLife', (23, 33)),
+                    ('defensiveElementalResistance', (15, 21)),
+                    ('retaliationFearMin', (1, 3))):
+    row = conn.execute(
+        "SELECT lo, hi, roll FROM item_stat s JOIN item i ON i.id=s.item_id "
+        "WHERE i.path='records/items/gearrelic/d103_relic.dbr' AND s.field=?",
+        (field,)).fetchone()
+    assert (row['lo'], row['hi']) == want and row['roll'] == 'rolled', \
+        f'Dirge of Arkovia {field}: {dict(row)}, grimdb says {want[0]}-{want[1]}'
+for field, want in (('offensiveTotalDamageModifier', (40, 60)),
+                    ('offensiveLifeModifier', (80, 120)),
+                    ('characterTotalSpeedModifier', (12, 18))):
+    row = conn.execute(
+        "SELECT s.lo, s.hi FROM item i JOIN item_bonus ib ON ib.item_id=i.id "
+        "JOIN bonus b ON b.id=ib.bonus_id JOIN bonus_stat s ON s.bonus_id=b.id "
+        "WHERE i.path='records/items/gearrelic/d103_relic.dbr' "
+        "AND b.kind='pet' AND s.field=?", (field,)).fetchone()
+    assert (row['lo'], row['hi']) == want, \
+        f'Dirge pet bonus {field}: {dict(row)}, grimdb says {want[0]}-{want[1]}'
+print('  Dirge of Arkovia matches grimdb on 3 stats and 3 pet bonuses, banded')
+
+# A SKILL LEVEL NEVER ROLLS, anywhere. '+1 to Drain Essence' banded to 0-2 --
+# a bonus that might give nothing -- because bonuses.py was banding every
+# numeric field whenever the record declared a jitter, instead of asking the
+# field model. Asserted across both tables so neither can regress alone.
+for table, key in (('item_stat', 'num'), ('bonus_stat', 'value')):
+    banded = one(f"SELECT count(*) FROM {table} WHERE field LIKE '%SkillLevel%' "
+                 'AND lo IS NOT NULL AND lo != hi')
+    assert banded == 0, f'{banded} skill-level rows in {table} carry a band'
+print('  no skill-level field carries a band, in either table')
+
 # -- 3. no band may exist without a status, and vice versa -----------------
 banded_no_status = one(
     "SELECT count(*) FROM item_stat WHERE lo IS NOT NULL AND roll IS NULL")

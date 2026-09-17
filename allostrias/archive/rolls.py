@@ -160,7 +160,13 @@ _RETAL_MOD = (
     'retaliationLifeModifier', 'retaliationAetherModifier', 'retaliationChaosModifier',
     'retaliationElementalModifier', 'retaliationDamageMultModifier',
 )
-_RETAL_REFLEX = ('retaliationStun', 'retaliationFreeze', 'retaliationConfusion')
+# retaliationFear is absent from the upstream draw order but demonstrably
+# rolls: Dirge of Arkovia stores retaliationFearMin=2 and grimdb shows
+# "1/3 Seconds of Terrify Retaliation", which is roll_band(2, 20) exactly.
+# Safe to add HERE because this module only computes bands -- it is not the
+# seed replay, where inserting a field would shift every later draw.
+_RETAL_REFLEX = ('retaliationStun', 'retaliationFreeze', 'retaliationConfusion',
+                 'retaliationFear')
 # The resistance CAPS (defensive*MaxResist) draw nothing and are absent by design.
 _DEF = (
     'defensiveBlockModifier', 'defensiveBlockAmountModifier',
@@ -272,15 +278,23 @@ ROLLED_STATUS, FIXED_STATUS, UNMODELED_STATUS = 'rolled', 'fixed', 'unmodeled'
 # which is a field that draws nothing on a record that DOES roll.
 UNROLLED_STATUS = 'unrolled'
 
-# Only these three sources are jittered at generation time: the equipment
-# base, its prefix and its suffix. Components, augments, relics, blueprints
-# and completion bonuses are read at their stored values.
+# WHICH RECORDS ROLL AT ALL. Both halves of this are verified against grimdb
+# (2026-09-17) because both were got wrong in turn, in opposite directions:
 #
-# VERIFIED AGAINST grimdb, 2026-09-17: Mark of the Myrmidon (a component)
-# shows +120 Health, +25 Defensive Ability, -15% Shield Recovery and 180
-# Physical Retaliation -- flat, no ranges. Applying BASE_JITTER to it produced
-# 96-144 / 20-30 / 12-18 / 144-216, every one of them wrong and every one of
-# them plausible.
+#   ROLLS -- equipment bases, their prefix and suffix, and RELICS.
+#     Dirge of Arkovia (ItemArtifact) stores 28 / 18 / 2 and grimdb shows
+#     23-33% / 15-21% / 1-3s, which is roll_band(v, 20) exactly. Its pet
+#     bonus rolls too: 50 / 100 / 15 shown as 40-60 / 80-120 / 12-18.
+#
+#   DOES NOT ROLL -- components (ItemRelic) and their kin. Mark of the
+#     Myrmidon stores 120 / 25 / 15 / 180 and grimdb shows those flat. The
+#     first version of this banded them to 96-144 / 20-30 / 12-18 / 144-216,
+#     every number wrong and every one plausible; the correction then swung
+#     too far and stopped relics rolling as well.
+#
+# Augments (ItemEnchantment) are UNVERIFIED and treated as not rolling. That
+# is an assumption, not a finding.
+ROLLING_CLASSES = frozenset({'ItemArtifact'})
 
 
 def is_fixed(field: str, item_class: str = '') -> bool:
