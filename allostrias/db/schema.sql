@@ -240,3 +240,61 @@ CREATE TABLE IF NOT EXISTS spawn_meta (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- ---------------------------------------------------------------------------
+-- Bonuses an item grants through a REFERENCE rather than its own fields.
+--
+-- A component carries its own stats (Aether Soul: +30 DA, +16% Aether Resist,
+-- +10% Aether damage) AND points at a completion-bonus POOL. The pool is a
+-- LootRandomizerTable whose members are ordinary LootRandomizer records, so
+-- they roll bands exactly like affixes do -- the pool is the "one of these N"
+-- you get when the component completes, and `pool_path` keeps that grouping.
+--
+-- Pet bonuses are a different shape: a petbonus.tpl record carrying stats
+-- directly, with no pool and no roll.
+CREATE TABLE IF NOT EXISTS bonus (
+    id     INTEGER PRIMARY KEY,
+    path   TEXT NOT NULL UNIQUE,
+    kind   TEXT NOT NULL,       -- 'completion' or 'pet'
+    jitter REAL                 -- NULL for pet bonuses, which do not roll
+);
+
+CREATE TABLE IF NOT EXISTS bonus_stat (
+    bonus_id INTEGER NOT NULL REFERENCES bonus(id) ON DELETE CASCADE,
+    field    TEXT    NOT NULL,
+    idx      INTEGER NOT NULL,
+    value    REAL,
+    lo       REAL,
+    hi       REAL,
+    txt      TEXT,
+    PRIMARY KEY (bonus_id, field, idx)
+) WITHOUT ROWID;
+
+-- pool_path is NULL for pet bonuses and set for completion bonuses, where it
+-- says which pool the member came from -- without it, a component's nine
+-- mutually exclusive outcomes read as nine simultaneous ones.
+CREATE TABLE IF NOT EXISTS item_bonus (
+    item_id   INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
+    bonus_id  INTEGER NOT NULL REFERENCES bonus(id) ON DELETE CASCADE,
+    relation  TEXT    NOT NULL,
+    pool_path TEXT,
+    PRIMARY KEY (item_id, bonus_id, relation)
+) WITHOUT ROWID;
+
+-- Skills an item references, with the display name resolved.
+--
+-- Four different relations, and they are NOT the same thing:
+--   granted   itemSkillName      -- the skill the item gives you
+--   augment   augmentSkillName*  -- +N to a skill you already have
+--   mastery   augmentMasteryName*-- +N to every skill in a mastery
+--   modifier  modifierSkillName* -- a modifier applied to another skill
+CREATE TABLE IF NOT EXISTS item_skill (
+    item_id    INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
+    relation   TEXT    NOT NULL,
+    skill_path TEXT    NOT NULL,
+    skill_name TEXT,
+    level      INTEGER,
+    PRIMARY KEY (item_id, relation, skill_path)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS item_skill_name_idx ON item_skill(skill_name);

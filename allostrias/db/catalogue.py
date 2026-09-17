@@ -14,7 +14,7 @@ import os
 import sqlite3
 
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema.sql')
-SCHEMA_VERSION = '5'   # monster_zone + spawn_meta
+SCHEMA_VERSION = '6'   # bonus, bonus_stat, item_bonus, item_skill
 
 
 def connect(path: str, create: bool = True) -> sqlite3.Connection:
