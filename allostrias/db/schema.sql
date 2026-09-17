@@ -347,3 +347,68 @@ CREATE TABLE IF NOT EXISTS vendor_stock (
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS vendor_stock_item_idx ON vendor_stock(item_id);
+
+-- ---------------------------------------------------------------------------
+-- Crafting recipes.
+--
+-- A blueprint names its output twice: `artifactName` is often a LOOT TABLE
+-- rather than an item, and `forcedRandomArtifactName` is the concrete result.
+-- Both are kept -- the table is what the game rolls against, the forced name
+-- is what you actually get.
+--
+-- The base reagent slot accepts ALTERNATIVES: 115 blueprints list up to 7
+-- acceptable items for it. The numbered slots never do. `alternative` marks
+-- which option a row is, so a slot with seven entries reads as one
+-- requirement with seven ways to satisfy it rather than seven requirements.
+CREATE TABLE IF NOT EXISTS recipe (
+    id             INTEGER PRIMARY KEY,
+    blueprint_id   INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
+    output_item_id INTEGER REFERENCES item(id),
+    output_table   TEXT,          -- artifactName, when it is a loot table
+    cost           INTEGER,
+    quantity       INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS recipe_reagent (
+    recipe_id   INTEGER NOT NULL REFERENCES recipe(id) ON DELETE CASCADE,
+    slot        TEXT    NOT NULL,   -- 'base', '1', '2', ...
+    alternative INTEGER NOT NULL,   -- 0 unless the slot lists options
+    item_id     INTEGER REFERENCES item(id),
+    item_path   TEXT    NOT NULL,   -- kept even when the item is not catalogued
+    quantity    INTEGER,
+    PRIMARY KEY (recipe_id, slot, alternative)
+) WITHOUT ROWID;
+
+-- ---------------------------------------------------------------------------
+-- Item sets.
+--
+-- A set's bonuses are ARRAYS INDEXED BY PIECE COUNT, and the index is
+-- RIGHT-ALIGNED: the LAST entry always applies at the full set. Most arrays
+-- are exactly as long as the member list, but 11 are shorter -- [0,0,0,3] on
+-- a six-piece set means +3 at six pieces, not at four. Reading such an array
+-- from the left would attribute a full-set bonus to half a set.
+CREATE TABLE IF NOT EXISTS item_set (
+    id          INTEGER PRIMARY KEY,
+    path        TEXT NOT NULL UNIQUE,
+    name        TEXT,
+    description TEXT,
+    members     INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS set_member (
+    set_id  INTEGER NOT NULL REFERENCES item_set(id) ON DELETE CASCADE,
+    item_id INTEGER REFERENCES item(id),
+    item_path TEXT NOT NULL,
+    PRIMARY KEY (set_id, item_path)
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS set_bonus (
+    set_id INTEGER NOT NULL REFERENCES item_set(id) ON DELETE CASCADE,
+    pieces INTEGER NOT NULL,      -- how many worn pieces this applies at
+    field  TEXT    NOT NULL,
+    value  REAL,
+    txt    TEXT,
+    PRIMARY KEY (set_id, pieces, field)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS set_member_item_idx ON set_member(item_id);

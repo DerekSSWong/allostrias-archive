@@ -19,7 +19,8 @@ from allostrias import settings as S
 from allostrias.archive import arc, arz
 from allostrias.db import catalogue
 from allostrias.db.extract import (affixes, bonuses, drops, eligibility,
-                                   factions, items, mi, vendors, zones)
+                                   factions, items, mi, recipes, vendors,
+                                   zones)
 
 
 def backup_profile(cfg: S.Settings) -> str | None:
@@ -105,7 +106,7 @@ def cmd_rebuild(cfg: S.Settings, args) -> int:
             print(f'  records     {len(db)} '
                   f'({db.override_count} patched by an expansion)')
             for extractor in (items, affixes, bonuses, eligibility, drops, mi,
-                              factions, vendors, zones):
+                              factions, recipes, vendors, zones):
                 for label, count in extractor.extract(conn, db, tags).items():
                     print(f'  {label:22} {count}')
         # Stamped last, on purpose: a stamp written before the data would mark
