@@ -122,6 +122,13 @@ _DMG = (
     'offensiveSlowLifeDurationModifier', 'offensiveSlowAetherModifier',
     'offensiveSlowChaosModifier',
 )
+# Stun DURATION as a percentage -- absent from the upstream draw order, like
+# retaliationFear, and demonstrably rolling: Arbiter stores
+# offensiveStunModifier=30 and grimdb shows "+24/36% Stun Duration", which is
+# roll_band(30, 20). Non-scaling: Arbiter's other modifiers come out unscaled
+# too, so nothing here takes the item scale.
+_MISC_MOD = ('offensiveStunModifier',)
+
 _LEECH = ('offensiveLifeLeech',)
 _OFF_REFLEX = ('offensiveStun', 'offensiveKnockdown', 'offensiveSleep',
                'offensiveFreeze', 'offensivePetrify')
@@ -267,6 +274,8 @@ for _f in _CONV:
     _SCALES[_f] = False
 for _f in _SKILL:
     _SCALES[_f] = False
+for _f in _MISC_MOD:
+    _SCALES[_f] = False
 
 ROLLED = frozenset(_SCALES)
 CONVERSION = frozenset(_CONV)
@@ -292,8 +301,15 @@ UNROLLED_STATUS = 'unrolled'
 #     every number wrong and every one plausible; the correction then swung
 #     too far and stopped relics rolling as well.
 #
-# Augments (ItemEnchantment) are UNVERIFIED and treated as not rolling. That
-# is an assumption, not a finding.
+# Augments (ItemEnchantment) do not roll either -- VERIFIED: Coven Bloodied
+# Ash stores 8 and 10 and grimdb shows a flat "8% Health Regeneration" and
+# "10% Bleeding Resistance". This was an assumption until 2026-09-17.
+#
+# A COMPONENT'S "9-12 Vitality Damage" IS NOT A ROLL. Seal of Blight stores
+# offensiveLifeMin=9 and offensiveLifeMax=12: that is the damage SPREAD of a
+# single hit, shown as a range by the game and flat as far as rolling goes.
+# Reading a Min/Max pair as a roll band would make every component look
+# jittered and would be wrong in exactly the believable direction.
 ROLLING_CLASSES = frozenset({'ItemArtifact'})
 
 

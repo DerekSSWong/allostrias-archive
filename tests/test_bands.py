@@ -119,6 +119,51 @@ for field, want in (('offensiveTotalDamageModifier', (40, 60)),
         f'Dirge pet bonus {field}: {dict(row)}, grimdb says {want[0]}-{want[1]}'
 print('  Dirge of Arkovia matches grimdb on 3 stats and 3 pet bonuses, banded')
 
+# Arbiter: a relic whose COMPLETION BONUS members are player stats and do
+# roll, unlike Dirge's which are all "+1 to a skill" and do not. Both relics
+# are pinned so neither shape can regress into the other.
+for field, want in (('offensivePhysicalModifier', (34, 50)),
+                    ('characterLife', (280, 420)),
+                    ('characterDefensiveAbility', (28, 42)),
+                    ('defensiveElementalResistance', (27, 39)),
+                    ('offensiveStunModifier', (24, 36))):
+    row = conn.execute(
+        "SELECT lo, hi, roll FROM item_stat s JOIN item i ON i.id=s.item_id "
+        "WHERE i.path='records/items/gearrelic/c001_relic.dbr' AND s.field=?",
+        (field,)).fetchone()
+    assert (row['lo'], row['hi']) == want and row['roll'] == 'rolled', \
+        f'Arbiter {field}: {dict(row)}, grimdb says {want[0]}-{want[1]}'
+for field, want in (('characterLifeModifier', (4, 6)),
+                    ('defensiveFreeze', (14, 26)),
+                    ('defensivePetrify', (10, 30)),
+                    ('defensiveChaos', (4, 12))):
+    row = conn.execute(
+        "SELECT s.lo, s.hi FROM item i JOIN item_bonus ib ON ib.item_id=i.id "
+        "JOIN bonus b ON b.id=ib.bonus_id JOIN bonus_stat s ON s.bonus_id=b.id "
+        "WHERE i.path='records/items/gearrelic/c001_relic.dbr' AND s.field=?",
+        (field,)).fetchone()
+    assert (row['lo'], row['hi']) == want, \
+        f'Arbiter completion {field}: {dict(row)}, grimdb says {want[0]}-{want[1]}'
+print('  Arbiter matches grimdb on 5 stats and 4 rolling completion bonuses')
+
+# Augments are flat, and a component's Min/Max damage pair is a SPREAD, not a
+# roll -- reading it as one would make every component look jittered.
+for path, field, value in (
+        ('records/items/enchants/', 'characterLifeRegenModifier', 8),
+        ('records/items/enchants/', 'defensiveBleeding', 10)):
+    row = conn.execute(
+        "SELECT s.lo, s.hi, s.roll FROM item i JOIN item_stat s ON s.item_id=i.id "
+        "WHERE i.name='Coven Bloodied Ash' AND s.field=?", (field,)).fetchone()
+    assert (row['lo'], row['hi']) == (value, value), \
+        f'Coven Bloodied Ash {field} is not flat: {dict(row)}'
+spread = {r['field']: (r['num'], r['lo'], r['hi']) for r in conn.execute(
+    "SELECT s.field, s.num, s.lo, s.hi FROM item i JOIN item_stat s ON s.item_id=i.id "
+    "WHERE i.name='Seal of Blight' AND s.field IN "
+    "('offensiveLifeMin','offensiveLifeMax')")}
+assert spread['offensiveLifeMin'] == (9, 9, 9), spread
+assert spread['offensiveLifeMax'] == (12, 12, 12), spread
+print('  augments flat; a component Min/Max pair stays a damage spread, not a band')
+
 # A SKILL LEVEL NEVER ROLLS, anywhere. '+1 to Drain Essence' banded to 0-2 --
 # a bonus that might give nothing -- because bonuses.py was banding every
 # numeric field whenever the record declared a jitter, instead of asking the
@@ -166,7 +211,6 @@ UNMODELLED_STATS = {
     'offensiveFumbleDurationMin',
     'offensiveFumbleMin',
     'offensivePercentCurrentLifeMin',
-    'offensiveStunModifier',
     'retaliationSlowManaLeachDurationMin',
     'retaliationSlowManaLeachMin',
 }
