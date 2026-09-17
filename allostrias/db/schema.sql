@@ -49,13 +49,46 @@ CREATE TABLE IF NOT EXISTS item (
     is_equipment   INTEGER NOT NULL,       -- 1 if it occupies a gear slot
     name_tag       TEXT,                   -- itemNameTag, else description
     name           TEXT,                   -- resolved English, NULL if untagged
+    -- The tier word the game renders IN FRONT of the name: Mythical,
+    -- Empowered, Elite, and ~46 mundane ones (Worn, Leather, Infantry).
+    --
+    -- This is why `name` alone cannot identify an item. A record under
+    -- records/items/upgraded/ shares its itemNameTag with the base it upgrades,
+    -- so both resolve to "Deathmarked Claw" and only the style tells them
+    -- apart. 1,788 records carry one.
+    --
+    -- `style_tag` is kept raw beside the resolved text because one tag
+    -- (tagStyleArmorFabric01, 2 records) resolves in no archive: the fact that
+    -- a record HAS a style is not the same as knowing what it is called, and
+    -- collapsing them would lose the first.
+    style_tag      TEXT,                   -- itemStyleTag, NULL if none
+    style          TEXT,                   -- resolved English, NULL if unresolved
     classification TEXT,                   -- Rare / Epic / Legendary / ...
     level_req      INTEGER,
     set_path       TEXT,                   -- lootsets/*.dbr, resolved in a later step
     -- Monster Infrequent. Derived in extract/mi.py AFTER drops exist, because
     -- the exclusion it depends on (a blueprint pointing at the record) needs
     -- the loot-table walk. NULL until that step runs.
-    is_mi          INTEGER
+    is_mi          INTEGER,
+    -- What the game shows. GENERATED, not stored: it is a function of two
+    -- columns in the same row, so it cannot drift from them and costs nothing.
+    --
+    -- ⚠️ STILL NOT UNIQUE, and must never be used as a key. Adding the style
+    -- splits 1,175 of the 2,025 colliding names; 850 remain -- "Murderer's
+    -- Armor" is 18 records with one style between them, level-tier variants of
+    -- the same gear. Names are not unique in this game and the style was never
+    -- going to make them so.
+    --
+    -- The composition "<style> <name>" is VERIFIED for the two Unique tiers
+    -- against an independent oracle -- Item Assistant's own rendered names,
+    -- 579 of 579 exact, see tests/test_stash_iagd.py. The other 48 style
+    -- families have no oracle in any data this project holds; they are assumed
+    -- to render the same way, and that assumption is recorded here rather than
+    -- buried.
+    display_name   TEXT GENERATED ALWAYS AS (
+                       CASE WHEN name IS NULL THEN NULL
+                            WHEN style IS NULL THEN name
+                            ELSE style || ' ' || name END) VIRTUAL
 );
 
 CREATE INDEX IF NOT EXISTS item_name_idx           ON item(name);

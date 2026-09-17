@@ -14,6 +14,8 @@ import hashlib
 import os
 import sqlite3
 
+from . import apply_schema as _apply_schema, connect as _connect
+
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema.sql')
 # Everything whose contents decide what the catalogue CONTAINS. Hashed into
 # the stamp so a logic change invalidates the build exactly as a game update
@@ -25,7 +27,7 @@ SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema.s
 # skipped, and the wrong numbers stayed in the database until --force. Silent
 # staleness is the failure this project keeps paying for.
 PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCHEMA_VERSION = '13'  # skill + skill_stat
+SCHEMA_VERSION = '14'  # item.style_tag, item.style, item.display_name
 
 
 def code_digest() -> str:
@@ -49,23 +51,11 @@ def code_digest() -> str:
 
 
 def connect(path: str, create: bool = True) -> sqlite3.Connection:
-    if not create and not os.path.isfile(path):
-        raise FileNotFoundError(
-            f'no catalogue at {path}; run `main.py rebuild` first')
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    # WAL keeps reads working while a build writes, and survives a crash
-    # mid-rebuild without leaving a half-written catalogue that opens cleanly.
-    conn.execute('PRAGMA journal_mode=WAL')
-    conn.execute('PRAGMA foreign_keys=ON')
-    return conn
+    return _connect(path, create, hint='run `main.py rebuild` first')
 
 
 def apply_schema(conn: sqlite3.Connection):
-    with open(SCHEMA_PATH, encoding='utf-8') as fh:
-        conn.executescript(fh.read())
-    conn.commit()
+    _apply_schema(conn, SCHEMA_PATH)
 
 
 def stamp(conn: sqlite3.Connection, game_root: str, archive_paths: list[str]):

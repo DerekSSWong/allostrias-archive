@@ -4,10 +4,23 @@
     status            what the settings point at, and whether a rebuild is due
     rebuild [--force] rebuild cache/catalogue.sqlite from the game archives
 
-`rebuild` drops and recreates the CATALOGUE only. cache/profile.sqlite holds
-saves and preferences and is never dropped -- it is backed up first and then
-left alone. The two databases share a directory, so that rule lives here, in
-code, rather than in the directory layout where it could be assumed.
+cache/ holds three databases and they are not governed by one rule, so the
+rule lives here, in code, rather than in the directory layout where it could be
+assumed:
+
+  catalogue.sqlite  derived from the game archives. `rebuild` drops it, and a
+                    staleness check decides when that is due.
+  stash.sqlite      derived from the save files. Rebuilt on EVERY launch,
+                    before any command runs -- the saves move every session,
+                    and reading them costs milliseconds.
+  stash_iagd.sqlite derived from Item Assistant's collection, if that path is
+                    configured. Same rule, same reason. Absent entirely when
+                    `iagd` is blank -- the two stashes are disjoint halves of
+                    one collection, and an empty half is not the same as a
+                    half that was never looked at.
+  profile.sqlite    the one thing here that cannot be regenerated. Never
+                    dropped by anything; backed up before a rebuild and then
+                    left alone.
 """
 import argparse
 import os
@@ -17,7 +30,8 @@ import time
 
 from allostrias import settings as S
 from allostrias.archive import arc, arz
-from allostrias.db import catalogue
+from allostrias.archive import gst
+from allostrias.db import catalogue, iagd, stash
 from allostrias.db.extract import (affixes, bonuses, drops, eligibility,
                                    factions, items, mi, recipes, skills,
                                    vendors, zones)
@@ -54,11 +68,38 @@ def cmd_status(cfg: S.Settings, _args) -> int:
 
     print('\ncache')
     for label, path in (('catalogue', cfg.catalogue_db),
+                        ('stash', cfg.stash_db),
+                        ('stash_iagd', cfg.stash_iagd_db),
                         ('profile', cfg.profile_db)):
         if os.path.isfile(path):
             print(f'  {label:10} {os.path.getsize(path) / 1e6:6.1f} MB')
+        elif label == 'stash_iagd' and not cfg.iagd:
+            print(f'  {label:10} iagd not configured')
         else:
             print(f'  {label:10} not built')
+
+    if os.path.isfile(cfg.stash_db):
+        print('\nstash, rebuilt this launch')
+        for row in stash.summary(cfg.stash_db):
+            if row['kind'] == 'reagents':
+                held = f'{row["materials"]} materials'
+            else:
+                pages = f'{row["pages"]} page' + ('s' if row['pages'] != 1 else '')
+                held = f'{pages}, {row["items"]} items'
+            print(f'  {row["relpath"]:14} {held:24} '
+                  f'v{row["version"]}'
+                  + (f', expansion bits {row["expansion"]}'
+                     if row['expansion'] is not None else ''))
+
+    if cfg.iagd and os.path.isfile(cfg.stash_iagd_db):
+        found = iagd.summary(cfg.stash_iagd_db)
+        source = found['source'] or {}
+        wal = source.get('wal_size')
+        print('\niagd collection, rebuilt this launch')
+        print(f'  {source.get("relpath", "?"):14} {found["items"]} items, '
+              f'{found["records"]} records   '
+              f'{source.get("size", 0) / 1e6:.0f} MB'
+              + (f' + {wal / 1e6:.1f} MB write-ahead log' if wal else ''))
 
     if not os.path.isfile(cfg.catalogue_db):
         print('\nrebuild needed: never built')
@@ -135,7 +176,32 @@ def main(argv=None) -> int:
         print(f'settings: {exc}', file=sys.stderr)
         return 2
 
-    return {'status': cmd_status, 'rebuild': cmd_rebuild}[args.command](cfg, args)
+    # Before the command, not inside it: every command that reads the stash
+    # should see this session's saves, and `status` should report what was
+    # actually just read rather than what a previous launch found.
+    #
+    # A failure here does NOT stop the command. The stash builds from files
+    # the game may be rewriting at this moment, and refusing to run `status`
+    # -- the command you reach for when something looks wrong -- would be the
+    # worst possible response to that. The previous database is left intact,
+    # the reason is printed where it cannot be mistaken for output, and the
+    # exit code carries the failure even when the command itself succeeds.
+    stash_failure = None
+    try:
+        stash.refresh(cfg)
+    except (gst.GstError, OSError) as exc:
+        stash_failure = exc
+        print(f'stash: {exc}', file=sys.stderr)
+    # Separate try: Item Assistant is a different program with a different way
+    # of being unavailable, and one of them failing must not hide the other.
+    try:
+        iagd.refresh(cfg)
+    except (iagd.IagdError, OSError) as exc:
+        stash_failure = stash_failure or exc
+        print(f'iagd: {exc}', file=sys.stderr)
+
+    code = {'status': cmd_status, 'rebuild': cmd_rebuild}[args.command](cfg, args)
+    return code or (1 if stash_failure else 0)
 
 
 if __name__ == '__main__':

@@ -65,7 +65,8 @@ for hit in found[:10]:
 assert not found, f'{len(found)} tracked line(s) contain machine-specific data'
 
 # And the two things that must stay ignored.
-for relpath in ('settings.ini', 'cache/catalogue.sqlite'):
+for relpath in ('settings.ini', 'cache/catalogue.sqlite',
+                'cache/stash.sqlite'):
     result = subprocess.run(['git', 'check-ignore', '-q', relpath],
                             cwd=S.ROOT)
     assert result.returncode == 0, f'{relpath} is NOT gitignored'

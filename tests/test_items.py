@@ -179,6 +179,62 @@ assert not unexplained, \
     f'{unexplained[:3]} -- the lookup is wrong, not the data'
 print('  every nameless item has a demonstrated cause')
 
+# -- the style, and what it does and does not fix --------------------------
+# `name` alone cannot identify an item: a record under records/items/upgraded/
+# shares its itemNameTag with the base it upgrades, so both resolve to the same
+# string. The style is what tells them apart -- and only partly, which is the
+# half worth asserting so nobody starts treating display_name as a key.
+styled = one("SELECT count(*) FROM item WHERE style_tag IS NOT NULL")
+unresolved = one("SELECT count(*) FROM item "
+                 "WHERE style_tag IS NOT NULL AND style IS NULL")
+assert styled == 1788, styled
+# Kept raw when it resolves to nothing: "has a style we cannot name" and "has
+# no style" are different facts, and this is the row that proves the column
+# still distinguishes them.
+assert unresolved == 2, \
+    f'{unresolved} style tags resolve to no text, expected 2 -- if this grew, ' \
+    f'an archive stopped being read; if it shrank, say so and lower the number'
+print(f'  {styled} items carry a style, {unresolved} of them unnameable')
+
+for tag, word, count in (('tagStyleUniqueTier3', 'Mythical', 954),
+                         ('tagStyleUniqueTier2', 'Empowered', 335),
+                         ('tagStyleFactionTier2', 'Elite', 207)):
+    got = one('SELECT count(*) FROM item WHERE style_tag = ?', tag)
+    word_got = one('SELECT style FROM item WHERE style_tag = ? LIMIT 1', tag)
+    assert (got, word_got) == (count, word), f'{tag}: {got} rows named {word_got!r}'
+    print(f'  {tag:22} {word:10} {got:5}')
+
+# The generated column is a function of the row, so it cannot disagree with it.
+# Asserted anyway, because "generated" is a property of the DDL, and the DDL is
+# exactly what a schema change would alter.
+bad = one("SELECT count(*) FROM item WHERE display_name IS NOT "
+          "(CASE WHEN name IS NULL THEN NULL "
+          "      WHEN style IS NULL THEN name "
+          "      ELSE style || ' ' || name END)")
+assert bad == 0, f'{bad} display_name(s) disagree with their own row'
+
+# What it fixes, and what it does NOT. The second number is the point: this
+# must never be sold as making names unique.
+split = one("SELECT count(*) FROM (SELECT name FROM item WHERE name IS NOT NULL "
+            "GROUP BY name HAVING count(*) > 1 "
+            "AND count(DISTINCT ifnull(style,'')) = count(*))")
+still = one("SELECT count(*) FROM (SELECT display_name FROM item "
+            "WHERE display_name IS NOT NULL "
+            "GROUP BY display_name HAVING count(*) > 1)")
+assert split > 0 and still > 0, (split, still)
+print(f'  style splits {split} colliding names; {still} display names still '
+      f'collide -- display_name is NOT a key')
+
+mythical = conn.execute(
+    "SELECT display_name FROM item WHERE style = 'Mythical' "
+    "AND name = 'Deathmarked Claw'").fetchone()
+base = conn.execute(
+    "SELECT display_name FROM item WHERE style IS NULL "
+    "AND name = 'Deathmarked Claw'").fetchone()
+assert mythical and base and mythical[0] != base[0], \
+    'the case this column exists for is not fixed'
+print(f'  {base[0]!r} and {mythical[0]!r} are now distinguishable')
+
 sample = conn.execute(
     "SELECT name, class, classification, level_req FROM item "
     "WHERE classification='Legendary' AND is_equipment=1 "

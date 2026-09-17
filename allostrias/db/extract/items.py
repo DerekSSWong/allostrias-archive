@@ -117,6 +117,20 @@ def name_tag_of(attrs: dict) -> str | None:
     return V.first_str(attrs, 'itemNameTag') or V.first_str(attrs, 'description')
 
 
+def style_of(attrs: dict, tags: dict[str, str]) -> tuple[str | None, str | None]:
+    """(style tag, resolved style) -- the tier word rendered before the name.
+
+    Returned as a PAIR on purpose. One tag in the archives resolves to no text,
+    and "this record has a style we cannot name" is a different fact from "this
+    record has no style". Collapsing them would silently turn the first into
+    the second.
+    """
+    tag = V.first_str(attrs, 'itemStyleTag')
+    if not tag:
+        return None, None
+    return tag, V.clean_name(tags.get(tag)) or None
+
+
 def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
     """Fill `item` and `item_stat`. Returns counts for the build report."""
     conn.execute('DELETE FROM item_stat')
@@ -135,6 +149,7 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
         item_id = next_id
         next_id += 1
         tag = name_tag_of(attrs)
+        style_tag, style = style_of(attrs, tags)
         item_rows.append((
             item_id,
             path,
@@ -145,6 +160,8 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
             1 if is_equipment else 0,
             tag,
             V.clean_name(tags.get(tag)) if tag else None,
+            style_tag,
+            style,
             V.first_str(attrs, 'itemClassification'),
             V.first(attrs, 'levelRequirement'),
             V.first_str(attrs, 'itemSetName'),
@@ -168,11 +185,16 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
 
     conn.executemany(
         'INSERT INTO item (id, path, class, family, slot, folder, '
-        'is_equipment, name_tag, name, classification, level_req, set_path) '
-        'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', item_rows)
+        'is_equipment, name_tag, name, style_tag, style, classification, '
+        'level_req, set_path) '
+        'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', item_rows)
     conn.executemany(
         'INSERT INTO item_stat (item_id, field, idx, num, txt, lo, hi, roll) '
         'VALUES (?,?,?,?,?,?,?,?)', stat_rows)
     conn.commit()
+    styled = sum(1 for row in item_rows if row[9] is not None)
+    unresolved = sum(1 for row in item_rows
+                     if row[9] is not None and row[10] is None)
     return {'items': len(item_rows), 'stats': len(stat_rows),
-            'machinery skipped': skipped}
+            'machinery skipped': skipped, 'with a style': styled,
+            'style tag resolving to nothing': unresolved}

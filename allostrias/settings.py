@@ -85,6 +85,20 @@ class Settings:
         return os.path.join(self.cache_dir, 'catalogue.sqlite')
 
     @property
+    def stash_db(self) -> str:
+        """Derived from the .gst files in the save root. Disposable, and
+        rebuilt on every launch -- the saves move every time the game is
+        played, so there is nothing here worth keeping in step with a check."""
+        return os.path.join(self.cache_dir, 'stash.sqlite')
+
+    @property
+    def stash_iagd_db(self) -> str:
+        """Derived from Item Assistant's userdata.db. Disposable, rebuilt on
+        every launch -- and NOT created at all when `iagd` is unconfigured,
+        since an empty database would answer a question nobody asked."""
+        return os.path.join(self.cache_dir, 'stash_iagd.sqlite')
+
+    @property
     def profile_db(self) -> str:
         """Saves and user preferences. NOT disposable -- `rebuild` must not
         touch this file, which is why it is named separately from the
