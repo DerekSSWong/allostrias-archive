@@ -61,13 +61,27 @@ for name in ('rolled', 'fixed', 'unmodeled', 'unrolled'):
 
 # Every 'unrolled' row must be on a non-equipment item, and no equipment row
 # may be 'unrolled'. This is the invariant the grimdb mismatch came from.
+# Equipment always rolls; non-equipment rolls only if its class is in
+# ROLLING_CLASSES (relics are, components are not). Checked as that RULE
+# rather than as "no non-equipment is banded", which was the over-correction
+# that stopped relics rolling.
+rolling = ','.join('?' * len(R.ROLLING_CLASSES))
 leaked = one("SELECT count(*) FROM item_stat s JOIN item i ON i.id=s.item_id "
              "WHERE s.roll='unrolled' AND i.is_equipment=1")
 banded = one("SELECT count(*) FROM item_stat s JOIN item i ON i.id=s.item_id "
-             "WHERE s.roll='rolled' AND i.is_equipment=0")
-print(f'  equipment marked unrolled: {leaked}, non-equipment given a band: {banded}')
+             "WHERE s.roll='rolled' AND i.is_equipment=0 "
+             f'AND i.class NOT IN ({rolling})', *sorted(R.ROLLING_CLASSES))
+relics = one("SELECT count(*) FROM item_stat s JOIN item i ON i.id=s.item_id "
+             "WHERE s.roll='rolled' AND i.class='ItemArtifact'")
+components = one("SELECT count(*) FROM item_stat s JOIN item i ON i.id=s.item_id "
+                 "WHERE s.roll='rolled' AND i.class='ItemRelic'")
+print(f'  equipment marked unrolled: {leaked}; non-rolling classes banded: {banded}')
+print(f'  relic stats banded: {relics} (must be >0); '
+      f'component stats banded: {components} (must be 0)')
 assert leaked == 0, 'an equipment base was treated as not rolling'
-assert banded == 0, 'a component/augment/relic was given a roll band'
+assert banded == 0, 'a class outside ROLLING_CLASSES was given a roll band'
+assert relics > 0, 'relics stopped rolling -- grimdb shows they do'
+assert components == 0, 'a component was given a roll band -- grimdb shows flat'
 
 # The case that exposed it, checked by value.
 for field, want in (('characterLife', 120), ('characterDefensiveAbility', 25),
@@ -145,13 +159,14 @@ assert text_banded == 0, 'a text value was given a numeric band'
 UNMODELLED_STATS = {
     'defensiveBonusProtection',
     'defensiveElementalResistanceChance',
+    'defensiveFreezeChance',
     'defensivePhysicalChance',
     'defensiveProtectionChance',
     'offensiveFreezeMax',
     'offensiveFumbleDurationMin',
     'offensiveFumbleMin',
     'offensivePercentCurrentLifeMin',
-    'retaliationFearMin',
+    'offensiveStunModifier',
     'retaliationSlowManaLeachDurationMin',
     'retaliationSlowManaLeachMin',
 }

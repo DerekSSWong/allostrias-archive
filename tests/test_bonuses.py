@@ -45,16 +45,26 @@ no_pool = one("SELECT count(*) FROM item_bonus WHERE relation='completion' "
 assert no_pool == 0, f'{no_pool} completion bonuses lost their pool'
 
 # -- 2. pool members roll, pet bonuses do not -----------------------------
+# A pet bonus carries no jitter of its own: it rolls when the item holding it
+# rolls. Dirge of Arkovia's pet bonus IS banded because its parent is a relic;
+# one hanging off a component is not. Checked as that rule, not as a blanket.
 rolled = one("SELECT count(*) FROM bonus_stat s JOIN bonus b ON b.id=s.bonus_id "
              "WHERE b.kind='completion' AND s.lo != s.hi")
 pet_banded = one("SELECT count(*) FROM bonus_stat s JOIN bonus b ON b.id=s.bonus_id "
                  "WHERE b.kind='pet' AND s.lo != s.hi")
-pet_jitter = one("SELECT count(*) FROM bonus WHERE kind='pet' AND jitter IS NOT NULL")
+pet_on_still = one(
+    'SELECT count(*) FROM bonus_stat s '
+    'JOIN bonus b ON b.id = s.bonus_id '
+    'JOIN item_bonus x ON x.bonus_id = b.id '
+    'JOIN item i ON i.id = x.item_id '
+    "WHERE b.kind='pet' AND s.lo != s.hi AND i.is_equipment = 0 "
+    "AND i.class != 'ItemArtifact'")
 print(f'  completion stats with a real band: {rolled}')
-print(f'  pet stats with a band: {pet_banded}, pet records with jitter: {pet_jitter}')
+print(f'  pet stats banded: {pet_banded}; of those, on a non-rolling item: '
+      f'{pet_on_still}')
 assert rolled > 100, rolled
-assert pet_banded == 0, 'a pet bonus was given a roll band'
-assert pet_jitter == 0, 'a pet bonus was given a jitter value'
+assert pet_banded > 0, 'no pet bonus rolls -- Dirge of Arkovia shows they do'
+assert pet_on_still == 0, 'a pet bonus rolled on an item that does not roll'
 
 # -- 3. unresolved skill names must have a derived cause ------------------
 print('\nitem_skill by relation:')
