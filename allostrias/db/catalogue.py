@@ -14,7 +14,7 @@ import os
 import sqlite3
 
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema.sql')
-SCHEMA_VERSION = '8'   # relics roll too; retaliationFear modelled
+SCHEMA_VERSION = '9'   # completion bonuses are relic-only
 
 
 def connect(path: str, create: bool = True) -> sqlite3.Connection:

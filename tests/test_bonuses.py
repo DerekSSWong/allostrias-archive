@@ -3,9 +3,15 @@
 Three fields point at records holding the actual effect, and until they are
 followed the item looks emptier than it is. What this checks:
 
-  1. A completion POOL is a choice, not a sum. Aether Soul's nine members are
-     nine mutually exclusive outcomes; losing pool_path would read as a
-     component granting all nine at once.
+  1. ONLY RELICS GET COMPLETION BONUSES. 83 components carry bonusTableName
+     pointing at neatly slot-matched pools, and the game ignores every one --
+     the field is inherited from Titan Quest, where charms did have them.
+     That shape was once read here as proof of a mechanic; it is not, and a
+     curated dead field is exactly what a structural proxy looks like when it
+     is wrong.
+  1b. A completion POOL is a choice, not a sum. Dirge of Arkovia's ten members
+     are ten mutually exclusive outcomes; losing pool_path would read as one
+     relic granting all ten at once.
   2. Pool members ROLL. They are LootRandomizer records with their own jitter,
      so 8% Fire Resist at jitter 50 is 4-12 and not a flat 8.
   3. Every unresolved skill name has a DEMONSTRATED cause. Skill_Modifier
@@ -30,6 +36,24 @@ one = lambda sql, *a: conn.execute(sql, a).fetchone()[0]
 kinds = dict(conn.execute('SELECT kind, count(*) FROM bonus GROUP BY kind'))
 print(f'bonus records: {kinds}')
 assert set(kinds) == {'completion', 'pet'}, kinds
+
+# No class but ItemArtifact may hold a completion bonus, however many of them
+# declare a pool. Checked in both directions so neither half can rot.
+wrong = conn.execute(
+    "SELECT i.class, count(*) n FROM item_bonus ib JOIN item i ON i.id=ib.item_id "
+    "WHERE ib.relation='completion' AND i.class != 'ItemArtifact' "
+    'GROUP BY i.class').fetchall()
+relic_pools = one("SELECT count(DISTINCT ib.item_id) FROM item_bonus ib "
+                  "JOIN item i ON i.id=ib.item_id "
+                  "WHERE ib.relation='completion' AND i.class='ItemArtifact'")
+declaring = one("SELECT count(DISTINCT i.id) FROM item i "
+                'JOIN item_stat s ON s.item_id=i.id '
+                "WHERE s.field='bonusTableName' AND i.class='ItemRelic'")
+print(f'\nrelics with a completion pool: {relic_pools}')
+print(f'components DECLARING a dead bonusTableName: {declaring} (all ignored)')
+assert not wrong, f'non-relics given a completion bonus: {[dict(r) for r in wrong]}'
+assert relic_pools > 50, relic_pools
+assert declaring > 50, 'the dead-field case vanished; the check means nothing now'
 
 # -- 1. the pool is a choice ----------------------------------------------
 pools = one('SELECT count(DISTINCT pool_path) FROM item_bonus '
@@ -62,7 +86,11 @@ pet_on_still = one(
 print(f'  completion stats with a real band: {rolled}')
 print(f'  pet stats banded: {pet_banded}; of those, on a non-rolling item: '
       f'{pet_on_still}')
-assert rolled > 100, rolled
+# Small on purpose. Most relic completion bonuses are "+1 to two skills",
+# and a skill level never rolls -- so only the stat-valued members band at
+# all. The old threshold of 100 was calibrated when 83 components were
+# wrongly contributing pools.
+assert rolled > 0, 'no completion bonus bands at all'
 assert pet_banded > 0, 'no pet bonus rolls -- Dirge of Arkovia shows they do'
 assert pet_on_still == 0, 'a pet bonus rolled on an item that does not roll'
 

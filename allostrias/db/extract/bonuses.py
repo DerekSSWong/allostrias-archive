@@ -5,11 +5,22 @@ until they are followed the item looks emptier than it is. 1,965 items name a
 granted skill, 528 a pet bonus, 170 a completion-bonus pool -- all of them
 stored as bare paths.
 
-THE COMPLETION POOL IS A CHOICE, NOT A SUM. `bonusTableName` points at a
-LootRandomizerTable whose members are ordinary LootRandomizer records; a
-component that completes gets ONE of them. Flattening the nine members of
-Aether Soul's pool into nine bonuses would read as a component granting all
-nine at once, so `pool_path` is carried through to keep the grouping.
+ONLY RELICS HAVE COMPLETION BONUSES. Components carry `bonusTableName` too --
+83 of 107 of them, pointing at pools that are neatly slot-matched -- and the
+game ignores it. `itemrelic.tpl` is inherited from Titan Quest, where charms
+did have completion bonuses; the 24 components without the field are all
+level 75, the expansion-era tier authored after it stopped meaning anything.
+
+That shape was read here as evidence of a mechanic and it is not one. A
+curated, slot-matched, level-correlated field can still be dead: the only
+thing that settles what the game shows is the game, and it shows completion
+bonuses on relics alone.
+
+THE POOL IS A CHOICE, NOT A SUM. For the relics that do have one,
+`bonusTableName` points at a LootRandomizerTable whose members are ordinary
+LootRandomizer records and exactly one is granted. Flattening the ten members
+of Dirge of Arkovia's pool into ten bonuses would read as a relic granting all
+ten at once, so `pool_path` is carried through to keep the grouping.
 
 Pool members roll. They are LootRandomizer records with their own
 lootRandomizerJitter, so their bands come from the same roll_band as affixes
@@ -31,6 +42,9 @@ from ...archive import values as V
 from ...archive import rolls as R
 
 POOL_FIELD = 'bonusTableName'
+# The only class whose bonusTableName the game actually honours. Every other
+# class carrying the field is ignored; see the module docstring.
+COMPLETION_CLASSES = frozenset({'ItemArtifact'})
 PET_FIELD = 'petBonusName'
 MEMBER_PREFIX = 'randomizerName'
 
@@ -122,10 +136,17 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
             skill_name_cache[path] = name
         return skill_name_cache[path]
 
+    item_class = {row['id']: row['class']
+                  for row in conn.execute('SELECT id, class FROM item')}
+
+    ignored_pools = 0
     for item_id, item_path in items.items():
         attrs = V.non_default(db.read(item_path))
 
         pool = V.first_str(attrs, POOL_FIELD)
+        if pool and item_class.get(item_id) not in COMPLETION_CLASSES:
+            ignored_pools += 1
+            pool = None
         if pool:
             pool = pool.lower()
             pool_attrs = V.non_default(db.read(pool)) if pool in db else {}
@@ -187,4 +208,5 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
             'item-bonus links': len(item_bonus_rows),
             'item-skill links': len(skill_rows),
             'skills that resolved to a name': named,
-            'reference targets absent': missing_targets}
+            'reference targets absent': missing_targets,
+            'dead bonusTableName ignored': ignored_pools}
