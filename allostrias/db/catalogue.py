@@ -25,7 +25,7 @@ SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema.s
 # skipped, and the wrong numbers stayed in the database until --force. Silent
 # staleness is the failure this project keeps paying for.
 PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCHEMA_VERSION = '12'  # recipes and item sets
+SCHEMA_VERSION = '13'  # skill + skill_stat
 
 
 def code_digest() -> str:

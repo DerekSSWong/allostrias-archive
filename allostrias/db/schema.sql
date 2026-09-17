@@ -412,3 +412,40 @@ CREATE TABLE IF NOT EXISTS set_bonus (
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS set_member_item_idx ON set_member(item_id);
+
+-- ---------------------------------------------------------------------------
+-- Skills that items and sets reference.
+--
+-- SCOPED TO WHAT IS REFERENCED -- 3,120 records of the 13,993 in the
+-- archives. Every skill an item grants, augments, modifies, or that a set
+-- bonus names, is here; the rest are monster and internal skills that nothing
+-- in this catalogue points at. Widening it is one prefix change if character
+-- stat derivation ever needs the whole tree.
+--
+-- 1,936 of them are Skill_Modifier records, which carry NO skillDisplayName
+-- by design -- a modifier is described on the skill it modifies. Their `name`
+-- is NULL and that is correct, not missing.
+CREATE TABLE IF NOT EXISTS skill (
+    id          INTEGER PRIMARY KEY,
+    path        TEXT NOT NULL UNIQUE,
+    class       TEXT,
+    name_tag    TEXT,
+    name        TEXT,
+    description TEXT,
+    max_level   INTEGER
+);
+
+-- Skill values are frequently PER-LEVEL ARRAYS, and some are expressions
+-- ('charLevel/4+1') rather than numbers. Numbers go in `num`, everything
+-- else stays as text in `txt` rather than being evaluated.
+CREATE TABLE IF NOT EXISTS skill_stat (
+    skill_id INTEGER NOT NULL REFERENCES skill(id) ON DELETE CASCADE,
+    field    TEXT    NOT NULL,
+    idx      INTEGER NOT NULL,
+    num      REAL,
+    txt      TEXT,
+    PRIMARY KEY (skill_id, field, idx)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS skill_name_idx      ON skill(name);
+CREATE INDEX IF NOT EXISTS skill_stat_field_idx ON skill_stat(field);
