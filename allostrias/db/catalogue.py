@@ -10,11 +10,42 @@ Hashing the archives would be stricter and costs ~180 MB of reads per launch
 to defend against an edit that preserves both size and mtime. Not worth it;
 `rebuild --force` covers the case where someone believes it happened.
 """
+import hashlib
 import os
 import sqlite3
 
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema.sql')
+# Everything whose contents decide what the catalogue CONTAINS. Hashed into
+# the stamp so a logic change invalidates the build exactly as a game update
+# does.
+#
+# Without this the gate compares archive size/mtime and schema version only,
+# and a fix to the extraction logic leaves a stale catalogue while reporting
+# "up to date; nothing to do". That happened: rolls.py was corrected, rebuild
+# skipped, and the wrong numbers stayed in the database until --force. Silent
+# staleness is the failure this project keeps paying for.
+PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA_VERSION = '9'   # completion bonuses are relic-only
+
+
+def code_digest() -> str:
+    """A hash over every .py and .sql file that shapes the catalogue.
+
+    Walked and sorted rather than listed, so a new extractor is covered the
+    moment it exists -- a hardcoded file list would omit exactly the module
+    someone just added.
+    """
+    digest = hashlib.sha256()
+    for root, dirs, files in os.walk(PACKAGE_ROOT):
+        dirs[:] = sorted(d for d in dirs if d != '__pycache__')
+        for name in sorted(files):
+            if not name.endswith(('.py', '.sql')):
+                continue
+            path = os.path.join(root, name)
+            digest.update(os.path.relpath(path, PACKAGE_ROOT).encode())
+            with open(path, 'rb') as handle:
+                digest.update(handle.read())
+    return digest.hexdigest()
 
 
 def connect(path: str, create: bool = True) -> sqlite3.Connection:
@@ -47,9 +78,9 @@ def stamp(conn: sqlite3.Connection, game_root: str, archive_paths: list[str]):
         [(i, os.path.relpath(p, game_root), os.path.getsize(p),
           os.stat(p).st_mtime_ns)
          for i, p in enumerate(archive_paths)])
-    conn.execute(
+    conn.executemany(
         'INSERT OR REPLACE INTO build_meta (key, value) VALUES (?, ?)',
-        ('schema_version', SCHEMA_VERSION))
+        [('schema_version', SCHEMA_VERSION), ('code_digest', code_digest())])
     conn.commit()
 
 
@@ -66,6 +97,13 @@ def staleness(conn: sqlite3.Connection, game_root: str,
         return 'never built'
     if row['value'] != SCHEMA_VERSION:
         return f'schema {row["value"]} -> {SCHEMA_VERSION}'
+
+    stored_code = conn.execute(
+        "SELECT value FROM build_meta WHERE key='code_digest'").fetchone()
+    if stored_code is None:
+        return 'built before extractor code was tracked'
+    if stored_code['value'] != code_digest():
+        return 'extractor code changed'
 
     stored = {r['relpath']: (r['ordinal'], r['size'], r['mtime_ns'])
               for r in conn.execute('SELECT * FROM source_archive')}

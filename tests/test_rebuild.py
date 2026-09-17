@@ -81,6 +81,37 @@ try:
 finally:
     os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
 
+# -- 4b. a CODE change invalidates the build too ---------------------------
+# The gate used to compare archives and schema version only, so correcting an
+# extractor left a stale catalogue while reporting "up to date; nothing to
+# do". That happened during development and the wrong numbers survived it.
+probe = os.path.join(S.ROOT, 'allostrias', 'archive', 'values.py')
+with open(probe, encoding='utf-8') as fh:
+    original_source = fh.read()
+try:
+    with open(probe, 'a', encoding='utf-8') as fh:
+        fh.write('\n# rebuild-gate probe\n')
+    conn = catalogue.connect(cfg.catalogue_db, create=False)
+    reason = catalogue.staleness(conn, cfg.game, cfg.arz_paths)
+    conn.close()
+    assert reason == 'extractor code changed', \
+        f'editing an extractor did not invalidate the build (got {reason!r})'
+    print(f'code change detected: {reason}')
+finally:
+    with open(probe, 'w', encoding='utf-8') as fh:
+        fh.write(original_source)
+# After reverting, the CODE reason must be gone. It cannot be checked against
+# None here: step 4 above deliberately leaves the archive stamp disagreeing
+# with disk, so an archive reason is still outstanding and expected.
+conn = catalogue.connect(cfg.catalogue_db, create=False)
+after_revert = catalogue.staleness(conn, cfg.game, cfg.arz_paths)
+conn.close()
+assert after_revert != 'extractor code changed', \
+    'reverting the edit left the build looking code-stale -- the digest is ' \
+    'keying off something other than file content'
+print(f'  reverting clears the code reason (now: {after_revert}) -- '
+      'the hash is content, not mtime')
+
 # -- 5. the profile survived, and was backed up ----------------------------
 assert os.path.isfile(cfg.profile_db), 'REBUILD DELETED THE PROFILE'
 assert digest(cfg.profile_db) == before, 'REBUILD MODIFIED THE PROFILE'
