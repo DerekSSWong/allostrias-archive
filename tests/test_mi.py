@@ -73,5 +73,30 @@ print(f"\n{girdle['name']}: is_mi={girdle['is_mi']} "
       f"({girdle['classification']}, {girdle['folder']})")
 assert girdle['is_mi'] == 1, dict(girdle)
 
+# -- the shortcut mi takes must equal the sweep it replaced ----------------
+# extract/mi.py asks the catalogue which records are blueprints instead of
+# sweeping all 26,001 under records/items/ to find them. That is only safe if
+# the two agree EXACTLY, so this does the sweep -- 7 s, once, in a gate, where
+# slow costs nothing -- and requires the sets to be identical.
+#
+# ⚠️ THIS IS NOT A RESTATEMENT OF WHAT mi DOES. It derives the blueprint set
+# from the archives independently; a change in `items` that stopped recording
+# a Class would break the query and be caught here, which is the whole reason
+# the check cannot live in extract/mi.py itself.
+from allostrias.archive import values as _V         # noqa: E402
+
+queried = {row[0] for row in conn.execute(
+    'SELECT path FROM item WHERE class = ?', (mi.FORMULA_CLASS,))}
+with A.Database(cfg.arz_paths) as _db:
+    swept = {path for path, attrs in _db.iter_records('records/items/')
+             if _V.first_str(attrs, 'Class') == mi.FORMULA_CLASS}
+assert queried == swept, (
+    f'the blueprint set mi reads from the catalogue ({len(queried)}) does not '
+    f'match the archives ({len(swept)}): missing {sorted(swept - queried)[:3]}, '
+    f'extra {sorted(queried - swept)[:3]}')
+assert swept, 'the sweep found no blueprints at all -- the check is vacuous'
+print(f'  blueprint roster: {len(queried)} from the catalogue == {len(swept)} '
+      f'swept from records/items/')
+
 conn.close()
 print('\nSTEP 8b-prime PASS')

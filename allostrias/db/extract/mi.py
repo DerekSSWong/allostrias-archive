@@ -50,11 +50,23 @@ def extract(conn, db, _tags) -> dict[str, int]:
                     for row in conn.execute('SELECT id, path, name FROM item')}
 
     # Blueprint outputs, expanded through the loot-table graph.
+    #
+    # THE BLUEPRINTS COME FROM THE CATALOGUE, NOT FROM A SWEEP. `items` has
+    # already recorded every record's Class, so asking the database which
+    # records are blueprints costs a single indexed query -- against sweeping
+    # all 26,001 records under records/items/ to find 927 of them, which is
+    # 7.2 s to reach 0.03 s of data. Same pattern as extract/skills.py, which
+    # opens only the skills something points at.
+    #
+    # The two are REQUIRED TO AGREE, and test_mi.py is where that is proven:
+    # it does the full sweep and asserts the set matches this query exactly.
+    # The check belongs in the gate, where being slow costs nothing and where
+    # an `items` change that stopped recording a Class would be caught.
     craftable_paths = set()
     roots = set()
-    for path, attrs in db.iter_records('records/items/'):
-        if V.first_str(attrs, 'Class') != FORMULA_CLASS:
-            continue
+    for (path,) in conn.execute(
+            'SELECT path FROM item WHERE class = ?', (FORMULA_CLASS,)).fetchall():
+        attrs = V.non_default(db.read(path)) if path in db else {}
         for field in FORMULA_OUTPUT_FIELDS:
             target = V.first_str(attrs, field)
             if not target:
