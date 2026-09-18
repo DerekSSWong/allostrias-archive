@@ -15,7 +15,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from allostrias import settings as S               # noqa: E402
+from allostrias.archive import arz as A            # noqa: E402
 from allostrias.db import catalogue                # noqa: E402
+from allostrias.db.extract import vendors as vendors_mod  # noqa: E402
 
 cfg = S.load()
 conn = catalogue.connect(cfg.catalogue_db, create=False)
@@ -72,6 +74,30 @@ for row in conn.execute("""
         LEFT JOIN vendor_stock k ON k.vendor_id = v.id
         GROUP BY f.name ORDER BY rows DESC"""):
     print(f"  {str(row['name']):24} {row['vendors']:2} vendors, {row['rows']:5} stock rows")
+
+# -- nothing with a market lives outside the prefix vendors scans ----------
+# extract/vendors.py scans records/creatures/npcs/ rather than all of
+# records/creatures/. That is only safe while every creature carrying a
+# marketFileName is under it, so this sweeps the whole creature tree -- 2.7 s,
+# once -- and requires the narrower prefix to lose nothing.
+#
+# Derived from the archives, not from the vendor table: a vendor the extractor
+# never saw is absent from `vendor` too, so checking the output against itself
+# would agree with the omission instead of catching it.
+from allostrias.archive import values as _V         # noqa: E402
+
+with A.Database(cfg.arz_paths) as _db:
+    with_market = {path for path, attrs in _db.iter_records(vendors_mod.CREATURE_ROOT)
+                   if _V.first_str(attrs, vendors_mod.MARKET_FIELD)}
+outside = sorted(p for p in with_market
+                 if not p.startswith(vendors_mod.CREATURE_PREFIX))
+assert with_market, 'the sweep found no market creatures at all -- vacuous'
+assert not outside, (
+    f'{len(outside)} creature(s) carry a {vendors_mod.MARKET_FIELD} outside '
+    f'{vendors_mod.CREATURE_PREFIX} and the extractor never sees them: '
+    f'{outside[:3]} -- widen CREATURE_PREFIX')
+print(f'  {len(with_market)} creatures carry a market file, all under '
+      f'{vendors_mod.CREATURE_PREFIX}')
 
 conn.close()
 print('\nSTEP 9c PASS')

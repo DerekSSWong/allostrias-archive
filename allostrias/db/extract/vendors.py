@@ -25,7 +25,18 @@ import re
 
 from ...archive import values as V
 
-CREATURE_PREFIX = 'records/creatures/'
+# Every creature carrying a marketFileName lives under npcs/ -- 61 of them,
+# of which 32 are faction vendors and the rest general merchants. Scanning
+# creatures/ whole costs 2.71 s to reach the same 61; npcs/ costs 0.61 s.
+#
+# ⚠️ THAT IS AN OBSERVATION, NOT A GUARANTEE, and a vendor added outside npcs/
+# would vanish silently -- which is the failure this dataset specialises in.
+# test_vendors.py therefore sweeps ALL of records/creatures/ and asserts that
+# nothing with a marketFileName sits outside this prefix. The expensive check
+# lives in the gate, where it runs once and is allowed to be slow; narrowing
+# the scan without that assertion would be trading correctness for 2 seconds.
+CREATURE_PREFIX = 'records/creatures/npcs/'
+CREATURE_ROOT = 'records/creatures/'      # what the gate sweeps
 MARKET_FIELD = 'marketFileName'
 FACTION_FIELD = 'factions'
 NAME_FIELD = 'description'
