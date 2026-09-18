@@ -120,6 +120,26 @@ assert len(without_lt) == 14, len(without_lt)
 assert len(with_lt) > len(without_lt) * 5, 'LevelTable is not being traversed'
 print('  LevelTable is load-bearing, and its absence would not have errored')
 
+# -- the independent walk must agree with WHAT THE BUILD WROTE -------------
+# Until the shared pass existed this gate re-derived 148 holders and compared
+# them to the literal 148 -- proving its own walk, never the catalogue's. The
+# two are only the same thing while the build reads every record, which is now
+# a property of extract/shared_pass.py rather than of drops.py.
+#
+# So the derived set is compared to the stored one. A pass that narrowed its
+# prefix, dropped a consumer, or skipped a record shrinks the stored side and
+# fails here; the literal above would not have noticed.
+stored = {row[0] for row in conn.execute(
+    'SELECT h.path FROM item_drop d JOIN holder h ON h.id = d.holder_id '
+    'JOIN item i ON i.id = d.item_id WHERE i.path = ?', (GIRDLE,))}
+assert stored == with_lt, (
+    f'the catalogue stores {len(stored)} holders for this item but an '
+    f'independent walk of the archives finds {len(with_lt)}: '
+    f'missing {sorted(with_lt - stored)[:3]}, extra {sorted(stored - with_lt)[:3]}')
+print(f'  and the catalogue stores exactly those {len(stored)} -- the build '
+      f'read every record it should have')
+
+
 # -- 5. dangling references are not reported as items ---------------------
 orphans = one('SELECT count(*) FROM item_drop d '
               'LEFT JOIN item i ON i.id=d.item_id WHERE i.id IS NULL')

@@ -32,9 +32,9 @@ from allostrias import settings as S
 from allostrias.archive import arc, arz
 from allostrias.archive import gst
 from allostrias.db import catalogue, iagd, stash
-from allostrias.db.extract import (affixes, bonuses, drops, eligibility,
-                                   factions, items, mi, recipes, skills,
-                                   vendors, zones)
+from allostrias.db.extract import (affixes, bonuses, factions, items, mi,
+                                   recipes, shared_pass, skills, vendors,
+                                   zones)
 
 
 def backup_profile(cfg: S.Settings) -> str | None:
@@ -146,7 +146,10 @@ def cmd_rebuild(cfg: S.Settings, args) -> int:
         with arz.Database(cfg.arz_paths) as db:
             print(f'  records     {len(db)} '
                   f'({db.override_count} patched by an expansion)')
-            for extractor in (items, affixes, bonuses, eligibility, drops, mi,
+            # `shared_pass` is where eligibility and drops run: both need the
+            # whole record tree, so one walk feeds both. See that module --
+            # this tuple is no longer the whole story.
+            for extractor in (items, affixes, bonuses, shared_pass, mi,
                               factions, recipes, skills, vendors,
                               zones):
                 for label, count in extractor.extract(conn, db, tags).items():

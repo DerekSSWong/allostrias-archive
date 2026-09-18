@@ -62,28 +62,34 @@ def _references(attrs) -> set[str]:
     return found
 
 
-def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
-    conn.execute('DELETE FROM item_drop')
-    conn.execute('DELETE FROM holder')
-    conn.execute('DELETE FROM loot_table')
+class Collector:
+    """drops' half of the shared tree pass.
 
-    item_ids = {row['path']: row['id']
-                for row in conn.execute('SELECT id, path FROM item')}
+    THE WALK ITSELF IS NOT HERE. drops and eligibility both need every record
+    in the tree, and reading it twice cost 16 s of a 72 s build, so one loop in
+    extract/shared_pass.py feeds both. What stays in this module is everything
+    that is ABOUT drops -- which classes are tables, what counts as an edge,
+    and the expansion that turns a holder's root set into the items it yields.
 
-    # One pass: every record's class and outbound edges. Only .dbr references
-    # are kept -- the full attribute set tree-wide does not fit in memory and
-    # nothing below needs any other field.
-    graph: dict[str, tuple[str, set[str]]] = {}
-    monster: dict[str, tuple] = {}
-    for path, attrs in db.iter_records():
-        kept = V.non_default(attrs)
+    `offer` is called once per record with its NON-DEFAULT attributes and keeps
+    only the class and the outbound .dbr references. That is not an
+    optimisation to taste: holding the full attribute set tree-wide is 5.6 GB,
+    measured, and nothing below needs any other field.
+    """
+
+    def __init__(self, conn, db, tags: dict[str, str]):
+        self.conn, self.tags = conn, tags
+        self.graph: dict[str, tuple[str, set[str]]] = {}
+        self.monster: dict[str, tuple] = {}
+
+    def offer(self, path: str, kept: dict):
         record_class = V.first_str(kept, 'Class') or ''
-        graph[path] = (record_class, _references(kept))
+        self.graph[path] = (record_class, _references(kept))
         if record_class == MONSTER_CLASS:
             # Collected in the one pass that already holds the record. A
             # holder is named by many items and each of their tiers, so
             # re-opening it per lookup is pure repeat work for no new data.
-            monster[path] = (
+            self.monster[path] = (
                 V.first_str(kept, 'description'),
                 V.first_str(kept, 'monsterClassification'),
                 V.first(kept, 'minLevel'),
@@ -91,84 +97,95 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
                 V.first(kept, 'experiencePoints'),
             )
 
-    tables = {p for p, (cls, _) in graph.items() if cls in TABLE_CLASSES}
+    def finish(self) -> dict[str, int]:
+        conn, tags = self.conn, self.tags
+        graph, monster = self.graph, self.monster
 
-    def expand(roots: frozenset[str]) -> set[str]:
-        """Every item record reachable from these tables, following nesting.
+        conn.execute('DELETE FROM item_drop')
+        conn.execute('DELETE FROM holder')
+        conn.execute('DELETE FROM loot_table')
 
-        A reference may DANGLE -- a table names a record that is not in this
-        install -- so a target counts only once the graph confirms it exists.
-        Without that check a missing table is reported as if it were an item.
+        item_ids = {row['path']: row['id']
+                    for row in conn.execute('SELECT id, path FROM item')}
 
-        LEVEL BRACKETS ARE NOT APPLIED. A LevelTable's children are all
-        followed, so every tier of an item family resolves to the same holder
-        set: the lvl 20 and lvl 94 Gargoyle Girdles both come back as the same
-        12 gargoyles. That is the right answer to "which monsters drop this",
-        and it is NOT an answer to "which tier will this monster give me" --
-        that depends on the bracket in the LevelTable's `levels` field, which
-        nothing here reads.
-        """
-        seen, stack, found = set(), list(roots), set()
-        while stack:
-            current = stack.pop()
-            if current in seen:
+        tables = {p for p, (cls, _) in graph.items() if cls in TABLE_CLASSES}
+
+        def expand(roots: frozenset[str]) -> set[str]:
+            """Every item record reachable from these tables, following nesting.
+
+            A reference may DANGLE -- a table names a record that is not in this
+            install -- so a target counts only once the graph confirms it exists.
+            Without that check a missing table is reported as if it were an item.
+
+            LEVEL BRACKETS ARE NOT APPLIED. A LevelTable's children are all
+            followed, so every tier of an item family resolves to the same holder
+            set: the lvl 20 and lvl 94 Gargoyle Girdles both come back as the same
+            12 gargoyles. That is the right answer to "which monsters drop this",
+            and it is NOT an answer to "which tier will this monster give me" --
+            that depends on the bracket in the LevelTable's `levels` field, which
+            nothing here reads.
+            """
+            seen, stack, found = set(), list(roots), set()
+            while stack:
+                current = stack.pop()
+                if current in seen:
+                    continue
+                seen.add(current)
+                for ref in graph.get(current, ('', ()))[1]:
+                    if ref in tables:
+                        stack.append(ref)
+                    elif ref.startswith(ITEM_PREFIX) and ref in graph:
+                        found.add(ref)
+            return found
+
+        # One expansion per distinct ROOT SET, not per holder: thousands of
+        # holders share a few hundred sets, and re-walking per holder is the
+        # difference between seconds and minutes.
+        memo: dict[frozenset[str], set[str]] = {}
+        table_rows, holder_rows, drop_rows = [], [], []
+        for table_id, path in enumerate(sorted(tables), start=1):
+            table_rows.append((table_id, path, graph[path][0]))
+
+        holder_id = 0
+        for path in sorted(graph):
+            record_class, refs = graph[path]
+            if path in tables:
                 continue
-            seen.add(current)
-            for ref in graph.get(current, ('', ()))[1]:
-                if ref in tables:
-                    stack.append(ref)
-                elif ref.startswith(ITEM_PREFIX) and ref in graph:
-                    found.add(ref)
-        return found
+            roots = frozenset(refs & tables)
+            if not roots:
+                continue
+            holder_id += 1
+            tag, classification, min_lvl, max_lvl, xp = monster.get(
+                path, (None, None, None, None, None))
+            holder_rows.append((
+                holder_id, path, record_class, path.split('/')[1],
+                1 if record_class == MONSTER_CLASS else 0,
+                tag, V.clean_name(tags.get(tag)) if tag else None,
+                classification, min_lvl, max_lvl, xp))
+            if roots not in memo:
+                memo[roots] = expand(roots)
+            for item_path in memo[roots]:
+                item_id = item_ids.get(item_path)
+                if item_id is not None:
+                    drop_rows.append((item_id, holder_id))
 
-    # One expansion per distinct ROOT SET, not per holder: thousands of
-    # holders share a few hundred sets, and re-walking per holder is the
-    # difference between seconds and minutes.
-    memo: dict[frozenset[str], set[str]] = {}
-    table_rows, holder_rows, drop_rows = [], [], []
-    for table_id, path in enumerate(sorted(tables), start=1):
-        table_rows.append((table_id, path, graph[path][0]))
-
-    holder_id = 0
-    for path in sorted(graph):
-        record_class, refs = graph[path]
-        if path in tables:
-            continue
-        roots = frozenset(refs & tables)
-        if not roots:
-            continue
-        holder_id += 1
-        tag, classification, min_lvl, max_lvl, xp = monster.get(
-            path, (None, None, None, None, None))
-        holder_rows.append((
-            holder_id, path, record_class, path.split('/')[1],
-            1 if record_class == MONSTER_CLASS else 0,
-            tag, V.clean_name(tags.get(tag)) if tag else None,
-            classification, min_lvl, max_lvl, xp))
-        if roots not in memo:
-            memo[roots] = expand(roots)
-        for item_path in memo[roots]:
-            item_id = item_ids.get(item_path)
-            if item_id is not None:
-                drop_rows.append((item_id, holder_id))
-
-    conn.executemany(
-        'INSERT INTO loot_table (id, path, class) VALUES (?,?,?)', table_rows)
-    conn.executemany(
-        'INSERT INTO holder (id, path, class, kind, is_monster, name_tag, '
-        'name, classification, min_level, max_level, experience) '
-        'VALUES (?,?,?,?,?,?,?,?,?,?,?)', holder_rows)
-    conn.executemany(
-        'INSERT OR IGNORE INTO item_drop (item_id, holder_id) VALUES (?,?)',
-        drop_rows)
-    conn.commit()
-    monsters = sum(1 for r in holder_rows if r[4])
-    named = len({r[6] for r in holder_rows if r[4] and r[6]})
-    unnamed = sum(1 for r in holder_rows if r[4] and r[5] and not r[6])
-    return {'loot tables': len(table_rows),
-            'holders': len(holder_rows),
-            'holders that are monsters': monsters,
-            'distinct monster names': named,
-            'root sets expanded': len(memo),
-            'monsters with a tag but no name': unnamed,
-            'item-drop pairs': len(drop_rows)}
+        conn.executemany(
+            'INSERT INTO loot_table (id, path, class) VALUES (?,?,?)', table_rows)
+        conn.executemany(
+            'INSERT INTO holder (id, path, class, kind, is_monster, name_tag, '
+            'name, classification, min_level, max_level, experience) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?,?)', holder_rows)
+        conn.executemany(
+            'INSERT OR IGNORE INTO item_drop (item_id, holder_id) VALUES (?,?)',
+            drop_rows)
+        conn.commit()
+        monsters = sum(1 for r in holder_rows if r[4])
+        named = len({r[6] for r in holder_rows if r[4] and r[6]})
+        unnamed = sum(1 for r in holder_rows if r[4] and r[5] and not r[6])
+        return {'loot tables': len(table_rows),
+                'holders': len(holder_rows),
+                'holders that are monsters': monsters,
+                'distinct monster names': named,
+                'root sets expanded': len(memo),
+                'monsters with a tag but no name': unnamed,
+                'item-drop pairs': len(drop_rows)}

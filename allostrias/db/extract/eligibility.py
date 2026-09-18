@@ -50,41 +50,56 @@ def _tier_of(field: str) -> str:
     return 'rare' if field.startswith('rare') else 'magical'
 
 
-def extract(conn, db, _tags) -> dict[str, int]:
-    conn.execute('DELETE FROM affix_eligibility')
+class Collector:
+    """eligibility's half of the shared tree pass.
 
-    affix_ids = {row['path']: row['id']
-                 for row in conn.execute('SELECT id, path FROM affix')}
-    item_class = {row['path']: row['class']
-                  for row in conn.execute('SELECT path, class FROM item')}
+    THE WALK ITSELF IS NOT HERE. This module needs every record only because a
+    DynWeight table can be anywhere -- it keeps roughly 2,600 of the 82,448 it
+    is offered -- and drops needs the same walk, so one loop in
+    extract/shared_pass.py feeds both instead of the tree being read twice.
 
-    pool_members: dict[str, set[str]] = {}
+    ⚠️ `offer` RECEIVES NON-DEFAULT ATTRIBUTES, where the standalone version
+    tested `Class` on the raw record before computing them. The two are
+    equivalent because values.non_default() ALWAYS keeps `Class` -- it is the
+    one field it will not drop, by design, precisely because every extractor
+    keys off it. drops has always relied on that; this now does too.
+    """
 
-    def members(pool_path: str) -> set[str]:
+    def __init__(self, conn, db, _tags):
+        self.conn, self.db = conn, db
+        self.affix_ids = {row['path']: row['id']
+                          for row in conn.execute('SELECT id, path FROM affix')}
+        self.item_class = {row['path']: row['class']
+                           for row in conn.execute('SELECT path, class FROM item')}
+        self.pool_members: dict[str, set[str]] = {}
+        self.pairs: set[tuple[int, str, str]] = set()
+        self.tables = 0
+        self.unresolved_base = 0
+        self.unresolved_affix = 0
+        self.excluded = 0
+
+    def _members(self, pool_path: str) -> set[str]:
         """The affixes in one pool file. Memoised -- a pool is referenced by
         many drop tables, so this is asked far more often than there are
         pools."""
         key = pool_path.lower()
-        if key not in pool_members:
+        if key not in self.pool_members:
             found = set()
-            if key in db:
-                attrs = V.non_default(db.read(key))
+            if key in self.db:
+                attrs = V.non_default(self.db.read(key))
                 for field, values in attrs.items():
                     if MEMBER_FIELD.match(field):
                         found.update(v.lower() for v in values
                                      if isinstance(v, str) and v)
-            pool_members[key] = found
-        return pool_members[key]
+            self.pool_members[key] = found
+        return self.pool_members[key]
 
-    pairs: set[tuple[int, str, str]] = set()
-    tables = unresolved_base = unresolved_affix = excluded = 0
-    for path, attrs in db.iter_records():
-        if V.first_str(attrs, 'Class') != DYN_WEIGHT:
-            continue
+    def offer(self, path: str, kept: dict):
+        if V.first_str(kept, 'Class') != DYN_WEIGHT:
+            return
         if path.startswith(EXCLUDED_ROOTS):
-            excluded += 1
-            continue
-        kept = V.non_default(attrs)
+            self.excluded += 1
+            return
 
         classes = set()
         for field, values in kept.items():
@@ -93,16 +108,16 @@ def extract(conn, db, _tags) -> dict[str, int]:
             for value in values:
                 if not isinstance(value, str) or not value:
                     continue
-                found = item_class.get(value.lower())
+                found = self.item_class.get(value.lower())
                 if found:
                     classes.add(found)
                 else:
                     # A loot target that is not in `item` is machinery (a
                     # nested table) or a base this catalogue does not carry.
-                    unresolved_base += 1
+                    self.unresolved_base += 1
         if not classes:
-            continue
-        tables += 1
+            return
+        self.tables += 1
 
         for field, values in kept.items():
             if not POOL_FIELD.match(field):
@@ -111,23 +126,25 @@ def extract(conn, db, _tags) -> dict[str, int]:
             for pool in values:
                 if not isinstance(pool, str) or not pool:
                     continue
-                for member in members(pool):
-                    affix_id = affix_ids.get(member)
+                for member in self._members(pool):
+                    affix_id = self.affix_ids.get(member)
                     if affix_id is None:
-                        unresolved_affix += 1
+                        self.unresolved_affix += 1
                         continue
                     for cls in classes:
-                        pairs.add((affix_id, cls, tier))
+                        self.pairs.add((affix_id, cls, tier))
 
-    conn.executemany(
-        'INSERT INTO affix_eligibility (affix_id, item_class, tier) '
-        'VALUES (?,?,?)', sorted(pairs))
-    conn.commit()
-    reachable = len({p[0] for p in pairs})
-    return {'drop tables walked': tables,
-            'eligibility pairs': len(pairs),
-            'affixes reachable': reachable,
-            'affixes that never drop': len(affix_ids) - reachable,
-            'unresolved loot targets': unresolved_base,
-            'unresolved pool members': unresolved_affix,
-            'sandbox tables excluded': excluded}
+    def finish(self) -> dict[str, int]:
+        self.conn.execute('DELETE FROM affix_eligibility')
+        self.conn.executemany(
+            'INSERT INTO affix_eligibility (affix_id, item_class, tier) '
+            'VALUES (?,?,?)', sorted(self.pairs))
+        self.conn.commit()
+        reachable = len({p[0] for p in self.pairs})
+        return {'drop tables walked': self.tables,
+                'eligibility pairs': len(self.pairs),
+                'affixes reachable': reachable,
+                'affixes that never drop': len(self.affix_ids) - reachable,
+                'unresolved loot targets': self.unresolved_base,
+                'unresolved pool members': self.unresolved_affix,
+                'sandbox tables excluded': self.excluded}
