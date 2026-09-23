@@ -180,6 +180,48 @@ def parse_tag_lines(text: str) -> Iterator[tuple[str, str]]:
         yield tag.strip(), value.strip()
 
 
+# The tag FAMILIES, which gd-lib's item_stats was written against and which the
+# port keeps. A granted skill's `skillDisplayName` resolves through skills, not
+# items or ui, and looking in the wrong family returns nothing rather than an
+# error -- that miss once cost 54 of 486 items all of their effects.
+#
+# Measured 2026-09-23: the four families are effectively DISJOINT (one tag in
+# both ui and skills, with identical text), so a single merged map would behave
+# the same. They are kept separate anyway, because merging would make this
+# renderer resolve tags the original could not, and a port that is more
+# forgiving than its oracle cannot be held to it.
+TAG_FAMILIES = {
+    'items': 'items', 'ui': 'ui', 'skills': 'skills', 'creatures': 'creatures',
+}
+
+
+def _family_of(basename: str) -> str | None:
+    """`tagsgdx2_items.txt` -> 'items'. None for anything unfamilied."""
+    stem = basename.lower()
+    if not stem.startswith('tags') or not stem.endswith('.txt'):
+        return None
+    stem = stem[:-len('.txt')]
+    _, _, rest = stem.partition('_')
+    return TAG_FAMILIES.get(rest)
+
+
+def load_tag_families(paths: list[str]) -> dict[str, dict[str, str]]:
+    """{family: {tag: text}} over the archives in load order, later winning.
+
+    Console files are excluded by iter_text_files, same as load_tags.
+    """
+    out: dict[str, dict[str, str]] = {f: {} for f in set(TAG_FAMILIES.values())}
+    for path in paths:
+        with Arc(path) as archive:
+            for name, text in archive.iter_text_files():
+                family = _family_of(os.path.basename(name))
+                if family is None:
+                    continue
+                for tag, value in parse_tag_lines(text):
+                    out[family][tag] = value
+    return out
+
+
 def load_tags(paths: list[str]) -> dict[str, str]:
     """Merge every text archive into one flat {tag: string}, in load order.
 

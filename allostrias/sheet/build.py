@@ -35,6 +35,7 @@ import sqlite3
 from PIL import Image, ImageChops
 
 from . import seedroll
+from .. import item_stats
 from .. import settings as S
 from ..archive import arc
 from ..archive.records import Records
@@ -373,19 +374,37 @@ def item_display(base, path, pfx=(None, None), sfx=(None, None)):
 def stat_lines(values, text):
     """Readable lines for an item tooltip, from the ROLLED values.
 
-    Deliberately narrow. gd-lib has a 1,600-line renderer covering every field
-    the game prints; this covers the fields a character sheet's gear panel
-    actually shows, and anything it does not recognise is simply not printed
-    rather than printed wrongly. The sheet's own numbers never come from here --
-    they come from the contribution list, which is keyed on raw field names.
+    This used to be a 107-field table of its own, and anything outside it was
+    silently not printed -- honest, but it left 94 of the 185 fields actually
+    present on six characters' gear off the tooltip. It now runs the ported
+    renderer ([[allostrias.item_stats]]), which covers what the game prints.
+
+    ⚠️ THE RENDERER TAKES RECORD TEXT AND THESE ARE ROLLED NUMBERS, so the
+    values are rendered back into the `field=value` shape it parses. That is
+    not a workaround: it is the same shape `.extracted` holds and the same one
+    `Records.text()` emits, and it is what lets a tooltip show the value this
+    item actually rolled rather than the centre its record stores.
+
+    `%g` matches how records are written, so a rolled 4.0 prints as `4` and
+    reaches the renderer exactly as a stored 4 would.
+
+    The sheet's own numbers still never come from here -- they come from the
+    contribution list, which is keyed on raw field names.
     """
-    out = []
-    for field, label, pct in SHEET_LINES:
-        v = values.get(field)
-        if v:
-            sign = '+' if v > 0 else ''
-            out.append(f"{sign}{fmt_num(v)}{'%' if pct else ''} {label}")
-    return out
+    if not values:
+        return []
+    nums = {k: v for k, v in values.items() if isinstance(v, (int, float))}
+    # ⚠️ DROP A `Max` THAT EQUALS ITS `Min`. seedroll emits both halves of a
+    # range even where the record carries only the Min -- Avatar of Order
+    # stores `retaliationFireMin=260` and nothing else, and rolls to 306/306.
+    # The renderer prints a pair as a range whenever both are present, so
+    # feeding it that synthesises "+306-306 Fire Retaliation" for a stat the
+    # game shows as "+306". Real records do not look like that, and this is the
+    # one place the synthetic text could stop looking like a record.
+    nums = {k: v for k, v in nums.items()
+            if not (k.endswith('Max') and nums.get(k[:-3] + 'Min') == v)}
+    synthetic = '\n'.join(f'{k}={v:g}' for k, v in sorted(nums.items())) + '\n'
+    return item_stats.process_stats(synthetic)
 
 
 def fmt_num(v):

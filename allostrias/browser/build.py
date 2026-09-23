@@ -8,19 +8,16 @@
 Records come from `archive/records.py` -- the archives themselves, not gd-lib's
 `.extracted/` tree, which this used to read.
 
-⚠️ THE ONE REMAINING BORROW: the stat-line renderer is still gd-lib's
-`item_stats`, imported from the game directory. It is the last thing in this
-repo that needs another project present, and porting it is the open work. The
-text it is fed now comes from `Records.text()`, which reproduces the
-`.extracted` files byte for byte (tests/test_records.py), so the port can
-happen without the input changing under it.
+The stat-line renderer used to be gd-lib's, imported from the game directory --
+the last thing in this repo that needed another project present. It is ported
+now (`allostrias/item_stats.py`), and `tests/test_item_stats.py` holds the two
+to each other over every named equipment item.
 """
 import base64
 import io
 import json
 import os
 import sqlite3
-import sys
 
 from PIL import Image, ImageChops
 
@@ -34,11 +31,7 @@ DB = os.path.join(S.ROOT, 'cache', 'catalogue.sqlite')
 # Build output, and it carries the icon atlas -- Crate's art, which cache/
 # keeps out of a public repo.
 OUT = os.path.join(S.ROOT, 'cache', 'browser')
-
-# The stat-line renderer, still gd-lib's. Imported here and nowhere else, so
-# there is exactly one line to delete when the port lands.
-sys.path.insert(0, os.path.join(cfg.game, '.gdlib'))
-import item_stats                                     # noqa: E402
+from .. import item_stats                              # noqa: E402
 TIERS = ('Legendary', 'Epic')
 
 
