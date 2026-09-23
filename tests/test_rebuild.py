@@ -5,12 +5,19 @@ Two things are proven here and neither is about record contents:
   1. The staleness check actually detects a game update. Touching an archive
      must trigger a rebuild; not touching one must not. A gate that only ever
      tested the fresh-build path would pass against a check hardwired to True.
-  2. `rebuild` leaves profile.sqlite BYTE-IDENTICAL and writes a backup. The
-     catalogue is disposable; the profile is the only thing in cache/ that
-     cannot be regenerated, and it shares a directory with the thing that gets
-     deleted. That is the failure this asserts against.
+  2. `rebuild` leaves everything in profile.sqlite that it cannot regenerate
+     EXACTLY as it was, and writes a backup. The catalogue is disposable; the
+     profile is the one thing in cache/ that is not, and it shares a directory
+     with the thing that gets deleted. That is the failure this asserts
+     against.
+
+     ⚠️ NOT a byte comparison of the file, and the reason matters: the
+     character_* tables in there ARE regenerated, from the saves, on every
+     launch -- including this one. So the file's bytes legitimately move and a
+     digest over them would fail on a rebuild that did nothing wrong. What is
+     compared is the content of every OTHER table, which is the part nothing
+     can rebuild.
 """
-import hashlib
 import io
 import os
 import sqlite3
@@ -34,11 +41,6 @@ def run(*argv) -> str:
     return buf.getvalue()
 
 
-def digest(path: str) -> str:
-    with open(path, 'rb') as fh:
-        return hashlib.sha256(fh.read()).hexdigest()
-
-
 # -- 1. first build ---------------------------------------------------------
 for suffix in ('', '-wal', '-shm'):
     if os.path.exists(cfg.catalogue_db + suffix):
@@ -50,14 +52,31 @@ assert 'records     82448' in out, out
 assert 'items' in out, out
 
 # -- 2. a profile the rebuild must not harm --------------------------------
-# Stands in for real saves and preferences, which Phase 4 will write here.
+# Stands in for the preferences the profile is FOR. The character tables beside
+# it are a mirror of the save directory and are refilled on every launch; this
+# canary is the half that would be gone for good.
+
+
+def irreplaceable(path: str) -> list[str]:
+    """Everything in the profile that nothing could rebuild: the schema and
+    contents of every table except the save-derived mirror."""
+    conn = sqlite3.connect(path)
+    try:
+        mirror = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE name LIKE 'character%'")}
+        return [line for line in conn.iterdump()
+                if not any(name in line for name in mirror)]
+    finally:
+        conn.close()
+
+
 conn = sqlite3.connect(cfg.profile_db)
 conn.execute('CREATE TABLE IF NOT EXISTS canary (note TEXT)')
 conn.execute('DELETE FROM canary')
 conn.execute("INSERT INTO canary VALUES ('irreplaceable')")
 conn.commit()
 conn.close()
-before = digest(cfg.profile_db)
+before = irreplaceable(cfg.profile_db)
 
 # -- 3. the gate says up to date, and skips ---------------------------------
 out = run('rebuild')
@@ -114,13 +133,20 @@ print(f'  reverting clears the code reason (now: {after_revert}) -- '
 
 # -- 5. the profile survived, and was backed up ----------------------------
 assert os.path.isfile(cfg.profile_db), 'REBUILD DELETED THE PROFILE'
-assert digest(cfg.profile_db) == before, 'REBUILD MODIFIED THE PROFILE'
+assert irreplaceable(cfg.profile_db) == before, 'REBUILD MODIFIED THE PROFILE'
+# The mirror is expected to be there and to be full -- "unchanged" must not be
+# satisfied by a rebuild that quietly emptied it.
+conn = sqlite3.connect(cfg.profile_db)
+mirrored = conn.execute('SELECT count(*) FROM character').fetchone()[0]
+conn.close()
+assert mirrored > 0, 'the rebuild left the character mirror empty'
 assert os.path.isfile(cfg.profile_backup_db), 'no profile backup written'
 conn = sqlite3.connect(cfg.profile_backup_db)
 note = conn.execute('SELECT note FROM canary').fetchone()[0]
 conn.close()
 assert note == 'irreplaceable', f'backup holds {note!r}'
-print('profile: unchanged and backed up, contents intact')
+print(f'profile: the irreplaceable half unchanged and backed up, '
+      f'{mirrored} characters mirrored beside it')
 
 # -- 6. and the catalogue really was rebuilt after the touch ---------------
 conn = catalogue.connect(cfg.catalogue_db, create=False)

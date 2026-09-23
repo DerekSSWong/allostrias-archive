@@ -48,7 +48,7 @@ stats = one('SELECT count(*) FROM affix_stat')
 kinds = dict(conn.execute('SELECT kind, count(*) FROM affix GROUP BY kind'))
 print(f'\naffixes {total}  {kinds}  stat rows {stats}')
 assert total > 4898, f'{total} is fewer than the oracle has; records were lost'
-assert set(kinds) == {'Prefix', 'Suffix'}, kinds
+assert set(kinds) == {'Prefix', 'Suffix', 'Crafting'}, kinds
 
 # -- 3. a name is not an identity -----------------------------------------
 named = one("SELECT count(*) FROM affix WHERE name='Impervious'")

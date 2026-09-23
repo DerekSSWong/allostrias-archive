@@ -88,7 +88,7 @@ for name, reader in (('transfer.gst', gst.read_transfer),
             try:
                 reader(target)
                 survived.add(offset)
-            except gst.GstError:
+            except gst.SaveError:
                 pass
             data[offset] ^= 0x01
     assert survived == UNVERIFIED, (
@@ -192,7 +192,7 @@ with tempfile.TemporaryDirectory() as workdir:
     try:
         stash.refresh(sandbox)
         raise AssertionError('a corrupt transfer.gst was accepted')
-    except gst.GstError as exc:
+    except gst.SaveError as exc:
         print(f'  corrupt save refused: {str(exc)[:60]}...')
     assert open(sandbox.stash_db, 'rb').read() == before, \
         'a failed refresh modified the database it could not rebuild'

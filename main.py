@@ -18,9 +18,15 @@ assumed:
                     `iagd` is blank -- the two stashes are disjoint halves of
                     one collection, and an empty half is not the same as a
                     half that was never looked at.
-  profile.sqlite    the one thing here that cannot be regenerated. Never
+  profile.sqlite    the one file here that cannot be regenerated. Never
                     dropped by anything; backed up before a rebuild and then
                     left alone.
+
+                    ⚠️ Its character_* tables ARE regenerable and are refilled
+                    from the saves on every launch, exactly like the stash.
+                    The file is durable; those four tables are a mirror. That
+                    is why a schema change there drops the TABLES and not the
+                    database -- see db/character.py.
 """
 import argparse
 import os
@@ -30,11 +36,17 @@ import time
 
 from allostrias import settings as S
 from allostrias.archive import arc, arz
-from allostrias.archive import gst
-from allostrias.db import catalogue, iagd, stash
+from allostrias.archive import gdc, gst
+from allostrias.archive.savecrypt import SaveError
+from allostrias.db import catalogue, character, iagd, stash
 from allostrias.db.extract import (affixes, bonuses, factions, items, mi,
                                    recipes, shared_pass, skills, vendors,
                                    zones)
+
+
+# Shown by `status` only. The tier is what the database stores; naming it is a
+# display concern and the names live here rather than in the schema.
+DIFFICULTY = gdc.DIFFICULTIES
 
 
 def backup_profile(cfg: S.Settings) -> str | None:
@@ -90,6 +102,17 @@ def cmd_status(cfg: S.Settings, _args) -> int:
                   f'v{row["version"]}'
                   + (f', expansion bits {row["expansion"]}'
                      if row['expansion'] is not None else ''))
+
+    if os.path.isfile(cfg.profile_db):
+        print('\ncharacters, rebuilt this launch')
+        for row in character.summary(cfg.profile_db):
+            if row['error']:
+                print(f'  {row["dir_name"]:14} UNREADABLE: {row["error"]}')
+                continue
+            print(f'  {row["dir_name"]:14} level {row["level"]:<4} '
+                  f'{DIFFICULTY[row["difficulty_tier"]]:9}'
+                  f'{row["invested"]:3} skills, {row["devotion_total"]:2} '
+                  f'devotion, {row["worn"]:2} items worn')
 
     if cfg.iagd and os.path.isfile(cfg.stash_iagd_db):
         found = iagd.summary(cfg.stash_iagd_db)
@@ -192,7 +215,7 @@ def main(argv=None) -> int:
     stash_failure = None
     try:
         stash.refresh(cfg)
-    except (gst.GstError, OSError) as exc:
+    except (gst.SaveError, OSError) as exc:
         stash_failure = exc
         print(f'stash: {exc}', file=sys.stderr)
     # Separate try: Item Assistant is a different program with a different way
@@ -202,6 +225,21 @@ def main(argv=None) -> int:
     except (iagd.IagdError, OSError) as exc:
         stash_failure = stash_failure or exc
         print(f'iagd: {exc}', file=sys.stderr)
+    # Third separate try, same reason: a save directory that cannot be read at
+    # all is a different failure from a stash that cannot, and one must not
+    # hide the other. A character whose own save will not parse does NOT raise
+    # here -- it is recorded as unreadable and counted below, so the other
+    # characters still build.
+    try:
+        unreadable = character.refresh(cfg)['unreadable']
+        if unreadable:
+            stash_failure = stash_failure or RuntimeError(
+                f'{unreadable} character save(s) could not be read')
+            print(f'characters: {unreadable} save(s) could not be read; see '
+                  f'character_read_error', file=sys.stderr)
+    except (SaveError, OSError) as exc:
+        stash_failure = stash_failure or exc
+        print(f'characters: {exc}', file=sys.stderr)
 
     code = {'status': cmd_status, 'rebuild': cmd_rebuild}[args.command](cfg, args)
     return code or (1 if stash_failure else 0)

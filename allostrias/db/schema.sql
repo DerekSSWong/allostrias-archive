@@ -144,7 +144,12 @@ CREATE INDEX IF NOT EXISTS item_stat_txt_idx   ON item_stat(field, txt);
 CREATE TABLE IF NOT EXISTS affix (
     id       INTEGER PRIMARY KEY,
     path     TEXT NOT NULL UNIQUE,
-    kind     TEXT NOT NULL,      -- Prefix / Suffix, from the folder
+    -- Prefix / Suffix / Crafting, from the folder. Crafting is the bonus a
+    -- crafted item carries -- the save gives it its own field, apart from
+    -- prefix and suffix -- and it has no affix_eligibility rows because it
+    -- rolls from no pool table. An empty eligibility means "not obtainable"
+    -- for the other two kinds only.
+    kind     TEXT NOT NULL,
     name_tag TEXT,
     name     TEXT,               -- resolved English; several records share one
     rarity   TEXT,               -- itemClassification

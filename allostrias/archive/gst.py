@@ -19,12 +19,9 @@ or lands on the end with a key that does not match, and is refused here. The
 alternative -- anchoring on record paths and reading forward -- cannot tell a
 correct layout from a wrong one that happens to produce plausible strings.
 
-⚠️ THE THREE INT READS ARE NOT INTERCHANGEABLE and the difference IS the
-format. `int` decrypts and advances the key; `raw_int` decrypts without
-advancing (block lengths, and one field in each file header); `plain_int`
-neither decrypts nor advances (checksums). Reading a block length as an `int`
-desynchronises every byte after it into plausible garbage -- which is exactly
-what it looks like, so the symptom is a file that "almost" parses.
+The cipher itself is in `savecrypt.py`, shared with the character reader --
+including the warning about the three int reads, which is where a layout error
+in this file would come from.
 
 The cipher and the item field order are ported from gd-lib, which measured
 them; the notes that say WHICH facts were measured rather than guessed are
@@ -33,11 +30,8 @@ back into wrong ones.
 """
 import os
 import re
-import struct
 
-# Every value in the stream is XORed against a key seeded from the first word.
-SEED_MASK = 0x55555555
-TABLE_MULTIPLIER = 39916801
+from .savecrypt import Reader, SaveError
 
 # Block ids. One per file -- the id is how the game says which file it opened,
 # so a mismatch means we were handed the wrong file, not a corrupt one.
@@ -56,84 +50,6 @@ BLOCK_REAGENTS = 20
 # fact.
 MODE_RE = re.compile(r'^[a-z]s[th]$')
 
-# A string long enough to be a record path and no longer. Purely a sanity
-# bound: a length past this can only come from a desynchronised key.
-MAX_STRING = 4096
-
-
-class GstError(Exception):
-    """The file is not the shape this reader knows, or did not verify."""
-
-
-class Reader:
-    """The self-keying XOR stream. Ported from gd-lib's savefile.Reader.
-
-    The key advances by XORing a table entry chosen by the RAW (still
-    encrypted) byte, so the key stream can be replayed over a region without
-    knowing what it decrypts to -- which is what makes the checksum at the end
-    of a block a usable proof that the region was read correctly.
-    """
-
-    def __init__(self, data: bytes):
-        if len(data) < 8:
-            raise GstError('too small to be a save file')
-        self.b, self.len, self.pos = data, len(data), 0
-        seed = (self._u32(0) ^ SEED_MASK) & 0xFFFFFFFF
-        self.key, self.pos = seed, 4
-        self.tab, k = [0] * 256, seed
-        for i in range(256):
-            k = ((k >> 1) | ((k & 1) << 31)) & 0xFFFFFFFF
-            k = (k * TABLE_MULTIPLIER) & 0xFFFFFFFF
-            self.tab[i] = k
-
-    def _u32(self, offset: int) -> int:
-        return struct.unpack_from('<I', self.b, offset)[0]
-
-    def _need(self, n: int):
-        if self.pos + n > self.len:
-            raise GstError(f'read past end of file at byte {self.pos}')
-
-    def _advance(self, n: int):
-        for i in range(n):
-            self.key = (self.key ^ self.tab[self.b[self.pos + i]]) & 0xFFFFFFFF
-        self.pos += n
-
-    def byte(self) -> int:
-        self._need(1)
-        val = self.b[self.pos] ^ (self.key & 0xFF)
-        self._advance(1)
-        return val
-
-    def int(self) -> int:
-        """Decrypt and advance. The ordinary read."""
-        self._need(4)
-        val = (self._u32(self.pos) ^ self.key) & 0xFFFFFFFF
-        self._advance(4)
-        return val
-
-    def raw_int(self) -> int:
-        """Decrypt WITHOUT advancing. Block lengths, and one header field."""
-        self._need(4)
-        val = (self._u32(self.pos) ^ self.key) & 0xFFFFFFFF
-        self.pos += 4
-        return val
-
-    def plain_int(self) -> int:
-        """Neither decrypt nor advance. Checksums, which are stored in clear."""
-        self._need(4)
-        val = self._u32(self.pos)
-        self.pos += 4
-        return val
-
-    def float(self) -> float:
-        return struct.unpack('<f', struct.pack('<I', self.int()))[0]
-
-    def str(self) -> str:
-        n = self.int()
-        if n > MAX_STRING:
-            raise GstError(f'implausible string length {n} at byte {self.pos}')
-        return ''.join(chr(self.byte()) for _ in range(n))
-
 
 def open_file(path: str, expect_block: int) -> tuple[Reader, int, int]:
     """(reader, file version, end of block) for a single-block .gst file.
@@ -150,10 +66,10 @@ def open_file(path: str, expect_block: int) -> tuple[Reader, int, int]:
     block_id = reader.int()
     length = reader.raw_int()               # the length itself does not advance
     if block_id != expect_block:
-        raise GstError(f'{os.path.basename(path)} is block {block_id}, not '
+        raise SaveError(f'{os.path.basename(path)} is block {block_id}, not '
                        f'{expect_block} -- wrong file for this reader')
     if reader.pos + length + 4 != len(data):
-        raise GstError(
+        raise SaveError(
             f'{os.path.basename(path)}: framing does not add up: '
             f'{reader.pos} + {length} + 4 != {len(data)}')
     return reader, version, reader.pos + length
@@ -175,7 +91,7 @@ def _open_sub_block(reader: Reader) -> tuple[int, int]:
 
 def _end_block(reader: Reader, end: int, what: str):
     if reader.pos != end:
-        raise GstError(f'{what} did not consume its block: at {reader.pos}, '
+        raise SaveError(f'{what} did not consume its block: at {reader.pos}, '
                        f'expected {end}')
     checksum = reader.plain_int()
     # The game stores the running key here and re-seeds from it. Verifying
@@ -183,7 +99,7 @@ def _end_block(reader: Reader, end: int, what: str):
     # match there is nothing to assign, and if they do not, nothing after this
     # point could be trusted anyway.
     if checksum != reader.key:
-        raise GstError(f'{what} checksum {checksum:#010x} does not match the '
+        raise SaveError(f'{what} checksum {checksum:#010x} does not match the '
                        f'key {reader.key:#010x} -- the read desynchronised')
 
 
@@ -255,7 +171,7 @@ def read_transfer(path: str) -> dict:
         # correctly instead of failing on a number this file does not know.
         trailing = page_end - reader.pos
         if trailing < 0 or trailing % 4:
-            raise GstError(f'page {index}: {trailing} bytes of trailing data '
+            raise SaveError(f'page {index}: {trailing} bytes of trailing data '
                            f'is not a whole number of fields')
         for _ in range(trailing // 4):
             reader.int()
@@ -309,5 +225,5 @@ def mode_of(path: str) -> str:
     """The file's extension, which is its mode. See MODE_RE for the shape."""
     mode = os.path.splitext(path)[1].lstrip('.')
     if not MODE_RE.match(mode):
-        raise GstError(f'{os.path.basename(path)} is not a .gst-family file')
+        raise SaveError(f'{os.path.basename(path)} is not a .gst-family file')
     return mode

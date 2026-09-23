@@ -33,14 +33,34 @@ BOOKKEEPING = frozenset({
 
 
 def kind_of(path: str) -> str | None:
-    """Prefix or Suffix, from the folder. The records carry no such field --
-    the only statement of which half of the name an affix occupies is where it
-    is filed."""
+    """Prefix, Suffix or Crafting, from the folder. The records carry no such
+    field -- the only statement of which half of the name an affix occupies is
+    where it is filed.
+
+    ⚠️ CRAFTING IS NOT A NAME AFFIX and is a third kind rather than a Prefix.
+    It is the bonus a crafted item carries in place of nothing -- the save
+    stores it in its own `modifier` field, separate from prefix and suffix --
+    and five of them are worn across six real characters. Filing them as
+    prefixes would put them in the name.
+
+    They also do not roll from a pool table, so they have no affix_eligibility
+    rows. Anything reading an empty eligibility as "not obtainable" must
+    exclude this kind: a crafting bonus is obtained by crafting, which the drop
+    tables have no reason to mention.
+
+    Still returning None: `completion` and `completionrelics` (component and
+    relic bonuses, which are in the `bonus` table instead), the `ascended`
+    tree, and `prefixunique`/`suffixunique`. The last of those look like they
+    belong here and are left alone deliberately -- nothing has established what
+    they are, and a guess would be indistinguishable from a fact in the table.
+    """
     parts = path.split('/')
     if 'prefix' in parts:
         return 'Prefix'
     if 'suffix' in parts:
         return 'Suffix'
+    if 'crafting' in parts:
+        return 'Crafting'
     return None
 
 
