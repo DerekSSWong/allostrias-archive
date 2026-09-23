@@ -59,9 +59,45 @@ equipment = one('SELECT count(*) FROM item WHERE is_equipment=1')
 slots = one('SELECT count(DISTINCT class) FROM item WHERE is_equipment=1')
 print(f'\nitems {total}  equipment {equipment}  carried {total - equipment}  '
       f'slot classes {slots}')
-assert total == 9891, total
-assert equipment == 7628, equipment
-assert slots == 23, slots
+# ⚠️ DERIVED FROM THE ARCHIVES, NOT PINNED. These were three typed numbers
+# (9891 / 7628 / 23) until 2026-09-23, and when the extractor's path scope was
+# legitimately widened -- a character turned out to be wearing a quest-reward
+# ring that lived outside records/items/ -- the gate's answer was to edit the
+# numbers. A gate whose failure mode is "type the new total" teaches exactly
+# that, so it now walks the archives and applies the extractor's OWN scope
+# rules, and asserts the table is what those rules say it should be. It still
+# catches a record silently dropped, double-counted, or lost to an override;
+# it no longer fires on a change that was intended.
+#
+# The Class enumeration itself is not derived here -- it is checked in part 1
+# above, which is where "is this list complete" belongs.
+with A.Database(cfg.arz_paths) as db:
+    want_total = want_equipment = 0
+    want_slots = set()
+    for path, attrs in db.iter_records():
+        if path.startswith(items.NON_ITEM_PREFIXES):
+            continue
+        record_class = V.first_str(attrs, 'Class') or ''
+        try:
+            is_equipment, _family, _slot = items.classify(record_class)
+        except items.UnknownItemClass:
+            if path.startswith(items.ITEM_PREFIX):
+                raise
+            continue
+        if not (is_equipment or record_class in items.CARRIED_CLASSES):
+            continue
+        want_total += 1
+        if is_equipment:
+            want_equipment += 1
+            want_slots.add(record_class)
+
+print(f'  archives say {want_total} items, {want_equipment} equipment, '
+      f'{len(want_slots)} slot classes')
+assert total == want_total, f'table has {total}, the archives have {want_total}'
+assert equipment == want_equipment, f'{equipment} vs {want_equipment}'
+assert slots == len(want_slots), f'{slots} vs {len(want_slots)}'
+assert want_total > 9000, f'only {want_total} classified; the walk found nothing'
+
 
 print('\nby classification:')
 for row in conn.execute(

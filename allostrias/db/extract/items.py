@@ -1,4 +1,4 @@
-"""records/items/** -> the `item` and `item_stat` tables.
+"""Every equippable or carried record -> the `item` and `item_stat` tables.
 
 Most of records/items/ is not items. 12,528 of the 26,001 records are loot
 machinery -- drop tables, randomizers, chests, level tables -- and lumping
@@ -80,7 +80,25 @@ MACHINERY_CLASSES = frozenset({
     'SetPiecePool',
 })
 
+# ⚠️ THE PATH SCOPE USED TO BE `records/items/` AND THAT SILENTLY LOST ITEMS.
+# A character wearing `storyelements/rewards/q003c_ring_slithring.dbr` -- a
+# quest reward, a real ring on a real finger -- resolved to nothing in the
+# catalogue, found 2026-09-23 by the gate that joins worn gear back to it.
+#
+# So the scope is a BLACKLIST now, not a whitelist, and the direction is the
+# whole point: a whitelist of folders means the next patch that puts wearable
+# gear somewhere new is missed in silence, which is the bug that was just paid
+# for. A blacklist lets new folders in and costs, at worst, a record nobody
+# can obtain sitting unreferenced in a table.
+#
+# What is excluded, and why it is not gear:
+#   records/sandbox/   developers' test junk -- folders named after people,
+#                      `test_axe.dbr`, `ring_demo.dbr`. 191 equippable records.
+#   records/creatures/ what NPCs and the player MODEL wear, not inventory:
+#                      `npc_child_boy_clothes01.dbr`. 215 equippable records.
+# Everything else equippable is kept: 17 records, 6 of them quest rewards.
 ITEM_PREFIX = 'records/items/'
+NON_ITEM_PREFIXES = ('records/sandbox/', 'records/creatures/')
 
 
 class UnknownItemClass(Exception):
@@ -139,9 +157,23 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
     item_rows, stat_rows = [], []
     next_id = 1
     skipped = 0
-    for path, attrs in db.iter_records(ITEM_PREFIX):
+    for path, attrs in db.iter_records():
+        if path.startswith(NON_ITEM_PREFIXES):
+            continue
         record_class = V.first_str(attrs, 'Class') or ''
-        is_equipment, family, slot = classify(record_class)
+        try:
+            is_equipment, family, slot = classify(record_class)
+        except UnknownItemClass:
+            # ⚠️ AN UNKNOWN CLASS IS STILL A BUILD FAILURE **INSIDE**
+            # records/items/, which is the guarantee this module was built on:
+            # a game update that adds an item category must be decided about,
+            # not silently dropped. Outside it the walk crosses the whole game
+            # -- levels, fx, skills, controllers -- where an unrecognised Class
+            # means "not an item" and nothing more.
+            if path.startswith(ITEM_PREFIX):
+                raise
+            skipped += 1
+            continue
         if not (is_equipment or record_class in CARRIED_CLASSES):
             skipped += 1
             continue

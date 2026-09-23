@@ -171,7 +171,12 @@ conn = catalogue.connect(cfg.catalogue_db, create=False)
 n_items = conn.execute('SELECT count(*) FROM item').fetchone()[0]
 n_stats = conn.execute('SELECT count(*) FROM item_stat').fetchone()[0]
 conn.close()
-assert n_items == 9891, n_items
+# A FLOOR, not the exact count -- which is what this assertion always meant:
+# the comment above says "not just an empty schema", and n_stats below was
+# already written that way. Pinning the total here made an intended widening
+# of the extractor fail in two places and be fixable by typing a new number in
+# both. The exact count lives in test_items.py, derived from the archives.
+assert n_items > 9_000, n_items
 assert n_stats > 300_000, n_stats
 print(f'\ncatalogue {os.path.getsize(cfg.catalogue_db) / 1e6:.1f} MB, '
       f'{n_items} items, {n_stats} stat rows')
