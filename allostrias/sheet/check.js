@@ -50,8 +50,14 @@ want(B.characters.length===6, `6 characters expected, got ${B.characters.length}
 // definition -- derived from it rather than pinned, so adding a stat to SHEET
 // moves this on its own. `fed` still picks which character opens.
 const opener=B.characters.reduce((b,c)=>fed(c)>fed(b)?c:b, B.characters[0]);
-function fed(c){ return B.sheet.reduce((n,[,list])=>n+list.filter(r=>
-  r.k==='attr'||r.k==='pool'||r.k==='ability'||(r.f||[]).some(f=>c.contrib[f])).length,0); }
+// Mirrors the page's own chooser, bucketed sections included: they do not
+// vote, because "the most to show" means the character sheet and a pet tab is
+// a different subject. If this and the page disagree, the gate checks a
+// character that is not the one on screen.
+function fed(c){ return B.sheet.reduce((n,[,list,bucket])=>bucket ? n :
+  n+list.filter(r=>
+    r.k==='attr'||r.k==='pool'||r.k==='ability'||(r.f||[]).some(f=>c.contrib[f])
+  ).length, 0); }
 const allRows=B.sheet.reduce((n,[,list])=>n+list.length,0);
 want(rows===allRows, `page rendered ${rows} rows, the sheet defines ${allRows}`);
 want(fed(opener)>=50, `the richest character only feeds ${fed(opener)} rows`);
@@ -1141,16 +1147,61 @@ want(/\.srcs div > span\{min-width:0\}/.test(html),
       `${r.label}: ${pcts} of them carry a %, ${pct} come from ${r.m}`);
   }));
   want(checked>0, 'no row declares a modifier field; `m` is not reaching the page');
+
+  // ---- the pet resist ceiling, on the RENDERED number --------------------
+  // ⚠️ THE BUILD SHIPS RAW SUMS AND THE PAGE APPLIES THE CAP, so this has to
+  // read what was drawn. Rows summing 108 and 90 both display exactly 80 in
+  // game while every row under 80 matches, so a row rendering 115 is wrong
+  // rather than generous. Checked in BOTH directions: a capped row must show
+  // the cap, and an uncapped one must show its own sum -- "always 80" would
+  // otherwise pass as easily as "never".
+  {
+    const petSec=B.sheet.find(s=>s[2]==='pet');
+    want(petSec, 'no section declares the pet bucket');
+    if (petSec){
+      const [pname, prows] = petSec;
+      let capped=0, under=0;
+      prows.forEach((r, ri)=>{
+        const raw=(r.f||[]).reduce((n,f)=>
+          n+((opener.petContrib||{})[f]||[]).reduce((m,c)=>m+c[0],0), 0);
+        const m=get('sheet')._html.match(new RegExp(
+          `data-sec="${pname}" data-ri="${ri}"[\\s\\S]*?class="rv[^"]*">([^<]*)<`));
+        want(m, `${pname}/${r.label} did not render`);
+        if (!m) return;
+        // ⚠️ THE PAGE FORMATS WITH toLocaleString, so a four-figure value
+        // renders "1,371%" and parseFloat stops at the comma and returns 1.
+        // This passed while the opener's pet numbers were all under 1000 --
+        // a check that only works on small values is not a check.
+        const shown=parseFloat(m[1].replace(/[^\d.-]/g, ''));
+        if (r.cap!=null && raw>r.cap){ capped++;
+          want(shown===r.cap,
+               `${r.label} sums ${raw} and must display ${r.cap}, showed ${shown}`); }
+        else { under++;
+          want(Math.abs(shown-raw)<0.51,
+               `${r.label} sums ${raw} but displays ${shown} with no cap to reach`); }
+      });
+      if (!capped) uncovered.push(
+        'the opener has no pet resist row summing above 80, so the RENDERED '
+        + 'ceiling is unproven here -- the page\'s functions are private to '
+        + 'new Function(code), so this can only read the character on screen. '
+        + 'tests/test_pet_bonuses.py proves the data side, where 5 rows do '
+        + 'exceed it');
+      console.log(`pet bonuses: ${prows.length} rows, ${capped} at the 80 cap, ${under} below it`);
+    }
+  }
   // Flat and percentage are separate lists with a rule between them, and the
   // rule appears ONLY when both sides are fed -- a divider under an empty
   // block reads as a missing section. Checked over every row of the opener,
   // both directions, so "always draw it" and "never draw it" both fail.
   let mixed=0, single=0, empty=0;
-  B.sheet.forEach(([sec, rows])=>rows.forEach((r, ri)=>{
+  B.sheet.forEach(([sec, rows, bucket])=>rows.forEach((r, ri)=>{
+    // A bucketed section is fed by its OWN contribution list. Reading the
+    // player's for a pet row asks whether the wrong number has a panel.
+    const from=(bucket ? opener.petContrib : opener.contrib)||{};
     // `r.f` is percent when the ROW is; `r.m` always is.
-    const listed=(r.f||[]).reduce((n,f)=>n+(opener.contrib[f]||[]).length,0);
+    const listed=(r.f||[]).reduce((n,f)=>n+(from[f]||[]).length,0);
     const nFlat=r.pct ? 0 : listed;
-    const nPct=(r.pct ? listed : 0) + (r.m ? (opener.contrib[r.m]||[]).length : 0);
+    const nPct=(r.pct ? listed : 0) + (r.m ? (from[r.m]||[]).length : 0);
     fire('pointerover', anchor('.row', {sec, ri:String(ri)}));
     // ⚠️ hideTip() only flips `hidden`; `_html` still holds the LAST panel
     // rendered. Read it only when the panel is actually up, or an unfed row

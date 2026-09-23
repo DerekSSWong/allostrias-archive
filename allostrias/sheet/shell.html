@@ -590,9 +590,14 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 
   /* One pass over the contribution list per render. A value is in when it is
      structural (no gate) or when its gate is switched on. */
-  function totals(ch){
+  function totals(ch, bucket){
     const t = {};
-    for (const [f, rows] of Object.entries(ch.contrib))
+    /* The PET bucket is a second contribution list, not more rows in the
+       first: "+70% Damage" modifies a pet and summing it into the player's
+       damage would be a category error every total below inherits. It carries
+       the same toggle ids, so a buff switched off here is off there too --
+       which is what stops the two tabs being two different characters. */
+    for (const [f, rows] of Object.entries((bucket ? ch.petContrib : ch.contrib) || {}))
       for (const [v, , tid] of rows)
         if (!tid || state.on.has(tid)) t[f] = (t[f] || 0) + v;
     return t;
@@ -606,6 +611,16 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     const F = {physique: "characterStrength", cunning: "characterDexterity",
                spirit: "characterIntelligence"}[which];
     return (ch.base[which] + (t[F] || 0)) * (1 + (t[F + "Modifier"] || 0) / 100);
+  }
+
+  /* ⚠️ A CEILING ON THE BONUS, and only pet resists have one. Rows summing 108
+     and 90 both display exactly 80 in game, while every row under 80 matches
+     exactly -- so this is a cap on what the game grants, not a display trick,
+     and a row that would read 108 is wrong rather than generous. Player
+     resists do NOT come through here: theirs is a per-type maximum plus a
+     difficulty penalty, which is a different rule living in rowValue. */
+  function capped(r, v){
+    return (r.cap != null && typeof v === "number" && v > r.cap) ? r.cap : v;
   }
 
   function rowValue(ch, t, r){
@@ -1035,9 +1050,12 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     const ctx = verdictContext(ch, t);
     const shown = (sec, r, computed) =>
       computed ? (state.over[vkey(sec, r.label)] || computed) : null;
-    $("sheet").innerHTML = SHEET.map(([name, list]) => {
+    $("sheet").innerHTML = SHEET.map(([name, list, bucket]) => {
+      /* A bucketed section reads its own contributions and is computed once
+         per render, like the player's. */
+      const bt = bucket ? totals(ch, bucket) : t;
       const body = list.map((r, ri) => {
-        const v = rowValue(ch, t, r);
+        const v = capped(r, rowValue(ch, bt, r));
         if (Array.isArray(v)) {
           /* A range row's magnitude is its whole span: the verdict only ever
              asks whether the row is fed at all and which type it is about. */
@@ -1258,11 +1276,15 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
      the FIELD rather than the row: an Armor row prints flat armour and is
      `pct:false`, while the field that scales it is a percent either way. */
   function rowTip(ch, sec, ri){
-    const r = (SHEET.find(s => s[0] === sec) || [, []])[1][ri];
+    const entry = SHEET.find(s => s[0] === sec) || [, []];
+    const r = entry[1][ri];
     if (!r) return "";
+    /* The detail has to read the SAME bucket the number came from, or a pet
+       row opens a panel of the player's sources that do not add up to it. */
+    const from = (entry[2] ? ch.petContrib : ch.contrib) || {};
     const srcs = [];
     const take = (f, pct) => {
-      for (const [v, src, tid] of (ch.contrib[f] || []))
+      for (const [v, src, tid] of (from[f] || []))
         srcs.push({v, src, tid, pct, on: !tid || state.on.has(tid)});
     };
     for (const f of r.f || []) take(f, r.pct);
@@ -1387,9 +1409,16 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   /* Open on the character with the most to show -- derived, so it follows the
      data rather than a name typed here -- with every plain toggle on. A
      duration buff starts OFF because in game it would not be up. */
-  const fedRows = c => SHEET.reduce((n, [, list]) => n + list.filter(r =>
-    r.k === "attr" || r.k === "pool" || r.k === "ability" ||
-    (r.f || []).some(f => c.contrib[f])).length, 0);
+  /* ⚠️ BUCKETED SECTIONS DO NOT VOTE. "The most to show" has always meant the
+     character sheet, and a pet tab is a different subject -- letting it choose
+     would open the page on whoever has pets rather than on whoever has the
+     fullest sheet. Counting pet rows against `contrib` would be worse still:
+     defensiveFire is on both buckets, so every character would be credited
+     with pet rows they do not have. */
+  const fedRows = c => SHEET.reduce((n, [, list, bucket]) => bucket ? n :
+    n + list.filter(r =>
+      r.k === "attr" || r.k === "pool" || r.k === "ability" ||
+      (r.f || []).some(f => c.contrib[f])).length, 0);
   state.i = CH.reduce((best, c, i) => fedRows(c) > fedRows(CH[best]) ? i : best, 0);
   for (const t of CH[state.i].toggles) if (t.kind === "toggle" || t.kind === "granted") state.on.add(t.id);
   loadOver(CH[state.i]);

@@ -159,11 +159,87 @@ class Contrib:
     def __init__(self):
         self.rows = {}
 
-    def add(self, field, value, source, toggle=None, kind='item'):
+    def add(self, field, value, source, toggle=None, kind='item', via=None):
+        """`via` is the RECORD the numbers were actually read from, and only
+        the pet bucket carries it.
+
+        A devotion node grants a stat to the player AND the same stat to pets
+        from two DIFFERENT records -- and the two can carry the same number,
+        so neither the source label nor the value can tell the buckets apart.
+        Ulo the Keeper of the Waters gives +15 Petrify Resist to both. `via` is
+        what can: a pet contribution names its petbonus record, and nothing in
+        the player bucket may name one.
+
+        Appended rather than inserted, so the page's `[v, src, tid]`
+        destructuring and check.js's `r[3]` are untouched by its presence.
+        """
         if not value or not wanted(field):
             return
-        self.rows.setdefault(field, []).append(
-            [round(float(value), 4), source, toggle, kind])
+        row = [round(float(value), 4), source, toggle, kind]
+        if via:
+            row.append(via)
+        self.rows.setdefault(field, []).append(row)
+
+
+# ============================================================ pets ========
+# The game has a PET BONUSES tab (tagCharHeaderPets), and what it lists are
+# BONUSES granted to pets -- "+70% Damage to your pets" -- never a pet's
+# totals. That distinction is the whole reason these can be summed at all: a
+# pet's own base stats live on its creature record and differ per pet, so a
+# total is not a quantity this reader could state, while the bonus is.
+#
+# ⚠️ A SECOND BUCKET, NOT MORE ROWS IN THE FIRST. Folding "+70% Damage" into
+# the player's damage rows is a category error every downstream total would
+# inherit, so these never touch `C`.
+#
+# THREE CHANNELS GRANT THEM, and the middle one is the one that hides:
+#   gear         a worn item, affix, component, augment or relic whose record
+#                carries petBonusName. Scalar, folds at index 0.
+#   item skill   the SKILL a worn item grants, which carries petBonusName on
+#                itself. Never in the save's skill list, so walking gear and
+#                walking invested skills both miss it from their own side.
+#   bought skill an invested skill or devotion node carrying petBonusName. The
+#                target stores one value PER RANK, so it folds at the effective
+#                rank the same way player skill stats do.
+#
+# DELIBERATELY EXCLUDED: SkillSecondary_PetModifier (Will of the Crypt, Rotting
+# Fumes), reached by a one-hop petSkillName. Those buff ONE pet type and the
+# game keeps them on the skill; folding them in would put a skeleton-only
+# +142% Elemental on a row that says "all pets" -- a wrong number rather than a
+# missing one.
+#
+# Unlike GD Lens's engine this takes no `active` buff set. It carries the same
+# toggle id the player contributions carry and lets the PAGE decide what is
+# switched on, which is this build's whole architecture and means the two tabs
+# cannot disagree about whether a source is running.
+def pet_stats_at(P, target, index, source, toggle=None, kind='item'):
+    """Fold one petbonus record into the pet bucket. True if it had anything."""
+    d = rec(target)
+    if not d:
+        return False
+    added = False
+    for f, vals in d.items():
+        if not wanted(f):
+            continue
+        try:
+            arr = [float(v) for v in vals]
+        except ValueError:
+            continue                          # a path or a tag, never a stat
+        v = arr[index] if index < len(arr) else arr[-1]
+        if v:
+            # `via` is the petbonus record the numbers were actually read from.
+            # A devotion node legitimately grants a stat to the player AND the
+            # same stat to pets from two DIFFERENT records, so the source path
+            # alone cannot tell the buckets apart.
+            P.add(f, v, source, toggle, kind=kind, via=target)
+            added = True
+    return added
+
+
+def pet_target(path):
+    """The petbonus record a record points at, or None."""
+    d = rec(path) if path else None
+    return (d.get('petBonusName') or [None])[0] if d else None
 
 
 def record_name(d, path):
@@ -839,13 +915,63 @@ CONTROL_LABEL = {n: n + ' Resist' for n in
                  ('Stun', 'Freeze', 'Petrify', 'Trap', 'Disruption', 'Slow')}
 
 
+
+# ---- Pet Bonuses ---------------------------------------------------------
+# The game's own tab (tagCharHeaderPets) and its own labels (tagCharStatsPet*).
+# Every row is a BONUS granted to pets, never a pet total -- see pet_stats_at().
+#
+# ⚠️ PET RESIST BONUSES CAP AT 80, confirmed twice against the game's own tab:
+# rows summing 108 and 90 both displayed exactly 80, while every row under 80
+# matched. Unlike the player's resists there is no difficulty penalty and no
+# per-type maximum to add; it is a flat ceiling on the BONUS.
+#
+# ⚠️ THERE IS NO ARMOUR ROW, and the warning was there when one was invented in
+# GD Lens: no tagCharStatsPetArmor string exists, so the player's label had to
+# be borrowed to satisfy the label gate. A row whose LABEL has to come from
+# another section is a row the game does not have.
+PET_RESIST = [('Fire', ['defensiveFire', 'defensiveElementalResistance']),
+              ('Cold', ['defensiveCold', 'defensiveElementalResistance']),
+              ('Lightning', ['defensiveLightning', 'defensiveElementalResistance']),
+              ('Acid', ['defensivePoison']),
+              ('Pierce', ['defensivePierce']),
+              ('Vitality', ['defensiveLife']),
+              ('Aether', ['defensiveAether']),
+              ('Chaos', ['defensiveChaos']),
+              ('Bleeding', ['defensiveBleeding']),
+              ('Physical', ['defensivePhysical'])]
+PET_CONTROL = [('Stun', 'defensiveStun'), ('Freeze', 'defensiveFreeze'),
+               ('Petrify', 'defensivePetrify'), ('Trap', 'defensiveTrap'),
+               ('Sleep', 'defensiveSleep'),
+               ('Slow', 'defensiveTotalSpeedResistance')]
+PET_ROWS = [
+    R('Damage', 'offensiveTotalDamageModifier', pct=True),
+    R('Offensive Ability', 'characterOffensiveAbilityModifier', pct=True),
+    R('Defensive Ability', 'characterDefensiveAbilityModifier', pct=True),
+    R('Life', 'characterLifeModifier', pct=True),
+    R('Attack Speed', 'characterAttackSpeedModifier', pct=True),
+    R('Cast Speed', 'characterSpellCastSpeedModifier', pct=True),
+    R('Run Speed', 'characterRunSpeedModifier', pct=True),
+    R('Critical Damage', 'offensiveCritDamageModifier', pct=True),
+] + [R(f'{lbl} Resist', fs, pct=True, cap=80) for lbl, fs in PET_RESIST] \
+  + [R(f'{lbl} Resist', f, pct=True, cap=80) for lbl, f in PET_CONTROL]
+
+SHEET.append(('Pet Bonuses', PET_ROWS, 'pet'))
+
 def _apply_rules():
     """Stamp every row with its verdict branch, and fail loudly if one is missed.
 
     A row with no rule would render an icon with no reasoning behind it -- the
     same silent default the `no plausible fallbacks` rule exists to prevent.
     """
-    for sec, rows in SHEET:
+    for sec, rows, bucket in ((t + ('',))[:3] for t in SHEET):
+        if bucket:
+            # ⚠️ NO VERDICT ON A PET ROW. The verdict engine grades the
+            # PLAYER against endgame targets; there is no published target for
+            # "+70% pet Damage", and inventing one would be a judgement the
+            # game does not make. These rows render a number and nothing else.
+            for r in rows:
+                r['rule'] = 'none'
+            continue
         for r in rows:
             rule = ROW_RULE.get((sec, r['label']), SECTION_RULE.get(sec))
             if isinstance(rule, tuple):
@@ -869,7 +995,7 @@ def _apply_rules():
 _apply_rules()
 
 SHEET_LINES = []
-for _sec, _rows in SHEET:
+for _sec, _rows, *_ in SHEET:
     for _r in _rows:
         for _f in _r.get('f', []):
             SHEET_LINES.append((_f, _r['label'], _r['pct']))
@@ -1083,6 +1209,9 @@ def gather(pr, ca, dir_name, icons):
         'where dir_name=?', (dir_name,))}
 
     C = Contrib()
+    # The SECOND bucket. Same shape, same toggle ids, deliberately not the same
+    # dict -- see pet_stats_at() for why these must never reach `C`.
+    P = Contrib()
     plus_skill, plus_mastery = {}, {}
     equipment, refused = [], []
 
@@ -1153,6 +1282,11 @@ def gather(pr, ca, dir_name, icons):
                 for s in ca.execute(f'select field, {vc} v from {tbl}_stat where {idc}=?', (row['id'],)):
                     C.add(s['field'], s['v'], f'{name} · {label}', kind=kind)
                 break
+            # Channel 1, the attachment half: a component, augment or relic
+            # bonus carrying petBonusName. Scalar, so index 0.
+            tgt = pet_target(r[col])
+            if tgt:
+                pet_stats_at(P, tgt, 0, f'{name} · {label}', kind=kind)
             if not got:
                 refused.append({'slot': r['slot'], 'name': name,
                                 'why': f'attachment not in catalogue: {r[col]}'})
@@ -1172,6 +1306,15 @@ def gather(pr, ca, dir_name, icons):
             n, l = base.get(f'augmentMasteryName{i}'), base.get(f'augmentMasteryLevel{i}')
             if n and l:
                 plus_mastery[n[0]] = plus_mastery.get(n[0], 0) + int(float(l[0]))
+
+        # Channel 1, the item half.
+        tgt = pet_target(r['base_path'])
+        if tgt:
+            pet_stats_at(P, tgt, 0, name, kind='base')
+        for col, ckind in (('prefix_path', 'prefix'), ('suffix_path', 'suffix')):
+            tgt = pet_target(r[col])
+            if tgt:
+                pet_stats_at(P, tgt, 0, f'{name} · {ckind}', kind=ckind)
 
         icon = item_icon(base)
         equipment.append({
@@ -1227,7 +1370,7 @@ def gather(pr, ca, dir_name, icons):
     for e in equipment:
         del e['setPath']
 
-    return ch, inv, devotion, C, equipment, refused, plus_skill, plus_mastery, worn
+    return ch, inv, devotion, C, P, equipment, refused, plus_skill, plus_mastery, worn
 
 
 def devotion_level(path, carrier, xp, stated):
@@ -1293,7 +1436,7 @@ def granted_level(base):
     return max(1, int(raw))
 
 
-def skills_and_toggles(ca, inv, devotion, plus_skill, plus_mastery, C, equipment, icons):
+def skills_and_toggles(ca, inv, devotion, plus_skill, plus_mastery, C, P, equipment, icons):
     """Invested skills, and which of them the player can switch.
 
     Three outcomes per skill and the difference is the whole correctness story:
@@ -1374,11 +1517,27 @@ def skills_and_toggles(ca, inv, devotion, plus_skill, plus_mastery, C, equipment
                      'skillDisplayName', [None])[0]) if mastery_of(path) else None}
         skills.append(entry)
 
+        # ⚠️ CHANNEL 3, AND IT FOLDS AT THE RANK, NOT AT 0. The petbonus record
+        # an invested skill points at stores one value PER RANK, so Master of
+        # Death 12 reads index 11. Gear bonuses and rank-1 devotion nodes both
+        # fold at 0, so a build with only those passes either way -- the
+        # difference shows only on a character with an always-on pet skill
+        # above rank 1 ([[characterise-dont-sample]]).
+        #
+        # petBonusName sits on the record the player invested in, not on the
+        # buff it points at, so this uses `path` where the stats use `carrier`.
+        ptgt = (d.get('petBonusName') or [None])[0]
+        plabel = f'{"devotion" if dev else "skill"} · {name}'
+
         if cls in PERMANENT_CLASSES:
             stats_at(carrier, eff, f'{"devotion" if dev else "mastery"} · {name}', None)
+            if ptgt:
+                pet_stats_at(P, ptgt, max(0, eff - 1), plabel, None, kind='skill')
             entry['role'] = 'permanent'
         elif cls in TOGGLE_CLASSES or holder_cls in TOGGLE_CLASSES:
             tid = f't{len(toggles)}'
+            if ptgt:
+                pet_stats_at(P, ptgt, max(0, eff - 1), plabel, tid, kind='skill')
             if stats_at(carrier, eff, f'buff · {name}', tid):
                 toggles.append({'id': tid, 'n': name, 'icon': entry['icon'],
                                 'cls': cls, 'eff': eff,
@@ -1410,6 +1569,13 @@ def skills_and_toggles(ca, inv, devotion, plus_skill, plus_mastery, C, equipment
         name = skill_name(ca, e['granted'], d)
         lv = granted_level(rec(e['path']) or {})
         tid = f't{len(toggles)}'
+        # ⚠️ CHANNEL 2, AND petBonusName IS ON THE SKILL, NOT ON THE BUFF IT
+        # POINTS AT -- so this does not take the buffSkillName hop the stats
+        # take. An item-granted skill never appears in the save's skill list,
+        # which is why walking gear and walking invested skills both miss it.
+        gtgt = (d.get('petBonusName') or [None])[0]
+        if gtgt:
+            pet_stats_at(P, gtgt, 0, f'{e["n"]} · {name}', tid, kind='item skill')
         if stats_at(buff_path or e['granted'], lv, f'{e["n"]} · {name}', tid):
             toggles.append({'id': tid, 'n': name, 'icon': icons.want(skill_icon(d, cls)),
                             'cls': cls, 'eff': lv, 'kind': 'granted',
@@ -1905,10 +2071,10 @@ def main(profile_db=None, out_dir=None):
     out = []
     for row in pr.execute('select dir_name from character order by level desc, name'):
         dn = row['dir_name']
-        ch, inv, devotion, C, equipment, refused, plus_skill, plus_mastery, worn = \
+        ch, inv, devotion, C, P, equipment, refused, plus_skill, plus_mastery, worn = \
             gather(pr, ca, dn, icons)
         skills, toggles, excluded, tree, dropped = skills_and_toggles(
-            ca, inv, devotion, plus_skill, plus_mastery, C, equipment, icons)
+            ca, inv, devotion, plus_skill, plus_mastery, C, P, equipment, icons)
         # After the skills, because it reads their EFFECTIVE levels -- a
         # conversion on a transmuter is read at the rank gear has lifted it to.
         vctx = damage_context(worn, skills, C)
@@ -1932,6 +2098,7 @@ def main(profile_db=None, out_dir=None):
             'equipment': equipment, 'skills': skills, 'tree': tree,
             'treeDropped': dropped, 'toggles': toggles, 'vctx': vctx,
             'excluded': excluded, 'refused': refused, 'contrib': C.rows,
+            'petContrib': P.rows,
         })
         roots = sum(1 for s in tree if s['parent'] is None)
         print(f"  {ch['name']:12s} lvl {ch['level']:<4} {len(equipment)} worn  "
