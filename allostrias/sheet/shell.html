@@ -1,0 +1,1455 @@
+<title>Allostria's Archive</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Jura:wght@400;500;600;700&family=Libertinus+Serif:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* ---------------------------------------------------------------------------
+   Allostria's Archive — the character sheet.
+
+   Data and infrastructure are the archive's: profile.sqlite for who the
+   character is, catalogue.sqlite for what the record paths mean, the archive's
+   own arc.py for the art. Seed replay is ported in beside the build, not
+   imported, so GD Lens's tree is not a dependency of this page.
+
+   Skin is the game's: mainmenu/border_* as a 9-slice, character/itembackground
+   as the slot, the tier hexes gameiteminfo.dbr names, and two of three
+   typefaces the game's own records ask for by filename.
+
+   Single theme, deliberately: the subject has one look and it is dark.
+--------------------------------------------------------------------------- */
+:root{
+  --ground:#0B0A08; --panel:#15120E; --panel-2:#1C1813; --sunk:#0A0907;
+  --ink:#C7BAA9; --dim:#8B8074; --faint:#5F584E;      /* {^H} is the game's body ink */
+  --gold:#C6A76B; --gold-dim:#8A7446; --gold-deep:#5B4B2C;
+  --band-ink:#E8D7AE;      /* the frame's own bands: the title, and the legend */
+  --rule:#2A231A; --rule-hi:#3E3425;
+  --t-common:#FFFFFF; --t-magical:#FFF62C; --t-rare:#10EB5D; --t-epic:#39ABCF;
+  --t-legendary:#5A039A; --t-legendary-ink:#A86FDD;   /* hue kept, lightness lifted */
+  --stat:#9EC9DC;                                     /* the game prints stats pale blue */
+  /* The character-select palette, off the game's own style records:
+     style_mainmenu_charactername01/02 and characterclass01/02. `01` is the
+     resting state, `02` the highlight, and the level line carries its own
+     colour in both. Those records name fonts/savapromedium.fnt -- Sava Pro,
+     which is Adobe's and commercial -- so Cinzel stands in for it here, the
+     same substitution this page already makes for Brioso Pro. */
+  --cs-name:#A68C66; --cs-name-on:#FFE659;
+  --cs-class:#73664C; --cs-class-on:#F2BF4C;
+  --skill:#F3A44D;                                    /* {^O} for granted skills */
+  --good:#6BAF57; --warn:#C9A544; --bad:#C9614E;
+  --atlas:url("__ATLAS__");
+  --s1:4px; --s2:8px; --s3:12px; --s4:18px; --s5:26px; --s6:38px;
+}
+*{box-sizing:border-box}
+html{color-scheme:dark}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font:400 14px/1.5 "Libertinus Serif", Georgia, "Times New Roman", serif;
+  background-image:radial-gradient(120% 70% at 50% -8%, #1A150F 0%, rgba(26,21,15,0) 60%);
+  background-attachment:fixed;
+}
+/* ---------- the mastery portraits, behind everything ----------
+   skills/skillallocation/skills_classimage<NN>, one per mastery of the
+   selected character: first left, second right. The art draws its figure hard
+   against the image's LEFT edge and fades away rightward, so the right-hand
+   one is mirrored to put its figure against the page's right edge -- and the
+   fade mask, written once, runs figure-to-centre on both because the mirror
+   flips it too. A character with one mastery gets one portrait; the empty
+   data-c simply matches no rule. */
+.classbg{position:fixed; top:0; bottom:0; width:min(44vw,640px); z-index:-1;
+  pointer-events:none; opacity:.42;
+  background:no-repeat left top / auto 100%;
+  -webkit-mask-image:linear-gradient(90deg,#000 0%,#000 38%,transparent 94%);
+  mask-image:linear-gradient(90deg,#000 0%,#000 38%,transparent 94%)}
+.classbg.left{left:0}
+.classbg.right{right:0; transform:scaleX(-1)}
+@media (prefers-reduced-transparency:reduce){ .classbg{opacity:.22} }
+__CLASS_IMAGES__
+
+:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+::selection{background:#3A2E18; color:#F0E4CE}
+/* Side padding must clear the panel ornaments, which hang fully outside the
+   panel edge (21px for the clasp) -- otherwise they overflow the viewport and
+   open a horizontal scrollbar at narrow widths. */
+.wrap{max-width:1660px; margin:0 auto; padding:var(--s4) var(--s5) var(--s6)}
+/* mainmenu/borderthin: one gold hairline on 8px corners. */
+.panel{background:var(--panel); border:__BORDER_SLICE__px solid transparent;
+  border-image:url("__BORDER__") __BORDER_SLICE__ repeat}
+
+/* The mastery-selection slate under the stats. It is a chalk sigil and the
+   sheet is 55 rows of small type over it, so it is laid full-width from the top
+   at its own aspect and darkened rather than tiled: the texture's own vignette
+   fades it out at the bottom edge, which is what hides the seam where it ends
+   and the flat panel ground takes over. The two stacked scrims are the
+   readability budget -- drop them and the chalk competes with the numbers. */
+/* The character sheet wears the main menu's options window. Its four corners
+   are IN the corners so the 9-slice keeps them; the two crests are not, so
+   they are healed out of the frame at build time and pinned back over the
+   middle of each edge here. border-width equals the slice, so the art is
+   drawn 1:1 and the crests line up with the frame they were cut from.
+   No `fill` -- the mastery slate below stays the panel's ground. */
+.statpanel{position:relative;
+  border:__OPT_SLICE__px solid transparent;
+  border-image:url("__OPT_FRAME__") __OPT_SLICE__ stretch}
+.statpanel::before, .statpanel::after{content:""; position:absolute; left:50%;
+  transform:translateX(-50%); pointer-events:none; z-index:1;
+  background:center/contain no-repeat}
+/* ⚠️ OFFSET BY THE BORDER WIDTH. An absolutely positioned child is laid out
+   against its ancestor's PADDING box, not its border box, so `top:0` on a
+   panel with an 89px border puts the crest 89px inside the frame -- floating
+   in the middle of the sheet. The crests belong on the border itself, which
+   is one border-width further out. Same for the left/right ornaments below. */
+.statpanel::before{top:calc(__CREST_T_INSET__px - __OPT_SLICE__px);
+  width:__CREST_T_W__px; height:__CREST_T_H__px;
+  background-image:url("__CREST_T__")}
+.statpanel::after{bottom:calc(__CREST_B_INSET__px - __OPT_SLICE__px);
+  width:__CREST_B_W__px; height:__CREST_B_H__px;
+  background-image:url("__CREST_B__")}
+/* The title goes in the frame's own title band -- the brown strip between the
+   last two gold rules of the top border, under the crest. Its top and height
+   are measured off the texture, and the offset subtracts the border width for
+   the same padding-box reason the crests do. */
+.statpanel > .hd{position:absolute; z-index:2; left:0; right:0;
+  top:calc(__TITLE_TOP__px - __OPT_SLICE__px); height:__TITLE_H__px;
+  justify-content:center; gap:var(--s3); padding:3px 0 0;
+  background:none; border-bottom:0}
+.statpanel > .hd h2{font-size:13px; letter-spacing:.14em; color:var(--band-ink);
+  text-shadow:0 1px 2px #000}
+/* The header no longer takes space in the flow, so the sheet starts at the top
+   of the content box rather than below a heading that has moved away. */
+.statpanel > .bd{padding:var(--s2) 0 0}
+/* ⚠️ CLIPPED TO THE PADDING BOX, or the panel paints its own ground THROUGH
+   the frame. A background fills the BORDER box by default, and this border is
+   89px of window art whose outer margin and corner diagonals are transparent
+   -- so the panel's near-black fill showed around the ornament as a black
+   halo, squaring off the corner scrolls and blanking the mastery portraits
+   behind them. Clipping costs nothing else: background-origin is already the
+   padding box, so the slate's position and size do not move. */
+.statpanel{
+  background:
+    linear-gradient(rgba(11,10,8,.74), rgba(11,10,8,.90) 62%, rgba(11,10,8,.95)),
+    url("__SHEET_BG__") center top / 100% auto no-repeat,
+    var(--panel);
+  background-clip:padding-box;
+}
+.lbl{font-family:Jura,system-ui,sans-serif; font-size:10.5px; font-weight:700;
+  letter-spacing:.2em; text-transform:uppercase; color:var(--gold-dim)}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- character bar ---------- */
+.bar{display:flex; flex-wrap:wrap; align-items:center; gap:var(--s4);
+  padding:var(--s3) var(--s4); margin-bottom:var(--s3)}
+.who{display:flex; flex-direction:column; gap:2px; min-width:200px}
+.who .nm{font-family:Cinzel,serif; font-size:22px; font-weight:600; color:#E8D7AE; line-height:1.1}
+.who .sub{font-family:Jura,system-ui,sans-serif; font-size:11.5px; letter-spacing:.08em; color:var(--dim)}
+.bar .facts{display:flex; gap:var(--s5); flex-wrap:wrap; margin-left:auto}
+.fact{display:flex; flex-direction:column; gap:1px; min-width:66px}
+.fact b{font-family:Jura,system-ui,sans-serif; font-size:17px; font-weight:600; color:var(--ink)}
+.fact span{font-family:Jura,system-ui,sans-serif; font-size:9.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--faint)}
+.fact.warn b{color:var(--warn)}
+/* ---------- character drawer ----------
+   A drawer off the left edge, handled by the devotion panel's own tab: the
+   tall rail with a '>' when shut, the small '<' button when open. The list
+   The handle rides the drawer's RIGHT edge, as the game's own tab does: the
+   panel comes first in the flex row and the tab after it, so shut it sits at
+   the viewport edge and open it sits against the list. The rail is fixed, so
+   it reserves no space either way and the sheet never reflows around it.
+   z-index clears the hover tooltip (20) as well as the page.
+   No transition -- the panels elsewhere do not animate either. */
+.rail{position:fixed; left:0; top:50%; transform:translateY(-50%);
+  z-index:40; display:flex; align-items:center}
+/* Each state is its texture's NATIVE size -- both emitted with the art, so
+   nothing here is upscaled and no size is typed twice.
+
+   ⚠️ THE TWO TEXTURES ARE DIFFERENT SIZES AND THAT IS NOT A BUG TO SCALE
+   AWAY. 60x244 against 20x40 looks like a mismatch until you notice the big
+   one is mostly filigree: its rune plate is 28x39 and the small one is 20x38
+   entire, so drawn 1:1 the two arrows match on screen. Sizing the close tab
+   to the open tab's BOX instead was measured and rejected -- it is a 3x/6.1x
+   upscale of a 20x40 texture, or the same rune at three times the other
+   one's. */
+.railtab{flex:none; width:__TAB_OPEN_W__px; height:__TAB_OPEN_H__px;
+  padding:0; border:0; cursor:pointer;
+  background:url("__TAB_OPEN__") center/contain no-repeat}
+.railtab:hover{background-image:url("__TAB_OPEN_OVER__")}
+.rail[data-open="1"] .railtab{width:__TAB_CLOSE_W__px; height:__TAB_CLOSE_H__px;
+  background-image:url("__TAB_CLOSE__")}
+.rail[data-open="1"] .railtab:hover{background-image:url("__TAB_CLOSE_OVER__")}
+.railbody{width:0; overflow:hidden; max-height:86vh; overflow-y:auto}
+.rail[data-open="1"] .railbody{width:236px}
+.railbody .hd{padding:var(--s2) var(--s3)}
+
+.picker{display:flex; flex-direction:column; gap:1px; padding:var(--s2)}
+.pick{display:flex; flex-direction:column; align-items:flex-start; gap:1px; width:100%;
+  text-align:left; font-family:Cinzel,"Libertinus Serif",Georgia,serif;
+  background:var(--sunk); border:1px solid var(--rule-hi); padding:6px 11px; cursor:pointer}
+.pick .cn{font-size:14px; font-weight:600; color:var(--cs-name); line-height:1.25}
+.pick .cl{font-size:11.5px; color:var(--cs-class); line-height:1.3}
+/* `02` is the highlight AND carries fontAttribBold=1, so the weight moves with
+   the colour rather than the colour alone. */
+.pick:hover .cn, .pick[aria-pressed="true"] .cn{color:var(--cs-name-on); font-weight:700}
+.pick:hover .cl, .pick[aria-pressed="true"] .cl{color:var(--cs-class-on); font-weight:700}
+.pick:hover{border-color:var(--gold-deep)}
+.pick[aria-pressed="true"]{border-color:var(--gold-dim);
+  background:linear-gradient(#241D12,#1A140D)}
+/* Hidden until something answers /alive. A published artifact is sandboxed with
+   no network, so the probe is refused there and the button never appears -- one
+   HTML file that is honest in both places rather than a dead control. */
+.refresh{display:none; margin-left:auto; align-items:center; gap:var(--s2);
+  font-family:Jura,system-ui,sans-serif; font-size:11px; font-weight:600;
+  letter-spacing:.12em; text-transform:uppercase; color:#17120B;
+  background:var(--gold-dim); border:1px solid var(--gold-dim); padding:5px 14px; cursor:pointer}
+.refresh.on{display:inline-flex}
+.refresh:hover{background:var(--gold); border-color:var(--gold)}
+.refresh[disabled]{opacity:.55; cursor:progress}
+.refreshnote{font-family:Jura,system-ui,sans-serif; font-size:11px; color:var(--dim); align-self:center}
+.refreshnote.bad{color:var(--bad)}
+
+/* ---------- layout ---------- */
+.cols{display:grid; grid-template-columns:300px minmax(0,1fr); gap:var(--s3); align-items:start}
+@media (max-width:1240px){ .cols{grid-template-columns:280px minmax(0,1fr)} }
+@media (max-width:860px){ .cols{grid-template-columns:1fr} }
+section.panel, details.panel{margin-bottom:var(--s3)}
+.hd{display:flex; align-items:baseline; gap:var(--s3); padding:var(--s3) var(--s4);
+  border-bottom:1px solid var(--rule-hi); background:linear-gradient(#1B1711,#151109)}
+.statpanel > .hd{background:linear-gradient(rgba(27,23,17,.72),rgba(21,17,9,.55))}
+/* The slate is a lighter ground than the flat panel, so two of the muted inks
+   stop clearing contrast on it -- measured at the texture's BRIGHTEST point,
+   not its average, because that is where a row can land. --dim was 4.41:1 and
+   the zero-value grey 2.43:1; lifted here only, and only inside this panel. */
+.statpanel .row .rl{color:#9A8E80}
+.statpanel .row .rv.zero{color:#7C7365}
+.hd h2{margin:0; font-family:Cinzel,serif; font-size:14px; font-weight:600; letter-spacing:.04em; color:#E2D2AC}
+.hd .n{margin-left:auto; font-family:Jura,system-ui,sans-serif; font-size:11px; color:var(--faint)}
+.bd{padding:var(--s3) var(--s4)}
+
+/* ---------- collapsible panels ----------
+   <details> so the browser owns the open/closed state, the keyboard contract
+   and the find-in-page reveal; the summary IS the existing panel header, so
+   nothing about the header changes but the chevron. */
+/* The mastery and equipment panels wear the HUD's menu folder instead of the
+   thin main-menu rule: a 2px gold band around the game's own dark ground.
+   `fill` paints that ground as the panel's interior -- it is low-contrast
+   grunge, so stretching it over a tall panel reads as texture rather than as
+   a blurred image. */
+details.panel{position:relative;
+  border:__FOLDER_SLICE__px solid transparent;
+  border-image:url("__FOLDER__") __FOLDER_SLICE__ fill stretch}
+/* The clasp and the notch, pinned once to the middle of their edge -- which is
+   how the game draws them and why they could not stay in the 9-slice.
+
+   Each sits FULLY outside the panel, flush against its outer edge, exactly as
+   in the texture: there the clasp occupies x=0..20 and the frame's own rule
+   starts at x=21, so the ornament never overlaps the panel interior. The
+   overhang therefore equals the sprite's width, and .wrap's side padding is
+   sized to clear it. */
+details.panel::before, details.panel::after{content:""; position:absolute;
+  top:50%; transform:translateY(-50%); pointer-events:none; z-index:1;
+  background:center/contain no-repeat}
+details.panel::before{left:calc(-__CLASP_W__px - __FOLDER_SLICE__px);
+  width:__CLASP_W__px; height:__CLASP_H__px;
+  background-image:url("__CLASP__")}
+details.panel::after{right:calc(-__NOTCH_W__px - __FOLDER_SLICE__px);
+  width:__NOTCH_W__px; height:__NOTCH_H__px;
+  background-image:url("__NOTCH__")}
+details.panel > summary.hd{align-items:center; cursor:pointer; list-style:none}
+details.panel > summary.hd::-webkit-details-marker{display:none}
+/* vendors/faction_vendor_buttonitempanelup01 -- the chevron points up as
+   shipped, so open is the art untouched and collapsed is the same art flipped
+   rather than a second texture. `over01` is the game's own hover state. */
+details.panel > summary.hd::after{content:""; margin-left:var(--s2); flex:none;
+  width:18px; height:18px; background:url("__ARROW__") center/contain no-repeat}
+details.panel:not([open]) > summary.hd::after{transform:scaleY(-1)}
+details.panel > summary.hd:hover::after{background-image:url("__ARROW_OVER__")}
+details.panel:not([open]) > summary.hd{border-bottom:0}
+
+/* ---------- equipment ---------- */
+.gear{display:flex; flex-direction:column}
+.geo{display:grid; grid-template-columns:52px minmax(0,1fr); gap:var(--s3); align-items:center;
+  width:100%; text-align:left; padding:var(--s2) var(--s4); background:none; border:0;
+  border-bottom:1px solid var(--rule); color:inherit; font:inherit; cursor:pointer}
+.geo:hover{background:var(--panel-2)}
+.tile{width:52px; height:52px; display:grid; place-items:center; position:relative;
+  background:url("__SLOT__") center/cover no-repeat, var(--sunk); border:1px solid var(--rule-hi)}
+.geo[data-r="Legendary"] .tile{border-color:#3E1063; box-shadow:inset 0 0 12px rgba(90,3,154,.55)}
+.geo[data-r="Epic"] .tile{border-color:#1E5C74; box-shadow:inset 0 0 12px rgba(57,171,207,.3)}
+.geo[data-r="Rare"] .tile{border-color:#1E5E24}
+.ico{background-image:var(--atlas); background-repeat:no-repeat; flex:none}
+.gi{min-width:0}
+.gi .nm{display:block; font-size:14px; line-height:1.25; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap}
+.gi .sl{display:block; font-family:Jura,system-ui,sans-serif; font-size:10px;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--faint)}
+.empty-slot{opacity:.5}
+/* The nameplate badge, ahead of the name as the game puts it. Every one of
+   these is a computed state rather than a field on the item -- MI from the
+   base, double rare from the two affixes. A plain green item has none. */
+.sym{display:inline-block; width:13px; height:13px; vertical-align:-2px;
+  margin-right:5px; background:center/contain no-repeat}
+__QUALITY_SYMBOLS__
+.t-Legendary{color:var(--t-legendary-ink)} .t-Epic{color:var(--t-epic)}
+.t-Rare{color:var(--t-rare)} .t-Magical{color:var(--t-magical)} .t-Common{color:var(--t-common)}
+
+/* ---------- the sheet ---------- */
+.sheet{columns:5; column-gap:var(--s4)}
+@media (max-width:1500px){ .sheet{columns:4} }
+@media (max-width:1240px){ .sheet{columns:3} }
+@media (max-width:1000px){ .sheet{columns:2} }
+@media (max-width:700px){ .sheet{columns:1} }
+.grp{break-inside:avoid; margin-bottom:var(--s4)}
+.grp > .lbl{display:block; padding-bottom:4px; border-bottom:1px solid var(--rule-hi); margin-bottom:var(--s1)}
+.row{display:flex; align-items:baseline; gap:var(--s2); padding:2.5px 0; cursor:pointer;
+  background:none; border:0; color:inherit; font:inherit; width:100%; text-align:left}
+/* The verdict mark. The gutter is unconditional and the IMAGE is not: a row the
+   engine has no standing to judge shows an empty gutter, because the neutral
+   mark is a judgement too. `data-v` absent matches none of the rules below. */
+.vd{flex:none; width:13px; height:13px; align-self:center;
+  background:center/contain no-repeat}
+.vd[data-v="priority"]{background-image:url("__VD_PRIORITY__")}
+.vd[data-v="nice"]{background-image:url("__VD_NICE__")}
+.vd[data-v="ignore"]{background-image:url("__VD_IGNORE__"); opacity:.55}
+.vd[data-v="avoid"]{background-image:url("__VD_AVOID__")}
+/* Four marks and what they mean, in the frame's OWN FOOTER BAND -- the brown
+   strip between the thin rule and the scrollwork along the bottom border, which
+   is the mirror of the band the title sits in at the top.
+
+   Absolutely positioned for the same reason the title is, and offset by the
+   border width for the same reason: an absolutely positioned child is laid out
+   against the PADDING box, so `bottom:0` would put it 89px inside the frame,
+   floating under the last row of stats. Both numbers are measured off the
+   texture -- see options_frame(). */
+.statpanel > .legend{position:absolute; z-index:2; left:0; right:0;
+  bottom:calc(__FOOT_B__px - __OPT_SLICE__px); height:__FOOT_H__px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:2px; font-family:Jura,system-ui,sans-serif;
+  font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+  text-shadow:0 1px 2px #000}
+/* TWO LINES IN A BAND SIZED FOR ONE. The band is the texture's own, measured,
+   and it does not grow -- so the hint and the marks are stacked with a hairline
+   gap and no margins of their own, which is what keeps both clear of the rule
+   above and the scrollwork below. */
+.legend .hint{margin:0; line-height:1.2; font-size:9.5px; letter-spacing:.08em;
+  text-transform:none; color:var(--ink)}
+.legend .marks{display:flex; flex-wrap:wrap; align-items:center;
+  justify-content:center; gap:var(--s4)}
+/* A readout, not a control. The marks themselves are the control, and they
+   are on the ROWS -- which is what the hint above says. */
+.legend span{display:flex; align-items:center; gap:6px; color:var(--band-ink)}
+.row:hover{background:#1A150F}
+.row .rl{color:var(--dim); font-size:12.5px; min-width:0}
+.row .dots{flex:1; border-bottom:1px dotted var(--rule-hi); transform:translateY(-3px)}
+.row .rv{font-family:Jura,system-ui,sans-serif; font-size:13px; font-weight:600;
+  color:var(--ink); font-variant-numeric:tabular-nums; white-space:nowrap}
+.row .rv.zero{color:var(--faint); font-weight:400}
+.row .rv.over{color:var(--good)} .row .rv.neg{color:var(--bad)}
+
+
+/* ---------- toggles ---------- */
+/* The buffs live INSIDE the character sheet's frame now -- under its title
+   band, above the stats -- so they carry no frame, no heading and no count of
+   their own: the tiles are the whole content. Horizontal padding matches
+   `.statpanel > .bd`'s zero, which is what lines the tiles up with the stat
+   columns underneath them. */
+#toggles{display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr));
+  gap:var(--s2); padding:var(--s3) 0 0}
+#toggles > .bd{grid-column:1/-1; padding:var(--s2) 0}
+/* The seam between the two, and the only rule inside this panel. */
+.panelrule{height:__DIVIDER_RULE_H__px; margin:var(--s3) 0 0;
+  background:url("__DIVIDER_RULE__") center/100% 100% no-repeat}
+/* The tile IS the options menu's button, painted as a border-image so the two
+   ends stay 1:1 while the middle stretches to whatever column width the grid
+   hands it. The left and right border widths ARE the ornament, which is why
+   they are the slice measured off the texture rather than a number typed here,
+   and why the tile carries no padding of its own on those sides. Height is the
+   texture's, so the slab in the middle is never stretched vertically.
+
+   All four of the button's states are used, and the mapping is the page's
+   own: a buff that is not running wears the GREYED state, because "off" here
+   means the game would not be drawing this buff at all -- the same reading the
+   greyscaled icon beside it already gives. Switching one on lifts it to the
+   live button.
+
+   Order is the cascade, not taste: :hover, then the on state (equal
+   specificity, so on beats hover), then :active last so a press shows through
+   either. */
+.tg{display:flex; gap:var(--s2); align-items:center; width:100%; text-align:left;
+  box-sizing:border-box; height:__BTN_H__px; padding:0; background:none;
+  border:0 solid transparent; border-width:0 __BTN_CAP__px;
+  border-image:url("__BTN_DISABLED__") 0 __BTN_CAP__ fill stretch;
+  color:inherit; font:inherit; cursor:pointer}
+.tg:hover{border-image-source:url("__BTN_OVER__")}
+.tg[aria-pressed="true"]{border-image-source:url("__BTN_UP__")}
+.tg[aria-pressed="true"]:hover{filter:brightness(1.18)}
+.tg:active{border-image-source:url("__BTN_DOWN__")}
+/* No switch: the buff's own icon and its name ARE the control. Off is
+   greyscale and dimmed -- the state reads off the art itself rather than off a
+   widget sitting beside it, and the whole tile is the hit target because the
+   tile is already the button. */
+.tg .ico{flex:none; filter:grayscale(1) brightness(.5); transition:filter .12s}
+.tg[aria-pressed="true"] .ico{filter:none}
+.tg .noico{width:28px; height:28px; flex:none}
+@media (prefers-reduced-motion:reduce){ .tg .ico{transition:none} }
+.tg .tn{min-width:0; flex:1}
+.tg .tn b{display:block; font-weight:400; font-size:13px; line-height:1.25;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--faint);
+  text-shadow:0 1px 2px #000, 0 0 4px #000}
+/* The level, not the kind of buff: `text-transform` stays off here because
+   "Lvl 16" is a reading of the character, not a section label. */
+.tg .tn span{display:block; font-family:Jura,system-ui,sans-serif; font-size:10px;
+  letter-spacing:.1em; color:var(--faint); overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; text-shadow:0 1px 2px #000, 0 0 4px #000}
+.tg[aria-pressed="true"] .tn b{color:#EDE3D2}
+.tg[aria-pressed="true"] .tn span{color:#D8BE86}
+/* Both lit states put a glow across the LOWER HALF of the tile, which is
+   exactly where the level sits, so hovering lifts the text with the art
+   rather than leaving a dim line on a bright ground. */
+.tg:hover .tn b{color:#EDE3D2}
+.tg:hover .tn span{color:#D8BE86}
+
+/* ---------- skills ---------- */
+.skills{display:flex; flex-direction:column; gap:1px; padding-bottom:var(--s1)}
+.sk{display:grid; grid-template-columns:26px minmax(0,1fr) auto; gap:var(--s2);
+  align-items:center; padding:3px var(--s4) 3px 0}
+/* A child is indented AND quieter: depth alone reads as a wrapped line when the
+   names are long, which is most of them. */
+.sk .sn.sub{color:var(--dim); font-size:12.5px}
+.sk .noico{width:22px}
+.sk:hover{background:var(--panel-2)}
+.sk .sn{font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.sk .sv{font-family:Jura,system-ui,sans-serif; font-size:12px; color:var(--dim);
+  font-variant-numeric:tabular-nums; white-space:nowrap}
+.sk .sv em{font-style:normal; color:var(--gold)}
+.sk.dev .sn{color:var(--stat)}
+/* The mastery bar is the panel's own title now: name, the bar, the level. It
+   fills against the mastery's max_level as the catalogue states it (50), read
+   off the record rather than typed here -- see renderSkills.
+
+   The art is the game's own skills_class<NN>trainingbar, and it is painted
+   across the WHOLE track with the unreached part masked off, which is how the
+   game reveals it. Stretching the texture into a fill the width of the level
+   instead would put the gradient and its end cap in a different place at every
+   mastery level, and a half-filled Soldier would not look like the one in
+   game. `data-c` is the class number, so the rule that picks the bar is
+   keyed by the same id the mastery record carries. */
+.hd .track{flex:1; min-width:40px; height:9px; display:flex; background:var(--sunk);
+  border:1px solid var(--rule-hi); overflow:hidden;
+  background-size:100% 100%; background-repeat:no-repeat}
+.hd .unlit{margin-left:auto; height:100%; background:var(--sunk)}
+__MASTERY_BARS__
+.hd .mv{font-family:Jura,system-ui,sans-serif; font-size:11.5px; color:var(--dim);
+  font-variant-numeric:tabular-nums; white-space:nowrap}
+
+/* ---------- detail / tooltip ----------
+   One floating panel for whatever the pointer or the keyboard is on -- a worn
+   item or a stat row. It replaces the panel that used to sit under the
+   equipment list and had to be clicked, so both kinds of detail survive
+   without spending a second block of column on them. pointer-events stay on:
+   a long contribution list has to be scrollable. */
+.tipfloat{position:fixed; z-index:20; width:340px; max-width:calc(100vw - 20px);
+  max-height:calc(100vh - 20px); overflow-y:auto; box-shadow:0 10px 34px rgba(0,0,0,.72)}
+/* A stat row's detail names the raw fields feeding it, and those are single
+   unbroken identifiers -- characterDefensiveBlockRecoveryReduction is 40
+   characters of letter-spaced uppercase, wider than the box with nowhere to
+   break. `overflow-y:auto` above makes overflow-x compute to auto too, so that
+   one row put a horizontal scrollbar on the tooltip.
+
+   `anywhere` rather than `break-word` on purpose: it also shrinks min-content,
+   which is what lets the flex rows in .srcs give way instead of holding the
+   box open. With it, no text in here can force a horizontal overflow, so the
+   scrollbar is gone by construction rather than hidden with overflow-x. */
+.tip{padding:var(--s4); display:flex; flex-direction:column; gap:var(--s2);
+  overflow-wrap:anywhere}
+.tip h3{margin:0; font-family:Cinzel,serif; font-size:16px; font-weight:600; line-height:1.2}
+.tip .kind{font-family:Jura,system-ui,sans-serif; font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--dim)}
+.tip ul{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:1px}
+.tip li{font-size:13.5px; color:var(--stat)}
+.tip .att{font-size:12.5px; color:var(--skill)}
+/* The blocks the gear tooltip grew: a granted skill, +N skill modifiers, a
+   relic's completion bonus and the set. Each is headed so a reader can tell a
+   set bonus from the item's own roll -- they sum into the same sheet rows and
+   reading them as one list is how a set gets credited to a piece. */
+.tip .blk{display:flex; flex-direction:column; gap:1px}
+.tip .blk > b{font-family:Jura,system-ui,sans-serif; font-size:9.5px; font-weight:700;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--gold-dim); margin-bottom:2px}
+.tip .blk .skl{font-size:13px; color:var(--skill)}
+.tip .setpc{display:flex; justify-content:space-between; gap:var(--s2);
+  font-size:12.5px; color:var(--faint)}
+.tip .setpc.on{color:var(--ink)}
+.tip .setpc i{font-style:normal; color:var(--gold-dim)}
+.rule{height:3px; background:url("__DIVIDER__") center/100% 3px no-repeat; opacity:.85}
+.srcs{display:flex; flex-direction:column; gap:1px}
+.srcs div{display:flex; gap:var(--s2); font-size:12.5px}
+.srcs div > span{min-width:0}
+.srcs .sv{margin-left:auto; font-family:Jura,system-ui,sans-serif; color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.srcs .off{opacity:.45}
+.note{margin:0; font-size:12px; color:var(--dim); line-height:1.5}
+.note code{font-family:Jura,ui-monospace,monospace; font-size:11px; color:var(--gold-dim)}
+footer{max-width:1660px; margin:0 auto; padding:var(--s5) var(--s4) var(--s6);
+  display:flex; flex-direction:column; gap:var(--s2)}
+footer p{margin:0; max-width:82ch; font-size:13px; color:var(--dim); line-height:1.6}
+footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(--gold-dim)}
+</style>
+
+<div class="rail" id="rail" data-open="0">
+  <div class="railbody panel" id="railbody">
+    <div class="hd"><h2>Characters</h2></div>
+    <div class="picker" id="picker"></div>
+  </div>
+  <button class="railtab" id="railtab" type="button" aria-expanded="false"
+          aria-controls="railbody" aria-label="Characters"></button>
+</div>
+
+<div class="classbg left" id="bgL" aria-hidden="true"></div>
+<div class="classbg right" id="bgR" aria-hidden="true"></div>
+
+<div class="wrap">
+  <div class="bar panel">
+    <button class="refresh" id="refresh" type="button">Re-read saves</button>
+    <span class="refreshnote" id="refreshnote"></span>
+    <div class="who" id="who"></div>
+    <div class="facts" id="facts"></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <div id="skillpanels"></div>
+      <details class="panel" open>
+        <summary class="hd"><h2>Equipment</h2><span class="n" id="gearn"></span></summary>
+        <div class="gear" id="gear"></div>
+      </details>
+    </div>
+
+    <section class="panel statpanel">
+      <div class="hd"><h2>Character Sheet</h2></div>
+      <div id="toggles"></div>
+      <div class="panelrule"></div>
+      <div class="bd"><div class="sheet" id="sheet"></div></div>
+      <!-- The marks are a control and nothing else on the page said so. The
+           hint is prose about a gesture, so it is written here; the marks
+           below it are generated from the verdict table. -->
+      <div class="legend" id="legend">
+        <p class="hint">Left or Right click a stat to cycle its priority</p>
+        <div class="marks" id="legendmarks"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="tipfloat panel" id="tip" role="tooltip" hidden></div>
+
+<footer>
+  <span class="lbl">What this is built from</span>
+  <p>Everything comes out of <em>allostrias-archive</em>: <code>profile.sqlite</code> for the
+     character, its gear and its skill investment, <code>catalogue.sqlite</code> for what those
+     record paths mean, and the archive's own <code>archive/arc.py</code> for the art. Seed replay —
+     the step that turns a record's stored centre into the value an item actually rolled — is the one
+     thing the archive lacked; it is <strong>ported in beside the build, not imported</strong>, and
+     verified field-by-field against gd-lib as a test oracle. GD Lens is not a dependency of this
+     page and nothing here imports from it.</p>
+  <p><strong>The page computes the sheet, the build does not.</strong> What ships is a contribution
+     list — every stat field with every value feeding it, tagged by source and by the buff that gates
+     it — so the toggles genuinely recompute rather than swapping between stored answers. Hover a
+     stat row, or a worn item, to see what adds up to it.</p>
+  <p>These rows use formulas checked against a real character sheet:
+     <strong id="solvedrows"></strong>. Every other row is what the records sum to and has
+     <em>not</em> been compared with what the game prints. Affix and gear recommendations are
+     deliberately absent.</p>
+</footer>
+
+<script id="bundle" type="application/json">__BUNDLE__</script>
+<script>
+(() => {
+  "use strict";
+  const B = JSON.parse(document.getElementById("bundle").textContent);
+  const CH = B.characters, SHEET = B.sheet, FR = B.frames, SZ = B.sheetSize;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  function icon(i, box){
+    const f = FR[i];
+    if (!f) return "";
+    const [x, y, w, h] = f, k = Math.min(box / w, box / h, 1);
+    return `<span class="ico" style="width:${w*k}px;height:${h*k}px;`
+         + `background-size:${SZ[0]*k}px ${SZ[1]*k}px;`
+         + `background-position:${-x*k}px ${-y*k}px"></span>`;
+  }
+
+  const DIFF = ["Normal", "Elite", "Ultimate"];
+  /* Ultimate takes 50 off the top row and 25 off the bottom; Elite 25 and 0.
+     PHYSICAL IS EXEMPT at every difficulty, which is why a point of it is worth
+     more than a point of anything else on the list. */
+  const RESIST_TOP = new Set(["Fire", "Cold", "Lightning", "Acid", "Pierce"]);
+  const PENALTY = [[0, 0], [-25, 0], [-50, -25]];
+  function penaltyFor(label, diff){
+    if (label === "Physical") return 0;
+    const p = PENALTY[diff] || [0, 0];
+    return RESIST_TOP.has(label) ? p[0] : p[1];
+  }
+
+  const state = {i: 0, on: new Set(), over: {}};
+
+  /* One pass over the contribution list per render. A value is in when it is
+     structural (no gate) or when its gate is switched on. */
+  function totals(ch){
+    const t = {};
+    for (const [f, rows] of Object.entries(ch.contrib))
+      for (const [v, , tid] of rows)
+        if (!tid || state.on.has(tid)) t[f] = (t[f] || 0) + v;
+    return t;
+  }
+  const S = (t, fs) => (fs || []).reduce((n, f) => n + (t[f] || 0), 0);
+
+  /* floor((base + flat) * (1 + mod/100)) -- the modifier multiplies the SUM,
+     not the base. Applying it to the base alone misses by 15+ on every
+     attribute of a geared character. */
+  function attrTotal(ch, t, which){
+    const F = {physique: "characterStrength", cunning: "characterDexterity",
+               spirit: "characterIntelligence"}[which];
+    return (ch.base[which] + (t[F] || 0)) * (1 + (t[F + "Modifier"] || 0) / 100);
+  }
+
+  function rowValue(ch, t, r){
+    const f = r.f || [];
+    switch (r.k){
+      case "attr": return Math.floor(attrTotal(ch, t, r.attr));
+      case "pool": {
+        /* Attributes gained from gear, mastery and devotion feed the pools at
+           the same rate points do -- but the stored pool already contains the
+           spent-point share, so only the GAINED share is added. */
+        const g = k => attrTotal(ch, t, k) - ch.base[k];
+        const life = ch.base.health + g("physique")*2.5 + g("cunning")*1.0 + g("spirit")*1.5
+                   + (t.characterLife || 0);
+        const en = ch.base.energy + g("spirit")*2.0 + (t.characterMana || 0);
+        return Math.floor((r.pool === "health" ? life : en)
+                          * (1 + (t[r.m] || 0)/100));
+      }
+      case "ability": {
+        /* combatformulas.dbr, with the +53 the game's own equation carries and
+           an undocumented bonusDV of 130 that OA and DA agree on exactly. */
+        const F = f[0];
+        const inner = (t[F] || 0) + ch.level*12 + (attrTotal(ch, t, r.attr) + 130) * 0.5;
+        return Math.floor(inner * (1 + (t[r.m] || 0)/100) + 53);
+      }
+      case "mod": return S(t, f) * (1 + (t[r.m] || 0)/100);
+      case "resist": return S(t, f) + penaltyFor(r.label, ch.difficulty);
+      case "range": {
+        const lo = t[f[0]] || 0, hi = t[f[1]] || lo;
+        return lo || hi ? [lo, hi] : 0;
+      }
+      default: return S(t, f);
+    }
+  }
+
+  const fmt = n => Number.isInteger(n) ? n.toLocaleString()
+                 : (Math.round(n * 10) / 10).toLocaleString();
+
+  /* ---- verdicts -----------------------------------------------------------
+     PORTED FROM GD Lens's stats.js verdict()/verdictContext(), which is itself
+     mirrored from its stat_engine.py. The logic is copied; the TARGETS are not
+     re-typed here -- they ride in the bundle from build_sheet.py, which carries
+     the one copy this project holds and has gate_targets.py to diff it against
+     GD Lens's originals.
+
+     ⚠️ WHAT THIS ENGINE DOES NOT HAVE. GD Lens resolves conversions, intent and
+     damage investment out of a compiled database index at RUN time. This page
+     has no database, so build_sheet.damage_context() answers those three
+     questions at build time and ships the answers in `ch.vctx`. Everything
+     below reads them; nothing below re-derives them.
+
+     The `pet` and `mastery` branches are ported and unreachable on purpose:
+     this sheet has no pet-bonus section and no "+N to a mastery" row, so no row
+     carries those rules. They stay so the port is the whole rule set rather
+     than the half that happened to apply, and check_sheet asserts no row uses
+     them. */
+  const T = B.targets;
+
+  const CONV_TYPE = {Poison: "Acid", Life: "Vitality"};
+  const ELEMENTAL_SPLIT = ["Fire", "Cold", "Lightning"];
+  const DMG_TYPES = ["Physical", "Fire", "Cold", "Lightning", "Acid", "Pierce",
+                     "Vitality", "Aether", "Chaos"];
+  const DAMAGE_FIELD = {Physical: "offensivePhysical", Pierce: "offensivePierce",
+    Fire: "offensiveFire", Cold: "offensiveCold", Lightning: "offensiveLightning",
+    Acid: "offensivePoison", Vitality: "offensiveLife", Aether: "offensiveAether",
+    Chaos: "offensiveChaos"};
+  const DOT_FIELD = {Bleed: "offensiveSlowBleeding", Burn: "offensiveSlowFire",
+    Frostburn: "offensiveSlowCold", Electrocute: "offensiveSlowLightning",
+    Poison: "offensiveSlowPoison", Trauma: "offensiveSlowPhysical",
+    "Vitality Decay": "offensiveSlowLife"};
+  const DOT_OUTPUT_TYPE = {Bleed: "Bleeding", Burn: "Fire", Frostburn: "Cold",
+    Electrocute: "Lightning", Poison: "Acid", Trauma: "Physical",
+    "Vitality Decay": "Vitality"};
+  const RETAL_FIELD = {Physical: "retaliationPhysicalMin", Fire: "retaliationFireMin",
+    Cold: "retaliationColdMin", Lightning: "retaliationLightningMin",
+    Acid: "retaliationPoisonMin", Vitality: "retaliationLifeMin",
+    Aether: "retaliationAetherMin", Chaos: "retaliationChaosMin",
+    Pierce: "retaliationPierceMin", Elemental: "retaliationElementalMin",
+    Burn: "retaliationSlowFireMin", Electrocute: "retaliationSlowLightningMin",
+    Trauma: "retaliationSlowPhysicalMin", Poison: "retaliationSlowPoisonMin"};
+  const RETAL_TYPE_MOD = {Fire: "retaliationFireModifier",
+    Lightning: "retaliationLightningModifier", Physical: "retaliationPhysicalModifier",
+    Acid: "retaliationPoisonModifier"};
+  const RESIST_FIELDS = {};
+  SHEET.forEach(([sec, rows]) => { if (sec === "Resistances")
+    rows.forEach(r => { RESIST_FIELDS[r.label] = r.f || []; }); });
+  const RESIST_MAX = {Fire: "defensiveFireMaxResist", Cold: "defensiveColdMaxResist",
+    Lightning: "defensiveLightningMaxResist", Acid: "defensivePoisonMaxResist",
+    Pierce: "defensivePierceMaxResist", Vitality: "defensiveLifeMaxResist",
+    Aether: "defensiveAetherMaxResist", Chaos: "defensiveChaosMaxResist",
+    Bleeding: "defensiveBleedingMaxResist"};
+
+  /* A 100%-plus split is scaled down proportionally, and Elemental lands as
+     equal thirds -- the game's documented behaviour. */
+  function convert(amounts, conv){
+    const out = Object.assign({}, amounts), outgoing = {};
+    Object.keys(conv).forEach(k => {
+      const src = k.split("|")[0];
+      outgoing[src] = (outgoing[src] || 0) + conv[k];
+    });
+    Object.keys(conv).forEach(k => {
+      const [src, dst] = k.split("|"), base = amounts[src] || 0;
+      if (!base) return;
+      const scale = outgoing[src] > 100 ? 100 / outgoing[src] : 1;
+      const moved = base * (conv[k] * scale) / 100;
+      out[src] = (out[src] || 0) - moved;
+      if (dst === "Elemental") ELEMENTAL_SPLIT.forEach(e => { out[e] = (out[e] || 0) + moved / 3; });
+      else out[dst] = (out[dst] || 0) + moved;
+    });
+    return out;
+  }
+
+  /* Flat damage added per hit, after conversion. BOTH field families: the
+     offensiveBase<Type> half is a weapon's own damage. */
+  function damagePerHit(t, conv){
+    const base = {};
+    DMG_TYPES.forEach(ty => {
+      const f = DAMAGE_FIELD[ty], bf = f.replace("offensive", "offensiveBase");
+      base[ty] = (t[f + "Min"] || 0) + (t[f + "Max"] || 0)
+               + (t[bf + "Min"] || 0) + (t[bf + "Max"] || 0);
+    });
+    const dot = {};
+    Object.keys(DOT_FIELD).forEach(d => {
+      dot[d] = (t[DOT_FIELD[d] + "Min"] || 0) + (t[DOT_FIELD[d] + "Max"] || 0);
+    });
+    return {direct: convert(base, conv), dot: dot};
+  }
+
+  /* Conversion runs on the BASE, before the modifier. */
+  function retaliationOut(t, conv){
+    const base = {};
+    Object.keys(RETAL_FIELD).forEach(ty => { base[ty] = t[RETAL_FIELD[ty]] || 0; });
+    const moved = convert(base, conv);
+    const shared = 1 + (t.retaliationTotalDamageModifier || 0) / 100;
+    const out = {};
+    Object.keys(moved).forEach(ty => {
+      out[ty] = moved[ty] * (shared + (t[RETAL_TYPE_MOD[ty]] || 0) / 100);
+    });
+    return out;
+  }
+
+  function typeFields(ty){
+    const f = [], root = DAMAGE_FIELD[ty];
+    if (root){
+      f.push(root + "Min", root + "Max");
+      const bf = root.replace("offensive", "offensiveBase");
+      f.push(bf + "Min", bf + "Max");
+    }
+    Object.keys(DOT_OUTPUT_TYPE).forEach(d => {
+      if (DOT_OUTPUT_TYPE[d] === ty) f.push(DOT_FIELD[d] + "Min", DOT_FIELD[d] + "Max");
+    });
+    const rr = RETAL_FIELD[ty];
+    if (rr) f.push(rr, rr.replace("Min", "Max"));
+    return f;
+  }
+
+  /* Per damage type, how many INDEPENDENT freely-chosen sources point at it.
+     Corroboration, not magnitude -- which is why it counts sources and never
+     looks at a value. */
+  function damageSources(ch){
+    const strong = T.strongKinds || [], out = {};
+    const allTypes = DMG_TYPES.slice();
+    Object.keys(DOT_OUTPUT_TYPE).forEach(d => {
+      if (allTypes.indexOf(DOT_OUTPUT_TYPE[d]) === -1) allTypes.push(DOT_OUTPUT_TYPE[d]);
+    });
+    allTypes.forEach(ty => {
+      out[ty] = {strong: 0, weak: 0};
+      typeFields(ty).forEach(f => {
+        (ch.contrib[f] || []).forEach(c => {
+          out[ty][strong.indexOf(c[3]) !== -1 ? "strong" : "weak"]++;
+        });
+      });
+    });
+    (ch.vctx.intent || []).forEach(c => {
+      const dst = CONV_TYPE[c[1]] || c[1];
+      if (out[dst] && !c[3]) out[dst].strong++;
+    });
+    return out;
+  }
+
+  /* A 100% conversion REMOVES a damage type rather than reducing it. Global
+     conversions only: a transmuter scoped to one attack removes nothing. */
+  function drainedTypes(ch){
+    const flow = {};
+    (ch.vctx.intent || []).forEach(c => {
+      if (!c[3] && c[4]){
+        const src = CONV_TYPE[c[0]] || c[0];
+        flow[src] = (flow[src] || 0) + c[2];
+      }
+    });
+    return Object.keys(flow).filter(ty => flow[ty] >= 100);
+  }
+
+  function damageProfile(ch, t){
+    const conv = ch.vctx.conv || {};
+    const dph = damagePerHit(t, conv), ret = retaliationOut(t, conv), out = {};
+    const add = (ty, v) => { if (v) out[ty] = (out[ty] || 0) + v; };
+    Object.keys(dph.direct).forEach(ty => add(ty, dph.direct[ty]));
+    Object.keys(dph.dot).forEach(d => add(DOT_OUTPUT_TYPE[d] || d, dph.dot[d]));
+    Object.keys(ret).forEach(ty => {
+      if (ty === "Elemental") ELEMENTAL_SPLIT.forEach(e => add(e, ret[ty] / 3));
+      else add(ty, ret[ty]);
+    });
+    let total = 0;
+    Object.keys(out).forEach(ty => { total += out[ty]; });
+    const ranked = Object.keys(out).sort((a, b) => out[b] - out[a]);
+    const shares = {};
+    ranked.forEach(ty => { shares[ty] = total ? out[ty] / total : 0; });
+    /* MEMBERSHIP by corroboration, ORDER by output. */
+    const srcCounts = damageSources(ch), drained = drainedTypes(ch);
+    const wanted = ranked.filter(ty => (srcCounts[ty] || {}).strong >= (T.corroboration || 1)
+                                    && drained.indexOf(ty) === -1)
+      .filter((ty, i) => i < T.damageTypes && shares[ty] >= T.damageFloor);
+    let hitSum = 0, retSum = 0;
+    Object.keys(dph.direct).forEach(ty => { hitSum += dph.direct[ty] || 0; });
+    Object.keys(dph.dot).forEach(d => { hitSum += dph.dot[d] || 0; });
+    Object.keys(ret).forEach(ty => { retSum += ret[ty] || 0; });
+    const mt = hitSum + retSum;
+    return {wanted: wanted, blind: total <= 0,
+            mechanisms: {hit: mt ? hitSum / mt : 0, retaliation: mt ? retSum / mt : 0},
+            dominantType: ranked.length ? ranked[0] : null};
+  }
+
+  /* raw, the difficulty penalty, and the cap the character actually has. */
+  function resistances(ch, t){
+    const out = {};
+    Object.keys(RESIST_FIELDS).forEach(ty => {
+      let raw = 0;
+      RESIST_FIELDS[ty].forEach(f => { raw += t[f] || 0; });
+      out[ty] = {raw: raw, penalty: penaltyFor(ty, ch.difficulty),
+                 cap: 80 + (t[RESIST_MAX[ty]] || 0) + (t.defensiveAllMaxResist || 0)};
+    });
+    return out;
+  }
+
+  const INVEST_PREFIX = ["offensive", "retaliation"];
+  const INVEST_IGNORE = ["offensiveTotalDamage", "retaliationTotalDamage"];
+  const CHANNEL_SUFFIX = ["DurationModifier", "DurationMin", "DurationMax",
+                         "Modifier", "Chance", "Min", "Max"];
+  function damageChannel(f){
+    if (!INVEST_PREFIX.some(p => f.indexOf(p) === 0)) return null;
+    if (INVEST_IGNORE.some(p => f.indexOf(p) === 0)) return null;
+    for (const suf of CHANNEL_SUFFIX)
+      if (f.length > suf.length && f.slice(-suf.length) === suf)
+        return f.slice(0, f.length - suf.length).replace("offensiveBase", "offensive");
+    return null;
+  }
+
+  function scaledTarget(key, level, difficulty){
+    let d = (T.diffScale || {})[String(difficulty)];
+    if (d === undefined) d = 1;
+    if ((T.pct || {})[key] !== undefined) return T.pct[key] * d;
+    if ((T.endgame || {})[key] !== undefined)
+      return T.endgame[key] * Math.max(T.levelFloor, Math.min(1, (level || 0) / 100)) * d;
+    return null;
+  }
+  /* A percentage gets SIGMA points of slack; a magnitude gets 25% relative. */
+  const targetBand = (key, target) =>
+    (T.pct || {})[key] !== undefined ? target + T.sigma : target * 1.25;
+
+  function verdictContext(ch, t){
+    return {level: ch.level, difficulty: ch.difficulty,
+            resist: resistances(ch, t),
+            resistUnrolled: ch.vctx.resistUnrolled || {},
+            canBlock: (t.defensiveBlockChance || 0) > 0,
+            hasPets: false, petBuild: false,
+            damage: damageProfile(ch, t),
+            invested: ch.vctx.invested || {},
+            masteries: ch.skills.filter(s => s.cls === "Skill_Mastery").map(s => s.n)};
+  }
+
+  const VERDICT_LEGEND = [["priority", "Priority"], ["nice", "Nice"],
+                          ["ignore", "Neutral"], ["avoid", "Avoid"]];
+
+  /* ---- hand-set verdicts --------------------------------------------------
+     The marks are CONTROLS as well as readouts, the way GD Lens's are: click a
+     stat row to step its mark up the scale, right-click to step it back. The
+     order IS the scale, worst to best, so "up" means what it says.
+
+     ⚠️ KEYED ON SECTION AND LABEL, NOT ON THE ROW INDEX. Two things break a
+     simpler key, and GD Lens records both: `Physical` is a row in four
+     different sections here, so the label alone would move four marks at once;
+     and an index would silently re-point every stored override the first time
+     a row is inserted into the sheet table. The pair is stable and unique --
+     check_sheet asserts the uniqueness rather than trusting it.
+
+     ⚠️ AND KEPT OFF THE DOM. renderSheet() rebuilds every row on every buff
+     toggle, so an override written onto a node is destroyed by the first
+     switch the reader flips. It lives in `state` and the painter re-applies
+     it. */
+  const VCYCLE = ["avoid", "ignore", "nice", "priority"];
+  const vkey = (sec, label) => sec + " / " + label;
+  const overKey = ch => "allostria.verdicts." + ch.dir;
+
+  /* localStorage is a per-viewer convenience and is allowed to be missing -- a
+     private window, cleared site data, a browser that refuses it. Every read
+     and write is guarded and the page renders correctly with nothing stored. */
+  function loadOver(ch){
+    state.over = {};
+    try {
+      const raw = window.localStorage.getItem(overKey(ch));
+      if (raw) state.over = JSON.parse(raw) || {};
+    } catch (e) { state.over = {}; }
+  }
+  function saveOver(ch){
+    try {
+      if (Object.keys(state.over).length)
+        window.localStorage.setItem(overKey(ch), JSON.stringify(state.over));
+      else window.localStorage.removeItem(overKey(ch));
+    } catch (e) { /* nothing stored, nothing lost -- the session still works */ }
+  }
+
+  /* `dir` is the step: +1 on a click, -1 on a right-click.
+
+     Landing back on the engine's OWN answer clears the override rather than
+     pinning it, so returning a row to the algorithm takes no second gesture
+     and the store only ever holds rows a reader actually moved. */
+  function cycleVerdict(sec, ri, dir){
+    const ch = CH[state.i];
+    const row = (SHEET.find(x => x[0] === sec) || [, []])[1][ri];
+    if (!row) return;
+    const t = totals(ch);
+    const computed = verdict(row, rowNumber(ch, t, row), verdictContext(ch, t));
+    /* A row the engine withheld is not a control: there is no answer to step
+       away from, and inventing a starting point would state advice the engine
+       refused to give. */
+    if (!computed) return;
+    const k = vkey(sec, row.label);
+    const cur = state.over[k] || computed;
+    const next = VCYCLE[(VCYCLE.indexOf(cur) + dir + VCYCLE.length) % VCYCLE.length];
+    if (next === computed) delete state.over[k]; else state.over[k] = next;
+    saveOver(ch);
+    renderStats();
+  }
+  function verdict(row, value, ctx){
+    const rule = row.rule;
+    if (rule === "none" || rule === "withheld") return rule === "none" ? "ignore" : null;
+
+    if (rule === "resist"){
+      const r = (ctx.resist || {})[row.label];
+      if (!r) return "ignore";
+      /* ⚠️ raw + penalty, NOT the printed value, which is already clamped to the
+         cap -- two resists 67 points apart both read 80. */
+      const eff = r.raw + r.penalty;
+      /* AT the cap is a priority, and so is anything that could FALL under it.
+         The margin covers only what is NOT seed-rolled. */
+      let unrolled = (ctx.resistUnrolled || {})[row.label];
+      if (unrolled === undefined) unrolled = r.raw;
+      if (eff - unrolled * T.residual <= r.cap) return "priority";
+      return eff < r.cap + T.resistSigma ? "nice" : "ignore";
+    }
+
+    const v = value - (row.base || 0);
+    const dtype = row.dtype, mech = row.mech, dmg = ctx.damage || {};
+    /* Zero measurable damage is a STATED condition, not a silent empty. */
+    if ((dtype || mech) && dmg.blind) return "ignore";
+    if (dtype){
+      const wanted = dmg.wanted || [];
+      /* ⚠️ `avoid`: not "real, but not one of your types" -- that is `ignore` --
+         but "you have put nothing into this anywhere", which is a statement in
+         the character's own numbers and the one worth acting on. Checked BEFORE
+         the wanted test: a type the build deals can still have a dead channel.
+         WITHHELD when `wanted` is empty -- a reader that cannot say what the
+         build IS has no standing to say what it is not. */
+      const chans = [];
+      (row.f || []).map(damageChannel).forEach(c => {
+        if (c && chans.indexOf(c) === -1) chans.push(c);
+      });
+      let support = 0;
+      chans.forEach(c => { support += (ctx.invested || {})[c] || 0; });
+      const thin = support < T.channelSupport && wanted.indexOf(dtype) === -1;
+      if (chans.length && wanted.length && (support === 0 || thin)) return "avoid";
+      if (wanted.indexOf(dtype) === -1) return "ignore";
+    }
+    /* The damage engine: what the build is MADE of, which a deficit cannot see. */
+    if (mech && v){
+      const mshare = (dmg.mechanisms || {})[mech] || 0;
+      if (mshare >= T.mechanismDominance
+          && (dtype === undefined || dtype === null || dtype === dmg.dominantType))
+        return "priority";
+    }
+
+    if (row.mastery){
+      if (row.mastery !== "*" && (ctx.masteries || []).indexOf(row.mastery) === -1) return "ignore";
+      return "priority";
+    }
+
+    if (rule === "control"){
+      const tgt = (T.control || {})[row.tkey];
+      if (tgt === undefined) return "ignore";
+      if (tgt <= 0) return "ignore";          /* no opinion means no opinion, at any value */
+      if (v < tgt) return "priority";
+      return v < tgt + T.sigma ? "nice" : "ignore";
+    }
+
+    if (rule === "benchmark"){
+      if (row.tkey === "ChanceToBlock" && !ctx.canBlock) return "ignore";
+      const bt = scaledTarget(row.tkey, ctx.level, ctx.difficulty);
+      if (bt === null) return "ignore";
+      if (v < bt) return "priority";
+      return v < targetBand(row.tkey, bt) ? "nice" : "ignore";
+    }
+
+    if (rule === "pet"){
+      if (!ctx.hasPets) return "ignore";
+      if (ctx.petBuild) return "priority";
+      return v ? "nice" : "ignore";
+    }
+
+    /* Unbounded, so never a deficit. Non-zero is the relevance gate. */
+    if (rule === "linear") return v ? "nice" : "ignore";
+
+    /* An unrecognised rule makes NO claim -- `linear` used to be this
+       fall-through, so a typo'd rule quietly behaved as linear. */
+    return "ignore";
+  }
+
+  /* The one number the verdict judges, by the same rule the row prints it: a
+     range row's magnitude is its whole span. Shared with cycleVerdict, so the
+     mark a click steps away from is the mark the painter drew. */
+  function rowNumber(ch, t, r){
+    const v = rowValue(ch, t, r);
+    return Array.isArray(v) ? v[0] + v[1] : v;
+  }
+
+  function renderSheet(ch){
+    const t = totals(ch);
+    const ctx = verdictContext(ch, t);
+    const shown = (sec, r, computed) =>
+      computed ? (state.over[vkey(sec, r.label)] || computed) : null;
+    $("sheet").innerHTML = SHEET.map(([name, list]) => {
+      const body = list.map((r, ri) => {
+        const v = rowValue(ch, t, r);
+        if (Array.isArray(v)) {
+          /* A range row's magnitude is its whole span: the verdict only ever
+             asks whether the row is fed at all and which type it is about. */
+          return line(name, ri, r, `${fmt(v[0])}–${fmt(v[1])}`, "",
+                      shown(name, r, verdict(r, v[0] + v[1], ctx)));
+        }
+        /* Every row, always -- including the ones nothing feeds. A stat a
+           character has none of is a real fact about the character, and 0%
+           Fire Resist on Ultimate is exactly the hole a sheet is read for.
+           The zero styling is what keeps the page legible instead. */
+        return line(name, ri, r, `${fmt(v)}${r.pct ? "%" : ""}`,
+                    !v ? "zero" : v < 0 ? "neg" : "",
+                    shown(name, r, verdict(r, v, ctx)));
+      }).join("");
+      return body ? `<div class="grp"><span class="lbl">${esc(name)}</span>${body}</div>` : "";
+    }).join("");
+  }
+
+  /* No badges on the row. Whether a formula is solved, and what the
+     difficulty took off a resistance, are both still in the hover detail --
+     the row itself is a name and a number. The penalty is still APPLIED; it is
+     only the label that is gone. */
+  /* The verdict marker keeps its gutter whether or not there is a verdict:
+     dropping the element would shuffle every label in the column the moment a
+     row had no opinion, and a verdict this engine WITHHELD must show nothing
+     rather than the neutral mark, which is itself a judgement. */
+  function line(sec, ri, r, text, cls, vd){
+    return `<button class="row" type="button" data-sec="${esc(sec)}" data-ri="${ri}"${
+      vd ? ` data-v="${vd}"` : ""}>
+      <span class="vd"${vd ? ` data-v="${vd}"` : ""}></span>
+      <span class="rl">${esc(r.label)}</span>
+      <span class="dots"></span><span class="rv ${cls}">${text}</span></button>`;
+  }
+
+  const BADGE_TITLE = {mi: "Monster Infrequent", dr: "Double Rare",
+                      drmi: "Double Rare Monster Infrequent"};
+  const badge = e => e.badge
+    ? `<span class="sym" data-q="${esc(e.badge)}" role="img" aria-label="${
+        esc(BADGE_TITLE[e.badge] || e.badge)}" title="${
+        esc(BADGE_TITLE[e.badge] || e.badge)}"></span>`
+    : "";
+
+  const SLOT_ORDER = ["head","shoulders","chest","hands","waist","legs","feet",
+    "amulet","medal","ring1","ring2","relic","mainhand","offhand"];
+
+  function renderGear(ch){
+    const worn = [...ch.equipment].sort(
+      (a,b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot));
+    $("gear").innerHTML = worn.map((e, i) => `
+      <button class="geo" type="button" data-e="${i}" data-r="${esc(e.rarity||"")}">
+        <span class="tile">${icon(e.icon, 46)}</span>
+        <span class="gi">
+          <span class="nm t-${esc(e.rarity||"Common")}">${badge(e)}${esc(e.n)}</span>
+          <span class="sl">${esc(e.slot)}${e.lv ? " · lvl " + e.lv : ""}</span>
+        </span></button>`).join("");
+    $("gearn").textContent = `${worn.length} worn`;
+    state.worn = worn;
+  }
+
+  function renderToggles(ch){
+    $("toggles").innerHTML = ch.toggles.length ? ch.toggles.map(t => `
+      <button class="tg" type="button" data-t="${t.id}" aria-pressed="${state.on.has(t.id)}">
+        ${icon(t.icon, 28) || '<span class="noico"></span>'}
+        <span class="tn"><b>${esc(t.n)}</b>
+          <span>Lvl ${t.eff}${t.from ? " · " + esc(t.from) : ""}</span></span>
+      </button>`).join("")
+      : `<div class="bd"><p class="note">No switchable buff on this character.</p></div>`;
+  }
+
+  /* The mastery panels, nested the way the game draws them: a skill's
+     modifiers and transmuters sit under it. Parentage was resolved at build
+     time from skillDependancy first and the display-tag family second --
+     never from proximity on the panel, which says nothing, and never from the
+     filename stem, which merges unrelated skills. */
+  function renderSkills(ch){
+    const tree = ch.tree || [];
+    const kids = new Map();
+    tree.forEach((s, i) => {
+      const k = s.parent === null ? "root" : s.parent;
+      if (!kids.has(k)) kids.set(k, []);
+      kids.get(k).push(i);
+    });
+    const byPos = (a, b) => (tree[a].pos[0] - tree[b].pos[0]) || (tree[a].pos[1] - tree[b].pos[1]);
+
+    function node(i, depth){
+      const s = tree[i];
+      const children = (kids.get(i) || []).sort(byPos);
+      return `<div class="sk" style="padding-left:${18 + depth * 16}px">
+          ${icon(s.icon, 22) || '<span class="noico"></span>'}
+          <span class="sn${depth ? " sub" : ""}">${esc(s.n)}</span>
+          <span class="sv num">${s.lv}${s.eff > s.lv ? `<em> +${s.eff - s.lv}</em>` : ""}</span>
+        </div>` + children.map(c => node(c, depth + 1)).join("");
+    }
+
+    const roots = (kids.get("root") || []).sort(byPos);
+    const byMastery = new Map();
+    for (const i of roots){
+      const m = tree[i].mastery || "Other";
+      if (!byMastery.has(m)) byMastery.set(m, []);
+      byMastery.get(m).push(i);
+    }
+
+    const panel = (title, head, body) => `<details class="panel" open>
+        <summary class="hd"><h2>${esc(title)}</h2>${head}</summary>
+        <div class="skills">${body}</div></details>`;
+
+    /* The bars come from ch.skills rather than ch.masteries: the same records,
+       but they still carry the bar's own max_level, so the fill is measured
+       against what the catalogue says the mastery caps at instead of a 50
+       typed in here. check_sheet.js asserts that cap is 50 and that no bar
+       exceeds it, because a fill clamped at 100% would hide it if it did. */
+    const named = ch.skills.filter(s => s.cls === "Skill_Mastery").map(m => {
+      const mine = (byMastery.get(m.n) || []).sort(byPos);
+      byMastery.delete(m.n);
+      const pct = m.max ? Math.min(100, m.lv / m.max * 100) : 0;
+      /* The bar is chosen by the class number in the mastery's own record path
+         -- records/skills/playerclass09/... is the Oathkeeper bar -- which is
+         the same number its MasteryEnumeration states. No name-to-colour
+         table: a mastery the game adds brings its own id and its own art. */
+      const cls = (m.path.match(/playerclass(\d+)/) || [])[1] || "";
+      return panel(m.n || "Mastery",
+        `<span class="track" data-c="${esc(cls)}"><span class="unlit"
+           style="width:${100 - pct}%"></span></span>
+         <span class="mv">${m.lv}</span>`,
+        mine.length ? mine.map(i => node(i, 0)).join("")
+          : `<div class="sk"><span></span><span class="sn sub">nothing invested</span><span></span></div>`);
+    });
+
+    /* A root whose mastery matched no bar still gets a panel. Letting it fall
+       off the end would lose invested skills silently, which is the one
+       failure a tidy list cannot show. */
+    const rest = [...byMastery].map(([name, list]) =>
+      panel(name, `<span class="n">${list.length}</span>`,
+            list.sort(byPos).map(i => node(i, 0)).join("")));
+
+    $("skillpanels").innerHTML = named.concat(rest).join("");
+  }
+
+  /* Character-dependent, so it renders with the bar and the gear rather than
+     on every buff toggle. setAttribute, not dataset: an empty value must still
+     land as an attribute that matches no rule. */
+  function renderBackdrop(ch){
+    const bars = ch.skills.filter(s => s.cls === "Skill_Mastery");
+    const id = m => (m && (m.path.match(/playerclass(\d+)/) || [])[1]) || "";
+    $("bgL").setAttribute("data-c", id(bars[0]));
+    $("bgR").setAttribute("data-c", id(bars[1]));
+  }
+
+  function renderBar(ch){
+    /* Two lines, as the game's own character select prints them: the name,
+       then `Level N <class title>`. The title is the mastery combination's,
+       resolved at build time from the class ids. */
+    $("picker").innerHTML = CH.map((c, i) =>
+      `<button class="pick" type="button" data-c="${i}" aria-pressed="${i === state.i}">
+        <span class="cn">${esc(c.name)}</span>
+        <span class="cl">Level ${c.level}${c.title ? " " + esc(c.title) : ""}</span>
+      </button>`).join("");
+    $("who").innerHTML = `<span class="nm">${esc(ch.name)}</span>
+      <span class="sub">${ch.masteries.map(m => esc(m.n || "?") + " " + m.lv).join(" · ") ||
+        "no mastery"}${ch.hardcore ? " · Hardcore" : ""}</span>`;
+    const f = (v, l, warn) =>
+      `<div class="fact${warn ? " warn" : ""}"><b class="num">${v}</b><span>${l}</span></div>`;
+    $("facts").innerHTML =
+      f(ch.level, "Level") + f(DIFF[ch.difficulty] || "?", "Difficulty") +
+      f(`${ch.devotion[0]}/${ch.devotion[1]}`, "Devotion") +
+      f(ch.money.toLocaleString(), "Iron") +
+      (ch.points.attribute ? f(ch.points.attribute, "Attr unspent", true) : "") +
+      (ch.points.skill ? f(ch.points.skill, "Skill unspent", true) : "") +
+      (ch.points.devotion ? f(ch.points.devotion, "Devo unbound", true) : "");
+  }
+
+  /* ---- detail ------------------------------------------------------------
+     Two builders and one floating panel, shown for whatever the pointer or the
+     keyboard is on. Nothing is selected and nothing is stored: the anchor is
+     the state. */
+  const tipEl = $("tip");
+
+  /* A headed list, or nothing at all. An empty heading with no rows under it
+     reads as a bonus that exists and is blank. */
+  const block = (head, rows, cls) => rows.length
+    ? `<div class="rule"></div><div class="blk"><b>${esc(head)}</b>${
+        rows.map(r => `<div class="${cls || "att"}">${r}</div>`).join("")}</div>`
+    : "";
+
+  function itemTip(ch, e){
+    if (!e) return "";
+    const refused = ch.refused.find(r => r.name === e.n);
+    return `<div class="tip">
+      <h3 class="t-${esc(e.rarity||"Common")}">${badge(e)}${esc(e.n)}</h3>
+      <div class="kind">${esc(e.rarity || "")} · ${esc(e.slot)}${e.lv ? " · requires level " + e.lv : ""}</div>
+      <div class="rule"></div>
+      ${e.lines.length ? `<ul>${e.lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>`
+        : `<p class="note">No stat line this sheet renders.</p>`}
+      ${block("Grants", e.grantName
+        ? [`${esc(e.grantName)}${e.grantLv > 1 ? " (level " + e.grantLv + ")" : ""}`] : [], "skl")}
+      ${block("Skill modifiers", (e.mods || []).map(esc), "skl")}
+      ${block("Completion bonus", (e.bonus || []).map(esc))}
+      ${e.set ? `<div class="rule"></div><div class="blk">
+          <b>${esc(e.set.n)} &mdash; ${e.set.worn} of ${e.set.total}</b>
+          ${e.set.members.map(m => `<div class="setpc${m.worn ? " on" : ""}"><span>${
+            esc(m.n)}</span>${m.worn ? "<i>worn</i>" : ""}</div>`).join("")}
+          ${e.set.lines.length ? `<ul style="margin-top:6px">${
+            e.set.lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
+        </div>` : ""}
+      ${e.attached.length ? `<div class="rule"></div>${e.attached.map(a =>
+        `<div class="att">${esc(a.kind)}: ${esc(a.name)}</div>`).join("")}` : ""}
+      ${refused ? `<div class="rule"></div><p class="note">
+        Seed replay refused this item, so it contributes nothing to the sheet:
+        ${esc(refused.why)}</p>` : ""}
+    </div>`;
+  }
+
+  /* ⚠️ `r.f` IS NOT EVERYTHING THE ROW READS. The four formula kinds finish by
+     multiplying through `r.m`, a percentage, and listing only `r.f` here left
+     those contributions out of the detail entirely -- Nazeem's +80% Health
+     Regeneration and his armour's +8% were in the number and nowhere in the
+     panel explaining the number. Both lists are walked, and the `%` comes off
+     the FIELD rather than the row: an Armor row prints flat armour and is
+     `pct:false`, while the field that scales it is a percent either way. */
+  function rowTip(ch, sec, ri){
+    const r = (SHEET.find(s => s[0] === sec) || [, []])[1][ri];
+    if (!r) return "";
+    const srcs = [];
+    const take = (f, pct) => {
+      for (const [v, src, tid] of (ch.contrib[f] || []))
+        srcs.push({v, src, tid, pct, on: !tid || state.on.has(tid)});
+    };
+    for (const f of r.f || []) take(f, r.pct);
+    if (r.m) take(r.m, true);
+    /* Flat above, percentages below, each ordered by weight -- and the rule
+       between them only when there is something on both sides of it. The two
+       do not add up to each other, so one list sorted by magnitude put a +8%
+       between a +75 and a +70 as if it were the smaller of the three. */
+    const block = list => `<div class="srcs">${list.map(s =>
+        `<div class="${s.on ? "" : "off"}"><span>${esc(s.src)}</span>
+           <span class="sv">${s.v > 0 ? "+" : ""}${fmt(s.v)}${s.pct ? "%" : ""}</span></div>`).join("")}</div>`;
+    const byWeight = (a, b) => Math.abs(b.v) - Math.abs(a.v);
+    const flat = srcs.filter(s => !s.pct).sort(byWeight);
+    const pct = srcs.filter(s => s.pct).sort(byWeight);
+    /* NOTHING FEEDING THE ROW MEANS NO PANEL AT ALL, not a panel saying so.
+       Every row renders whether or not it is fed -- 0% Fire Resist is the hole
+       a sheet is read for -- but a box that opens only to report its own
+       emptiness is a pointer chasing the reader across half the sheet for no
+       information. showTip() treats "" as hide, so returning it here is the
+       whole mechanism. */
+    if (!srcs.length) return "";
+    return `<div class="tip">
+      <h3>${esc(r.label)}</h3>
+      ${flat.length ? block(flat) : ""}
+      ${flat.length && pct.length ? `<div class="rule"></div>` : ""}
+      ${pct.length ? block(pct) : ""}
+    </div>`;
+  }
+
+  function tipFor(el){
+    const ch = CH[state.i];
+    const g = el.closest(".geo");
+    if (g) return itemTip(ch, state.worn[Number(g.dataset.e)]);
+    const r = el.closest(".row");
+    return r ? rowTip(ch, r.dataset.sec, Number(r.dataset.ri)) : "";
+  }
+
+  const hideTip = () => { tipEl.hidden = true; };
+
+  /* Anchored to the row, not to the cursor: this is a panel rather than a
+     label, and a panel that chases the pointer cannot be read. Beside the
+     anchor where there is room, flipped where there is not, clamped into the
+     viewport either way. */
+  function showTip(html, anchor){
+    if (!html) return hideTip();
+    tipEl.innerHTML = html;
+    tipEl.hidden = false;
+    tipEl.scrollTop = 0;
+    const a = anchor.getBoundingClientRect();
+    const t = tipEl.getBoundingClientRect(), pad = 10;
+    let x = a.right + pad;
+    if (x + t.width > innerWidth - pad) x = a.left - t.width - pad;
+    if (x < pad) x = Math.max(pad, innerWidth - t.width - pad);
+    const y = Math.min(Math.max(pad, a.top - 4), innerHeight - t.height - pad);
+    tipEl.style.left = Math.round(x) + "px";
+    tipEl.style.top = Math.round(Math.max(pad, y)) + "px";
+  }
+
+  function hover(e){
+    const el = e.target && e.target.closest && e.target.closest(".geo, .row, #tip");
+    if (!el) return hideTip();
+    if (el.id !== "tip") showTip(tipFor(el), el);   // over the tooltip itself: leave it up
+  }
+
+  /* Split by what each half actually depends on. The buffs and the sheet read
+     state.on and must follow it; the character bar, the gear and the skill
+     panels do not, and re-rendering them would discard the open/closed state
+     the browser is keeping on each <details>. */
+  function renderStats(){
+    const ch = CH[state.i];
+    renderToggles(ch); renderSheet(ch); hideTip();
+  }
+
+  function render(){
+    const ch = CH[state.i];
+    renderBar(ch); renderGear(ch); renderSkills(ch); renderBackdrop(ch);
+    renderStats();
+  }
+
+  /* One attribute drives both halves: the tab's art and the body's width.
+     aria-expanded stays on the button so the control is still a disclosure. */
+  function drawer(open){
+    $("rail").setAttribute("data-open", open ? "1" : "0");
+    $("railtab").setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  document.addEventListener("click", e => {
+    if (e.target.closest(".railtab")){
+      drawer($("rail").getAttribute("data-open") !== "1"); return;
+    }
+    const p = e.target.closest(".pick");
+    if (p){ state.i = Number(p.dataset.c); state.on = new Set();
+            loadOver(CH[state.i]); render(); drawer(false); return; }
+    // clicking anywhere else shuts it, the way the game's own tab behaves
+    if (!e.target.closest("#rail")) drawer(false);
+    const t = e.target.closest(".tg");
+    if (t){ const id = t.dataset.t; state.on.has(id) ? state.on.delete(id) : state.on.add(id);
+            renderStats(); }
+    const sr = e.target.closest(".row");
+    if (sr) cycleVerdict(sr.dataset.sec, Number(sr.dataset.ri), 1);
+  });
+
+  /* Right-click steps BACK down the scale. preventDefault so the browser's own
+     menu does not open over the sheet -- without it the gesture runs but is
+     unusable. */
+  document.addEventListener("contextmenu", e => {
+    const sr = e.target.closest && e.target.closest(".row");
+    if (!sr) return;
+    e.preventDefault();
+    cycleVerdict(sr.dataset.sec, Number(sr.dataset.ri), -1);
+  });
+
+  /* Pointer and keyboard both, so the detail is reachable by tab as well as by
+     hover -- every item and every stat row is already a button. */
+  document.addEventListener("pointerover", hover);
+  document.addEventListener("focusin", hover);
+  document.addEventListener("scroll", hideTip, true);
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape"){ hideTip(); drawer(false); }
+  });
+
+  /* Open on the character with the most to show -- derived, so it follows the
+     data rather than a name typed here -- with every plain toggle on. A
+     duration buff starts OFF because in game it would not be up. */
+  const fedRows = c => SHEET.reduce((n, [, list]) => n + list.filter(r =>
+    r.k === "attr" || r.k === "pool" || r.k === "ability" ||
+    (r.f || []).some(f => c.contrib[f])).length, 0);
+  state.i = CH.reduce((best, c, i) => fedRows(c) > fedRows(CH[best]) ? i : best, 0);
+  for (const t of CH[state.i].toggles) if (t.kind === "toggle" || t.kind === "granted") state.on.add(t.id);
+  loadOver(CH[state.i]);
+
+  /* The refresh button only means anything when a local process is serving this
+     page; it asks that process to re-read the saves into profile.sqlite and hand
+     back a rebuilt bundle. Probe first, reveal second -- a control that cannot
+     work should not be on screen. */
+  const btn = $("refresh"), note = $("refreshnote");
+  if (typeof fetch === "function")
+    fetch("/alive", {cache: "no-store"})
+      .then(r => { if (r.ok) btn.classList.add("on"); })
+      .catch(() => {});                    // published artifact: stays hidden
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    note.className = "refreshnote";
+    note.textContent = "re-reading\u2026";
+    try {
+      const r = await fetch("/refresh", {method: "POST", cache: "no-store"});
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || "refresh failed");
+      CH.length = 0; CH.push(...d.characters);
+      for (const k of Object.keys(FR)) delete FR[k];
+      Object.assign(FR, d.frames);
+      SZ[0] = d.sheetSize[0]; SZ[1] = d.sheetSize[1];
+      document.documentElement.style.setProperty("--atlas", 'url("' + d.atlas + '")');
+      /* A save can gain or lose a character, so the index we were on may no
+         longer be the same person. Hold the NAME, not the position. */
+      const wasName = (CH[state.i] || {}).name;
+      const again = CH.findIndex(c => c.name === wasName);
+      state.i = again >= 0 ? again : 0;
+      state.on = new Set();
+      for (const t of CH[state.i].toggles)
+        if (t.kind === "toggle" || t.kind === "granted") state.on.add(t.id);
+      render();
+      note.textContent = "read in " + d.seconds + "s"
+        + (d.unreadable ? " · " + d.unreadable + " save(s) unreadable" : "");
+    } catch (e) {
+      note.className = "refreshnote bad";
+      note.textContent = String((e && e.message) || e);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* The footer names the checked rows instead of marking each one, and it
+     NAMES THEM FROM THE TABLE -- typing the list would let the prose outlive
+     the fact it describes, which is exactly what happened to the per-row
+     SOLVED badge after the badge was removed. Once, not per render: which
+     rows are solved is a property of the sheet, not of the character. */
+  /* Generated, not typed: the marks and their words come from one table, so a
+     legend cannot end up describing a mark the sheet no longer paints. */
+  $("legendmarks").innerHTML = VERDICT_LEGEND.map(([v, word]) =>
+    `<span><i class="vd" data-v="${v}"></i>${esc(word)}</span>`).join("");
+
+  $("solvedrows").textContent = SHEET
+    .flatMap(([, rows]) => rows.filter(r => r.v).map(r => r.label))
+    .join(", ");
+
+  render();
+})();
+</script>

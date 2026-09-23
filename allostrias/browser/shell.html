@@ -1,0 +1,536 @@
+<title>Allostria's Armoury</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Jura:wght@400;500;600;700&family=Libertinus+Serif:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* ---------------------------------------------------------------------------
+   Allostria's Armoury -- every named Legendary and Epic, wearing the game's own skin.
+   Named apart from the character sheet ("Allostria's Archive") on purpose: two
+   artifacts sharing a title are indistinguishable in a gallery.
+
+   Nothing here is an interpretation of Grim Dawn's UI. The frame is its
+   mainmenu/border_* 9-slice, the item tile is character/itembackground.tex,
+   the rarity hexes are the ones records/game/gameiteminfo.dbr names, and two
+   of the three typefaces are the ones the game's own .dbr records ask for by
+   filename. Where a substitution was unavoidable it is marked.
+
+   SINGLE THEME ON PURPOSE. The subject has one look, it is dark, and a light
+   variant would be a different game. Every colour is painted explicitly so the
+   page holds on either host ground.
+--------------------------------------------------------------------------- */
+:root{
+  /* Ground and panel: warm-biased near-blacks sampled off the game's own
+     window interior, not neutral grey. */
+  --ground:#0B0A08; --ground-2:#100E0B;
+  --panel:#15120E; --panel-2:#1C1813; --sunk:#0A0907;
+
+  /* {^H} Grayish Orange #C7BAA9 is the game's body ink -- warm tan, and the
+     palette note is emphatic that it is not grey. */
+  --ink:#C7BAA9; --dim:#8B8074; --faint:#5F584E;
+
+  /* The frame's own metal, sampled from mainmenu/border_lt. */
+  --gold:#C6A76B; --gold-dim:#8A7446; --gold-deep:#5B4B2C;
+  --rule:#2A231A; --rule-hi:#3E3425;
+
+  /* ---- item tiers, from records/game/gameiteminfo.dbr ----
+     commonItemColor={^w} magicalItemColor={^y} rareItemColor={^g}
+     epicItemColor={^b} legendaryItemColor={^i}, resolved through the
+     palette table in .gdlib/palette.py. These are the game's hexes. */
+  --t-common:#FFFFFF; --t-magical:#FFF62C; --t-rare:#10EB5D; --t-epic:#39ABCF;
+  --t-legendary:#5A039A;
+  /* ⚠️ THE ONE DEVIATION. {^i} Indigo #5A039A is a 1.9:1 contrast on this
+     ground. In game it survives because the text is drawn with an outline and
+     a glow shader; flat HTML text has neither. The hue is kept exactly and the
+     lightness lifted, so a legendary still reads as indigo and not as some
+     other tier. The true hex is still what paints its rule and its glow. */
+  --t-legendary-ink:#A86FDD;
+
+  --danger:#FF4200;                 /* {^R} Red -- requirement not met */
+  --skill:#F3A44D;                  /* {^O} Orange -- granted skills */
+
+  --s1:4px; --s2:8px; --s3:12px; --s4:18px; --s5:26px; --s6:38px;
+}
+
+*{box-sizing:border-box}
+html{color-scheme:dark}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font:400 14px/1.5 "Libertinus Serif", Georgia, "Times New Roman", serif;
+  background-image:
+    radial-gradient(120% 80% at 50% -10%, #1A150F 0%, rgba(26,21,15,0) 60%),
+    radial-gradient(90% 60% at 50% 110%, #16120C 0%, rgba(22,18,12,0) 55%);
+  background-attachment:fixed;
+}
+:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+::selection{background:#3A2E18; color:#F0E4CE}
+
+/* ---------- the frame ----------
+   One 9-slice, cut from mainmenu/border_{lt,ct,rt,lm,rm,lb,cb,rb}.tex. The
+   `fill` keyword is deliberately absent: the sheet's centre cell is the
+   frame's own translucent interior and would double the panel's own ground. */
+.panel{
+  position:relative; background:var(--panel);
+  border:__BORDER_SLICE__px solid transparent;
+  border-image:url("__BORDER__") __BORDER_SLICE__ repeat;
+  padding:0;
+}
+.panel > .panel-in{padding:var(--s4)}
+
+/* ---------- masthead ---------- */
+.mast{
+  display:flex; flex-direction:column; align-items:center; gap:var(--s2);
+  padding:var(--s5) var(--s3) var(--s3); text-align:center;
+}
+.orn{display:block; height:34px; width:162px; background-repeat:no-repeat;
+  background-position:center; background-size:contain}
+.orn-top{background-image:url("__ORN_TOP__")}
+.orn-bot{background-image:url("__ORN_BOT__")}
+h1{
+  /* Cinzel stands in for Brioso Pro / Sava Pro Medium -- the two faces the
+     game's title records ask for and the only two in its font set that are
+     commercially licensed. Everything else here is the real face. */
+  margin:0; font-family:Cinzel, "Libertinus Serif", Georgia, serif;
+  font-weight:600; font-size:clamp(24px,3.4vw,38px); letter-spacing:.06em;
+  color:#E8D7AE; text-wrap:balance;
+  text-shadow:0 0 22px rgba(198,167,107,.28), 0 1px 0 #000;
+}
+.mast p{margin:0; font-family:Jura,system-ui,sans-serif; font-size:12px;
+  letter-spacing:.22em; text-transform:uppercase; color:var(--gold-dim)}
+
+/* ---------- layout ---------- */
+.wrap{max-width:1560px; margin:0 auto; padding:0 var(--s4) var(--s6)}
+.cols{display:grid; grid-template-columns:230px minmax(0,1fr) 400px;
+  gap:var(--s3); align-items:start}
+@media (max-width:1180px){ .cols{grid-template-columns:210px minmax(0,1fr)} .detail{grid-column:1/-1} }
+@media (max-width:760px){ .cols{grid-template-columns:1fr} }
+
+/* ---------- shared small type ---------- */
+.lbl{font-family:Jura,system-ui,sans-serif; font-size:10.5px; font-weight:700;
+  letter-spacing:.2em; text-transform:uppercase; color:var(--gold-dim)}
+.rule{height:3px; background:url("__DIVIDER__") center/100% 3px no-repeat; opacity:.85}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- filter rail ---------- */
+.rail{position:sticky; top:var(--s3)}
+.rail .panel-in{display:flex; flex-direction:column; gap:var(--s4)}
+.fgroup{display:flex; flex-direction:column; gap:var(--s2)}
+.search{width:100%; background:var(--sunk); border:1px solid var(--rule-hi);
+  color:var(--ink); font:400 14px/1.4 "Libertinus Serif",Georgia,serif;
+  padding:7px 9px}
+.search::placeholder{color:var(--faint); font-style:italic}
+.chips{display:flex; flex-wrap:wrap; gap:var(--s1)}
+.chip{font-family:Jura,system-ui,sans-serif; font-size:11px; font-weight:600;
+  letter-spacing:.08em; text-transform:uppercase; color:var(--dim);
+  background:var(--sunk); border:1px solid var(--rule-hi); padding:4px 9px;
+  cursor:pointer}
+.chip:hover{color:var(--ink); border-color:var(--gold-deep)}
+.chip[aria-pressed="true"]{color:#F0E4CE; border-color:var(--gold-dim);
+  background:linear-gradient(#241D12,#1A140D)}
+.chip[data-tier="Legendary"][aria-pressed="true"]{color:var(--t-legendary-ink); border-color:var(--t-legendary)}
+.chip[data-tier="Epic"][aria-pressed="true"]{color:var(--t-epic); border-color:#1E5C74}
+select{width:100%; background:var(--sunk); border:1px solid var(--rule-hi);
+  color:var(--ink); font:400 13px Jura,system-ui,sans-serif; padding:6px 8px}
+.slider{display:flex; align-items:center; gap:var(--s2)}
+input[type=range]{flex:1; accent-color:var(--gold-dim); background:transparent}
+.slider output{font-family:Jura,monospace; font-size:12px; color:var(--gold);
+  min-width:2.4ch; text-align:right}
+.toggle{display:flex; align-items:center; gap:var(--s2); cursor:pointer;
+  font-family:Jura,system-ui,sans-serif; font-size:12px; color:var(--dim)}
+.toggle:hover{color:var(--ink)}
+.toggle input{accent-color:var(--gold-dim); margin:0}
+.reset{align-self:flex-start; font-family:Jura,system-ui,sans-serif; font-size:11px;
+  letter-spacing:.12em; text-transform:uppercase; color:var(--gold-dim);
+  background:none; border:0; padding:2px 0; cursor:pointer;
+  text-decoration:underline; text-underline-offset:3px}
+.reset:hover{color:var(--gold)}
+
+/* ---------- result list ---------- */
+.listhd{display:flex; align-items:baseline; gap:var(--s3); flex-wrap:wrap;
+  padding:var(--s3) var(--s4); border-bottom:1px solid var(--rule)}
+.listhd .count{font-family:Jura,system-ui,sans-serif; font-size:12px; color:var(--dim)}
+.listhd .count b{color:var(--gold); font-weight:700}
+.listhd .spacer{flex:1}
+.rows{max-height:calc(100vh - 210px); overflow-y:auto; overscroll-behavior:contain}
+.row{display:grid; grid-template-columns:52px minmax(0,1fr) auto;
+  gap:var(--s3); align-items:center; width:100%; text-align:left;
+  padding:var(--s2) var(--s4); background:none; border:0; border-bottom:1px solid var(--rule);
+  color:inherit; font:inherit; cursor:pointer}
+.row:hover{background:linear-gradient(90deg,#1E1810,rgba(30,24,16,0))}
+.row[aria-current="true"]{background:linear-gradient(90deg,#241C10,rgba(36,28,16,.15));
+  box-shadow:inset 3px 0 0 var(--gold-dim)}
+
+/* The tile is character/itembackground.tex -- the same slot the inventory
+   draws behind every item. The tier ring replaces the game's own coloured
+   slot glow, which ships only as a legendary variant. */
+.tile{width:52px; height:52px; display:grid; place-items:center;
+  background:url("__SLOT__") center/cover no-repeat, var(--sunk);
+  border:1px solid var(--rule-hi); position:relative}
+.row[data-tier="Legendary"] .tile{border-color:#3E1063;
+  box-shadow:inset 0 0 12px rgba(90,3,154,.55)}
+.row[data-tier="Epic"] .tile{border-color:#1E5C74;
+  box-shadow:inset 0 0 12px rgba(57,171,207,.3)}
+.ico{background-image:url("__ATLAS__"); background-repeat:no-repeat;
+  image-rendering:auto; flex:none}
+.rname{min-width:0}
+.rname .nm{display:block; font-size:15px; line-height:1.25;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.rname .meta{display:block; font-family:Jura,system-ui,sans-serif; font-size:11px;
+  letter-spacing:.06em; color:var(--faint); overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap}
+.rname .meta .setname{color:var(--t-rare)}
+.rlv{font-family:Jura,system-ui,sans-serif; font-size:12px; color:var(--dim);
+  text-align:right; white-space:nowrap}
+.rlv b{display:block; font-size:15px; color:var(--ink); font-weight:600}
+.rlv span{font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--faint)}
+
+.t-Legendary{color:var(--t-legendary-ink)}
+.t-Epic{color:var(--t-epic)}
+.t-Rare{color:var(--t-rare)}
+.t-Magical{color:var(--t-magical)}
+.t-Common{color:var(--t-common)}
+
+.empty{padding:var(--s6) var(--s4); text-align:center; color:var(--faint); font-style:italic}
+
+/* ---------- the tooltip ----------
+   Reading order copies the game's: name, what it is, what it does on its own,
+   what it requires, then everything it adds. */
+.detail{position:sticky; top:var(--s3)}
+.tip{display:flex; flex-direction:column; gap:var(--s3); padding:var(--s4)}
+.tiphead{display:flex; gap:var(--s3); align-items:flex-start}
+.tiptile{flex:none; display:grid; place-items:center; padding:6px;
+  background:url("__SLOT__") center/cover no-repeat, var(--sunk);
+  border:1px solid var(--rule-hi)}
+.tip[data-tier="Legendary"] .tiptile{border-color:#3E1063; box-shadow:inset 0 0 16px rgba(90,3,154,.6)}
+.tip[data-tier="Epic"] .tiptile{border-color:#1E5C74; box-shadow:inset 0 0 16px rgba(57,171,207,.32)}
+.tipname{margin:0; font-family:Cinzel,"Libertinus Serif",Georgia,serif;
+  font-size:19px; font-weight:600; line-height:1.2; letter-spacing:.015em; text-wrap:balance}
+.tip[data-tier="Legendary"] .tipname{text-shadow:0 0 16px rgba(90,3,154,.75)}
+.tip[data-tier="Epic"] .tipname{text-shadow:0 0 16px rgba(57,171,207,.4)}
+.tipkind{font-family:Jura,system-ui,sans-serif; font-size:11px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--dim); margin-top:3px}
+.tipstyle{color:var(--gold)}
+.tipbase{margin:0; color:#EDE3D2; font-size:15px}
+.tipreq{font-family:Jura,system-ui,sans-serif; font-size:12px; color:var(--dim);
+  letter-spacing:.06em}
+.tipreq b{color:var(--ink); font-weight:600}
+.statlist{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:1px}
+.statlist li{font-size:14.5px; color:#9EC9DC}      /* the game prints stats pale blue */
+.skillblock{display:flex; flex-direction:column; gap:var(--s1)}
+.skillblock .grant{color:var(--skill); font-size:15px}
+.skillblock .desc{color:var(--dim); font-style:italic; font-size:13.5px; line-height:1.45}
+.skillblock ul{margin:0; padding:0 0 0 var(--s3); list-style:none;
+  display:flex; flex-direction:column; gap:1px; border-left:1px solid var(--rule-hi)}
+.skillblock li{font-size:13.5px; color:#9EC9DC}
+.tipset{font-size:13.5px; color:var(--t-rare)}
+.tippath{font-family:Jura,ui-monospace,monospace; font-size:10.5px; color:var(--faint);
+  word-break:break-all; line-height:1.4}
+.tipempty{padding:var(--s6) var(--s4); text-align:center; color:var(--faint); font-style:italic}
+
+/* ---------- footer ---------- */
+footer{max-width:1560px; margin:0 auto; padding:var(--s5) var(--s4) var(--s6);
+  display:flex; flex-direction:column; gap:var(--s2)}
+footer p{margin:0; max-width:78ch; font-size:13px; color:var(--dim); line-height:1.6}
+footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(--gold-dim)}
+footer .lbl{margin-bottom:var(--s1)}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <span class="orn orn-top" aria-hidden="true"></span>
+    <h1>Allostria's Armoury</h1>
+    <p>Grim Dawn item catalogue</p>
+    <span class="orn orn-bot" aria-hidden="true"></span>
+  </header>
+
+  <div class="cols">
+    <aside class="rail panel">
+      <div class="panel-in">
+        <div class="fgroup">
+          <span class="lbl">Search</span>
+          <input class="search" id="q" type="search" placeholder="Name, stat or skill…" autocomplete="off">
+        </div>
+
+        <div class="fgroup">
+          <span class="lbl">Rarity</span>
+          <div class="chips" id="tiers"></div>
+        </div>
+
+        <div class="fgroup">
+          <span class="lbl">Slot</span>
+          <select id="slot"><option value="">Any slot</option></select>
+        </div>
+
+        <div class="fgroup">
+          <span class="lbl">Minimum level</span>
+          <div class="slider">
+            <input type="range" id="lv" min="0" max="110" step="5" value="0">
+            <output id="lvout" for="lv">0</output>
+          </div>
+        </div>
+
+        <div class="fgroup">
+          <span class="lbl">Only show</span>
+          <label class="toggle"><input type="checkbox" id="fskill"> Grants a skill</label>
+          <label class="toggle"><input type="checkbox" id="fset"> Part of a set</label>
+          <label class="toggle"><input type="checkbox" id="fmyth"> Mythical or Empowered</label>
+        </div>
+
+        <button class="reset" id="reset" type="button">Clear filters</button>
+      </div>
+    </aside>
+
+    <section class="panel">
+      <div class="listhd">
+        <span class="count" id="count"></span>
+        <span class="spacer"></span>
+        <span class="lbl" style="align-self:center">Sort</span>
+        <select id="sort" style="width:auto">
+          <option value="lv-desc">Level, highest first</option>
+          <option value="lv-asc">Level, lowest first</option>
+          <option value="name">Name, A–Z</option>
+          <option value="slot">Slot</option>
+        </select>
+      </div>
+      <div class="rows" id="rows" tabindex="-1"></div>
+    </section>
+
+    <aside class="detail panel">
+      <div id="tip"></div>
+    </aside>
+  </div>
+</div>
+
+<footer>
+  <span class="lbl">Where this comes from</span>
+  <p>Every item, rarity and slot on this page is read from <code>cache/catalogue.sqlite</code>, the
+     single SQLite database <em>allostrias-archive</em> rebuilds from the game's own archives. The stat
+     and skill lines are rendered from each item's <code>.dbr</code> record; the icons are its
+     <code>bitmap=</code> texture, decoded out of <code>Items.arc</code> and packed onto one sheet. The
+     frame, the item tile and the flourishes above are <code>UI.arc</code> textures, unretouched.</p>
+  <p>Two faces are the game's own — <strong>Jura</strong> for interface labels and
+     <strong>Libertinus&nbsp;Serif</strong>, the continuation of the Linux Libertine the game names as
+     <code>linlibertine_r.fnt</code>, for everything an item says. <strong>Cinzel</strong> stands in for
+     Brioso&nbsp;Pro, which the game licenses and cannot be served here.</p>
+  <p>Scoped to Legendary and Epic equipment for this prototype. Game art and item text are
+     Crate Entertainment's.</p>
+</footer>
+
+<script id="bundle" type="application/json">__BUNDLE__</script>
+<script>
+(() => {
+  "use strict";
+  const B = JSON.parse(document.getElementById("bundle").textContent);
+  const ITEMS = B.items, FRAMES = B.frames, SHEET = B.sheet;
+  /* Its own index, stamped once. Rows are drawn from a filtered, re-sorted
+     copy, so a row has to carry the identity of the item it came from; looking
+     that up with indexOf costs a scan of all 3,271 per row drawn. */
+  ITEMS.forEach((it, i) => { it.i = i; });
+
+  /* An icon is a window onto the packed sheet. Scaling multiplies the frame,
+     the sheet and the offset by one factor, so a 64x128 two-hander and a 32x32
+     ring both land inside the same tile at the same scale. */
+  function iconStyle(path, box){
+    const f = FRAMES[path];
+    if (!f) return null;                         // no layer of the game defines it
+    const [x, y, w, h] = f;
+    const s = Math.min(box / w, box / h, 1);
+    return `width:${w*s}px;height:${h*s}px;`
+         + `background-size:${SHEET[0]*s}px ${SHEET[1]*s}px;`
+         + `background-position:${-x*s}px ${-y*s}px`;
+  }
+
+  const SLOT_ORDER = ["Head","Shoulders","Chest","Hands","Waist","Legs","Feet",
+    "Amulet","Medal","Ring","Relic","Offhand","Shield",
+    "Sword","Sword2h","Axe","Axe2h","Mace","Mace2h","Dagger","Scepter",
+    "Ranged1h","Ranged2h"];
+  const slots = [...new Set(ITEMS.map(i => i.sl).filter(Boolean))]
+    .sort((a,b) => {
+      const ia = SLOT_ORDER.indexOf(a), ib = SLOT_ORDER.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+  const $ = id => document.getElementById(id);
+  const slotSel = $("slot");
+  for (const s of slots) slotSel.add(new Option(s, s));
+
+  const TIERS = [...new Set(ITEMS.map(i => i.c))].sort();
+  const state = {q:"", tiers:new Set(TIERS), slot:"", lv:0,
+                 skill:false, set:false, myth:false, sort:"lv-desc", sel:null};
+
+  $("tiers").innerHTML = TIERS.map(t =>
+    `<button class="chip" type="button" data-tier="${t}" aria-pressed="true">${t}</button>`).join("");
+  $("tiers").addEventListener("click", e => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    const t = b.dataset.tier, on = b.getAttribute("aria-pressed") !== "true";
+    b.setAttribute("aria-pressed", String(on));
+    on ? state.tiers.add(t) : state.tiers.delete(t);
+    render();
+  });
+
+  /* Search reaches into the stat and skill prose as well as the name: "how do
+     I find every item that grants Cold Resist" is the question this catalogue
+     exists to answer, and the name never contains the answer. */
+  const haystack = new WeakMap();
+  function hay(it){
+    let h = haystack.get(it);
+    if (h === undefined){
+      h = (it.n + " " + (it.sl||"") + " " + (it.set||"") + " " +
+           it.base.join(" ") + " " + it.lines.join(" ") + " " + it.skill.join(" ")).toLowerCase();
+      haystack.set(it, h);
+    }
+    return h;
+  }
+
+  function matches(it){
+    if (!state.tiers.has(it.c)) return false;
+    if (state.slot && it.sl !== state.slot) return false;
+    if (state.lv && (it.lv || 0) < state.lv) return false;
+    if (state.skill && !it.skill.length) return false;
+    if (state.set && !it.set) return false;
+    if (state.myth && !it.st) return false;
+    if (state.q && !hay(it).includes(state.q)) return false;
+    return true;
+  }
+
+  const SORTS = {
+    "lv-desc": (a,b) => (b.lv||0)-(a.lv||0) || a.n.localeCompare(b.n),
+    "lv-asc":  (a,b) => (a.lv||0)-(b.lv||0) || a.n.localeCompare(b.n),
+    "name":    (a,b) => a.n.localeCompare(b.n),
+    "slot":    (a,b) => (a.sl||"").localeCompare(b.sl||"") || (b.lv||0)-(a.lv||0),
+  };
+
+  const rows = $("rows");
+  let shown = [], drawn = 0;
+  const PAGE = 120;
+
+  function rowHTML(it, i){
+    const st = iconStyle(it.icon, 46);
+    return `<button class="row" type="button" data-i="${i}" data-tier="${it.c}"
+      ${i === state.sel ? 'aria-current="true"' : ""}>
+      <span class="tile">${st ? `<span class="ico" style="${st}"></span>` : ""}</span>
+      <span class="rname">
+        <span class="nm t-${it.c}">${esc(it.n)}</span>
+        <span class="meta">${esc(it.sl || it.fam || "")}${it.st ? " · " + esc(it.st) : ""}${
+          it.set ? ' · <span class="setname">' + esc(it.set) + "</span>" : ""}</span>
+      </span>
+      <span class="rlv num">${it.lv ? `<b>${it.lv}</b><span>Level</span>` : `<b>—</b><span>Level</span>`}</span>
+    </button>`;
+  }
+
+  function drawMore(){
+    const next = shown.slice(drawn, drawn + PAGE);
+    if (!next.length) return;
+    rows.insertAdjacentHTML("beforeend", next.map(it => rowHTML(it, it.i)).join(""));
+    drawn += next.length;
+  }
+
+  rows.addEventListener("scroll", () => {
+    if (rows.scrollTop + rows.clientHeight > rows.scrollHeight - 400) drawMore();
+  });
+
+  rows.addEventListener("click", e => {
+    const b = e.target.closest(".row"); if (!b) return;
+    select(Number(b.dataset.i));
+  });
+
+  function render(){
+    shown = ITEMS.filter(matches).sort(SORTS[state.sort]);
+    drawn = 0; rows.innerHTML = ""; rows.scrollTop = 0;
+    if (!shown.length){
+      rows.innerHTML = `<p class="empty">No item in the catalogue matches that.</p>`;
+    } else {
+      drawMore();
+      /* One page rarely fills a tall viewport; keep drawing until it scrolls,
+         or the scroll handler that loads the rest can never fire. */
+      let guard = 0;
+      while (rows.scrollHeight <= rows.clientHeight && drawn < shown.length && guard++ < 20) drawMore();
+    }
+    $("count").innerHTML = `<b>${shown.length.toLocaleString()}</b> of ${ITEMS.length.toLocaleString()} items`;
+  }
+
+  function select(i){
+    state.sel = i;
+    for (const el of rows.querySelectorAll('.row[aria-current="true"]')) el.removeAttribute("aria-current");
+    const el = rows.querySelector(`.row[data-i="${i}"]`);
+    if (el) el.setAttribute("aria-current", "true");
+    drawTip(ITEMS[i]);
+  }
+
+  /* The granted-skill block arrives as flat "Skill: line" strings, because the
+     renderer that produces them prefixes every line with the skill it belongs
+     to. Splitting on that prefix is what turns it back into a block; a line
+     that does not carry the prefix is the "Grants:" header itself. */
+  function splitSkill(lines){
+    if (!lines.length) return null;
+    const grant = lines[0];
+    const name = grant.replace(/^Grants:\s*/, "");
+    const rest = lines.slice(1).map(l => l.startsWith(name + ": ") ? l.slice(name.length + 2) : l);
+    const desc = rest.length && !/^[+\-\d]/.test(rest[0]) && !/^\d/.test(rest[0]) ? rest.shift() : null;
+    return {grant, desc, rest};
+  }
+
+  const tip = $("tip");
+  function drawTip(it){
+    if (!it){ tip.innerHTML = `<p class="tipempty">Choose an item to read its record.</p>`; return; }
+    const st = iconStyle(it.icon, 96);
+    const sk = splitSkill(it.skill);
+    tip.innerHTML = `<div class="tip" data-tier="${it.c}">
+      <div class="tiphead">
+        <span class="tiptile">${st ? `<span class="ico" style="${st}"></span>` : ""}</span>
+        <div>
+          <h2 class="tipname t-${it.c}">${esc(it.n)}</h2>
+          <div class="tipkind">${it.st ? `<span class="tipstyle">${esc(it.st)}</span> · ` : ""}${
+            esc(it.c)}${it.sl ? " · " + esc(it.sl) : ""}${it.mi ? " · Monster Infrequent" : ""}</div>
+        </div>
+      </div>
+      <div class="rule"></div>
+      ${it.base.length ? `<p class="tipbase">${it.base.map(esc).join("<br>")}</p>` : ""}
+      ${it.lv ? `<div class="tipreq">Requires <b class="num">Level ${it.lv}</b></div>` : ""}
+      ${it.lines.length ? `<div class="rule"></div>
+        <ul class="statlist">${it.lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
+      ${sk ? `<div class="rule"></div>
+        <div class="skillblock">
+          <span class="grant">${esc(sk.grant)}</span>
+          ${sk.desc ? `<span class="desc">${esc(sk.desc)}</span>` : ""}
+          ${sk.rest.length ? `<ul>${sk.rest.map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
+        </div>` : ""}
+      ${it.set ? `<div class="rule"></div><div class="tipset">Part of ${esc(it.set)}</div>` : ""}
+      <div class="rule"></div>
+      <div class="tippath">${esc(it.path)}</div>
+    </div>`;
+  }
+
+  function esc(s){
+    return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  }
+
+  let t;
+  $("q").addEventListener("input", e => {
+    clearTimeout(t);
+    t = setTimeout(() => { state.q = e.target.value.trim().toLowerCase(); render(); }, 120);
+  });
+  slotSel.addEventListener("change", e => { state.slot = e.target.value; render(); });
+  $("sort").addEventListener("change", e => { state.sort = e.target.value; render(); });
+  $("lv").addEventListener("input", e => {
+    state.lv = Number(e.target.value); $("lvout").value = state.lv; render();
+  });
+  for (const [id, key] of [["fskill","skill"],["fset","set"],["fmyth","myth"]])
+    $(id).addEventListener("change", e => { state[key] = e.target.checked; render(); });
+  $("reset").addEventListener("click", () => {
+    state.q = ""; state.slot = ""; state.lv = 0;
+    state.skill = state.set = state.myth = false;
+    state.tiers = new Set(TIERS);
+    $("q").value = ""; slotSel.value = ""; $("lv").value = 0; $("lvout").value = 0;
+    for (const id of ["fskill","fset","fmyth"]) $(id).checked = false;
+    for (const b of $("tiers").querySelectorAll(".chip")) b.setAttribute("aria-pressed", "true");
+    render();
+  });
+
+  render();
+  /* Open on something worth looking at rather than an empty panel: the highest
+     level legendary that both grants a skill and belongs to a set exercises
+     every band of the tooltip at once. */
+  const opener = shown.find(i => i.c === "Legendary" && i.skill.length && i.set) ||
+                 shown.find(i => i.skill.length) || shown[0];
+  if (opener) select(opener.i);
+})();
+</script>

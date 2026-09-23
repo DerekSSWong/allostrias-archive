@@ -1,0 +1,376 @@
+<title>Grim Dawn UI Element Palette</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Jura:wght@400;500;600;700&family=Libertinus+Serif:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* ---------------------------------------------------------------------------
+   A parts catalogue for Grim Dawn's interface, wearing the interface it
+   catalogues. Same tokens as the Archive prototype on purpose: if the two
+   pages disagree about what the game's gold is, one of them is lying.
+
+   Single theme. The subject has one look and it is dark; every colour is
+   painted explicitly so the page holds on either host ground.
+--------------------------------------------------------------------------- */
+:root{
+  --ground:#0B0A08; --panel:#15120E; --panel-2:#1C1813; --sunk:#0A0907;
+  --ink:#C7BAA9; --dim:#8B8074; --faint:#5F584E;              /* {^H} is the game's body ink */
+  --gold:#C6A76B; --gold-dim:#8A7446; --gold-deep:#5B4B2C;
+  --rule:#2A231A; --rule-hi:#3E3425;
+  /* Kind badges. Four hues off the game's own palette table, far enough apart
+     to be told apart at badge size and none of them a rarity colour -- a green
+     badge must not read as "Rare". */
+  --k-state:#39ABCF;   /* {^B} Blue     -- a control with hover/press states */
+  --k-nine:#F3A44D;    /* {^O} Orange   -- a nine-slice frame */
+  --k-series:#B5A8B9;  /* {^Q} Grayish Magenta -- a numbered run */
+  --k-one:#8B8074;     /* one texture, no family */
+  --s1:4px; --s2:8px; --s3:12px; --s4:18px; --s5:26px; --s6:38px;
+__SHEETVARS__
+}
+*{box-sizing:border-box}
+html{color-scheme:dark}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font:400 14px/1.5 "Libertinus Serif", Georgia, "Times New Roman", serif;
+  background-image:radial-gradient(120% 70% at 50% -10%, #1A150F 0%, rgba(26,21,15,0) 62%);
+  background-attachment:fixed;
+}
+:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+::selection{background:#3A2E18; color:#F0E4CE}
+
+.panel{background:var(--panel); border:__BORDER_SLICE__px solid transparent;
+  border-image:url("__BORDER__") __BORDER_SLICE__ repeat}
+
+.wrap{max-width:1680px; margin:0 auto; padding:0 var(--s4) var(--s6)}
+
+/* ---------- masthead: a working document, so it is a band and not a hero --- */
+.mast{display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding:var(--s5) var(--s3) var(--s3); text-align:center}
+.orn{display:block; height:22px; width:150px; background:url("__ORN_TOP__") center/contain no-repeat}
+h1{margin:0; font-family:Cinzel,"Libertinus Serif",Georgia,serif; font-weight:600;
+  font-size:clamp(21px,2.8vw,31px); letter-spacing:.06em; color:#E8D7AE; text-wrap:balance;
+  text-shadow:0 0 20px rgba(198,167,107,.25), 0 1px 0 #000}
+.mast p{margin:0; max-width:74ch; color:var(--dim); font-size:14px}
+
+.lbl{font-family:Jura,system-ui,sans-serif; font-size:10.5px; font-weight:700;
+  letter-spacing:.2em; text-transform:uppercase; color:var(--gold-dim)}
+
+/* ---------- how to read this ---------- */
+.key{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:0;
+  margin-bottom:var(--s3)}
+.key > div{padding:var(--s3) var(--s4); border-right:1px solid var(--rule)}
+.key > div:last-child{border-right:0}
+.key h3{margin:0 0 3px; font-family:Jura,system-ui,sans-serif; font-size:12px;
+  font-weight:700; letter-spacing:.12em; text-transform:uppercase; display:flex;
+  align-items:center; gap:7px}
+.key .sw{width:9px; height:9px; flex:none}
+.key p{margin:0; font-size:13px; color:var(--dim); line-height:1.45}
+.key b{color:var(--ink); font-weight:400; font-variant-numeric:tabular-nums}
+
+/* ---------- toolbar ---------- */
+.bar{position:sticky; top:0; z-index:5; display:flex; gap:var(--s3); flex-wrap:wrap;
+  align-items:center; padding:var(--s2) var(--s4); margin-bottom:var(--s3);
+  background:linear-gradient(#171310,#120F0C); border-top:1px solid var(--rule-hi);
+  border-bottom:1px solid var(--rule-hi)}
+.search{flex:1; min-width:190px; background:var(--sunk); border:1px solid var(--rule-hi);
+  color:var(--ink); font:400 14px/1.4 "Libertinus Serif",Georgia,serif; padding:6px 9px}
+.search::placeholder{color:var(--faint); font-style:italic}
+.chips{display:flex; flex-wrap:wrap; gap:var(--s1)}
+.chip{font-family:Jura,system-ui,sans-serif; font-size:11px; font-weight:600;
+  letter-spacing:.08em; text-transform:uppercase; color:var(--dim); background:var(--sunk);
+  border:1px solid var(--rule-hi); padding:4px 10px; cursor:pointer}
+.chip:hover{color:var(--ink); border-color:var(--gold-deep)}
+.chip[aria-pressed="true"]{color:#F0E4CE; border-color:var(--gold-dim);
+  background:linear-gradient(#241D12,#1A140D)}
+.hits{font-family:Jura,system-ui,sans-serif; font-size:12px; color:var(--dim); white-space:nowrap}
+.hits b{color:var(--gold); font-weight:700; font-variant-numeric:tabular-nums}
+
+/* ---------- layout ---------- */
+.cols{display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:var(--s3); align-items:start}
+@media (max-width:1020px){ .cols{grid-template-columns:1fr} .side{position:static} }
+
+/* ---------- sections ---------- */
+details.sec{margin-bottom:var(--s3)}
+details.sec > summary{list-style:none; cursor:pointer; display:flex; align-items:baseline;
+  gap:var(--s3); padding:var(--s3) var(--s4); background:linear-gradient(#1B1711,#151109);
+  border-bottom:1px solid var(--rule-hi)}
+details.sec > summary::-webkit-details-marker{display:none}
+details.sec > summary h2{margin:0; font-family:Cinzel,serif; font-size:16px; font-weight:600;
+  letter-spacing:.03em; color:#E2D2AC}
+details.sec > summary .n{font-family:Jura,system-ui,sans-serif; font-size:11.5px;
+  color:var(--faint); font-variant-numeric:tabular-nums}
+details.sec > summary .car{margin-left:auto; color:var(--gold-dim); font-size:11px}
+details.sec[open] > summary .car{transform:rotate(90deg)}
+details.sec > summary .car{display:inline-block; transition:transform .12s}
+@media (prefers-reduced-motion:reduce){details.sec > summary .car{transition:none}}
+
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:1px; background:var(--rule); padding:1px}
+.cell{display:flex; flex-direction:column; gap:6px; align-items:stretch; padding:var(--s2);
+  background:var(--panel); border:0; color:inherit; font:inherit; text-align:left; cursor:pointer}
+.cell:hover{background:var(--panel-2)}
+.cell[aria-current="true"]{background:#241C10; box-shadow:inset 0 0 0 1px var(--gold-dim)}
+/* The checker is what makes an alpha cutout readable -- on a flat dark ground a
+   dark texture with a dark hole looks like a smaller texture. */
+.shot{height:104px; display:grid; place-items:center; overflow:hidden;
+  background-color:#0E0C0A;
+  background-image:linear-gradient(45deg,#17140F 25%,transparent 25%,transparent 75%,#17140F 75%),
+                   linear-gradient(45deg,#17140F 25%,transparent 25%,transparent 75%,#17140F 75%);
+  background-size:14px 14px; background-position:0 0,7px 7px}
+.tex{background-repeat:no-repeat; flex:none}
+.cap{min-width:0}
+.cap .nm{display:block; font-family:Jura,system-ui,sans-serif; font-size:11.5px;
+  line-height:1.3; color:var(--ink); overflow-wrap:anywhere}
+.cap .dm{display:block; font-family:Jura,system-ui,sans-serif; font-size:10px;
+  letter-spacing:.08em; color:var(--faint); font-variant-numeric:tabular-nums; margin-top:2px}
+.badges{display:flex; gap:var(--s1); flex-wrap:wrap}
+.bdg{font-family:Jura,system-ui,sans-serif; font-size:9px; font-weight:700; letter-spacing:.14em;
+  text-transform:uppercase; padding:1px 5px; border:1px solid currentColor; opacity:.9}
+.bdg.state{color:var(--k-state)} .bdg.nine{color:var(--k-nine)}
+.bdg.series{color:var(--k-series)} .bdg.one{color:var(--k-one)}
+.bdg.mask{color:var(--faint)}
+.empty{padding:var(--s6) var(--s4); text-align:center; color:var(--faint); font-style:italic}
+
+/* ---------- detail ---------- */
+.side{position:sticky; top:58px}
+.dt{padding:var(--s4); display:flex; flex-direction:column; gap:var(--s3)}
+.dt h3{margin:0; font-family:Cinzel,serif; font-size:15px; font-weight:600; color:#E2D2AC;
+  overflow-wrap:anywhere}
+.dtshot{min-height:120px; display:grid; place-items:center; padding:var(--s3);
+  background-color:#0E0C0A;
+  background-image:linear-gradient(45deg,#17140F 25%,transparent 25%,transparent 75%,#17140F 75%),
+                   linear-gradient(45deg,#17140F 25%,transparent 25%,transparent 75%,#17140F 75%);
+  background-size:14px 14px; background-position:0 0,7px 7px;
+  border:1px solid var(--rule-hi)}
+.dtrow{display:flex; gap:var(--s2); align-items:center; padding:5px 0;
+  border-bottom:1px solid var(--rule)}
+.dtrow:last-of-type{border-bottom:0}
+.dtrow .st{font-family:Jura,system-ui,sans-serif; font-size:9.5px; font-weight:700;
+  letter-spacing:.12em; text-transform:uppercase; color:var(--gold-dim); min-width:58px}
+.dtrow .px{font-family:Jura,ui-monospace,monospace; font-size:10px; color:var(--faint);
+  margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap}
+.dtrow .thumbnail{flex:none}
+.pathbox{width:100%; background:var(--sunk); border:1px solid var(--rule-hi); color:var(--ink);
+  font:400 11px/1.4 Jura,ui-monospace,monospace; padding:6px 7px; resize:vertical}
+.copy{font-family:Jura,system-ui,sans-serif; font-size:11px; font-weight:600; letter-spacing:.12em;
+  text-transform:uppercase; color:#17120B; background:var(--gold-dim); border:1px solid var(--gold-dim);
+  padding:5px 14px; cursor:pointer; align-self:flex-start}
+.copy:hover{background:var(--gold); border-color:var(--gold)}
+.said{font-family:Jura,system-ui,sans-serif; font-size:11px; color:var(--gold); min-height:1em}
+.note{margin:0; font-size:12.5px; color:var(--dim); line-height:1.5}
+.note code{font-family:Jura,ui-monospace,monospace; font-size:11px; color:var(--gold-dim)}
+
+footer{max-width:1680px; margin:0 auto; padding:var(--s5) var(--s4) var(--s6);
+  display:flex; flex-direction:column; gap:var(--s2)}
+footer p{margin:0; max-width:80ch; font-size:13px; color:var(--dim); line-height:1.6}
+footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(--gold-dim)}
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <span class="orn" aria-hidden="true"></span>
+    <h1>Grim Dawn UI Element Palette</h1>
+    <p>Every interface texture the game ships, decoded and grouped into the elements they
+       actually form. Point at a name here and I will build with that exact texture.</p>
+  </header>
+
+  <section class="panel key" id="key"></section>
+
+  <div class="bar">
+    <input class="search" id="q" type="search" placeholder="Search a name — try “equipslot”, “resistance”, “border”, “tab”…" autocomplete="off">
+    <div class="chips" id="kinds"></div>
+    <span class="hits" id="hits"></span>
+  </div>
+
+  <div class="cols">
+    <main id="sections"></main>
+    <aside class="side panel"><div id="detail"></div></aside>
+  </div>
+</div>
+
+<footer>
+  <span class="lbl">How this was made</span>
+  <p>Read straight out of <code>resources/UI.arc</code> and the three expansion archives beside it.
+     A <code>.tex</code> is a twelve-byte header over a DDS whose magic is <code>DDSR</code>; icons
+     are uncompressed BGRA, chrome is DXT, and the opaque rules and fills are 24-bit. Nothing here is
+     redrawn or recoloured — the only edit is scaling down to a thumbnail, and every tile names its
+     real pixel size.</p>
+  <p>Grouping is derived from the filenames, not curated: Crate ships a button as four files
+     ending <code>up/over/down/disabled</code> and a frame as eight ending
+     <code>lt/ct/rt/lm/rm/lb/cb/rb</code>. A suffix only counts when the family it implies exists,
+     so <code>achievementgroup</code> stays one texture rather than becoming a button's rest state.</p>
+  <p>Art is Crate Entertainment's.</p>
+</footer>
+
+<script id="bundle" type="application/json">__BUNDLE__</script>
+<script>
+(() => {
+  "use strict";
+  const B = JSON.parse(document.getElementById("bundle").textContent);
+  const G = B.groups, FR = B.frames, SECT = B.sections, SH = B.sheets;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  /* A tile is a window onto one of ten sheets. Ten rather than one because a
+     single 255-colour palette cannot cover gold chrome and devotion nebulae at
+     once; the sheet index rides in the frame.
+
+     Shrinking one means scaling the SHEET by the same factor as the window and
+     the offset. Constraining the element with max-width instead moves the
+     window's edge and crops the texture -- which on a 260px assembled frame in
+     a 44px row shows its top-left corner and nothing else. */
+  function tileStyle(t, boxW, boxH){
+    const [s, x, y, w, h] = FR[t];
+    const k = (boxW === undefined) ? 1 : Math.min(boxW / w, boxH / h, 1);
+    return `width:${w*k}px;height:${h*k}px;background-image:var(--s${s});`
+         + `background-size:${SH[s][0]*k}px ${SH[s][1]*k}px;`
+         + `background-position:${-x*k}px ${-y*k}px`;
+  }
+
+  const KINDS = [
+    ["state",  "Controls",  "Four files, one button: its rest, hover, pressed and disabled faces."],
+    ["nine",   "Frames",    "Eight corner and edge pieces that tile into a border of any size."],
+    ["series", "Sets",      "A numbered run meant to be read together — resistances, factions, ranks."],
+    ["one",    "Singles",   "One texture, no family: a background, a mark, a one-off."],
+  ];
+
+  /* The legend counts what the data holds rather than what was typed here, so
+     a regrouped bundle cannot leave the page describing the previous one. */
+  const tally = k => G.filter(g => g.k === k).length;
+  $("key").innerHTML = KINDS.map(([k, name, blurb]) =>
+    `<div><h3><span class="sw" style="background:var(--k-${k})"></span>${name}</h3>
+     <p><b>${tally(k).toLocaleString()}</b> of <b>${G.length.toLocaleString()}</b> elements,
+     from <b>${B.nTextures.toLocaleString()}</b> textures. ${blurb}</p></div>`).join("");
+
+  const state = {q: "", kind: "", sel: null};
+  $("kinds").innerHTML =
+    `<button class="chip" type="button" data-k="" aria-pressed="true">All</button>` +
+    KINDS.map(([k, name]) => `<button class="chip" type="button" data-k="${k}" aria-pressed="false">${name}</button>`).join("");
+
+  /* Search covers every member path, not just the group key: a state group is
+     keyed on the stem, so "buttonrotateleftdisabled" appears in no key at all. */
+  const hay = G.map(g => (g.key + " " + g.mem.map(m => m.p).join(" ")).toLowerCase());
+
+  function label(g){ return g.key.split("/").slice(1).join("/") || g.key; }
+
+  function cellHTML(g, i){
+    const rep = g.asm !== undefined ? g.asm : g.mem[0].t;
+    const m0 = g.mem[0];
+    const dims = g.asm !== undefined ? "assembled" : `${m0.w}×${m0.h}`;
+    const extra = g.mem.length > 1 ? `<span class="bdg ${g.k}">${g.mem.length} parts</span>` : "";
+    const mask = g.mem.some(m => m.m) ? `<span class="bdg mask">mask</span>` : "";
+    return `<button class="cell" type="button" data-i="${i}" ${i === state.sel ? 'aria-current="true"' : ""}>
+      <span class="shot"><span class="tex" style="${tileStyle(rep, 134, 100)}"></span></span>
+      <span class="cap">
+        <span class="nm">${esc(label(g))}</span>
+        <span class="dm">${dims}</span>
+      </span>
+      <span class="badges"><span class="bdg ${g.k}">${
+        {state:"control",nine:"frame",series:"set",one:"single"}[g.k]}</span>${extra}${mask}</span>
+    </button>`;
+  }
+
+  const secs = $("sections");
+  function render(){
+    const q = state.q, kind = state.kind;
+    const buckets = SECT.map(() => []);
+    G.forEach((g, i) => {
+      if (kind && g.k !== kind) return;
+      if (q && !hay[i].includes(q)) return;
+      buckets[g.sec].push(i);
+    });
+    const total = buckets.reduce((n, b) => n + b.length, 0);
+    $("hits").innerHTML = `<b>${total.toLocaleString()}</b> element${total === 1 ? "" : "s"}`;
+
+    if (!total){
+      secs.innerHTML = `<p class="empty">No interface element matches that.</p>`;
+      return;
+    }
+    /* Sections past the first two are closed at rest: 2,480 tiles laid out at
+       once is a slow first paint, and the two this palette was asked for are
+       the two that should be open. A search opens whatever it hit. */
+    secs.innerHTML = SECT.map((name, s) => {
+      const list = buckets[s];
+      if (!list.length) return "";
+      const open = q || kind ? true : s < 2;
+      return `<details class="sec panel" ${open ? "open" : ""}>
+        <summary><h2>${esc(name)}</h2><span class="n">${list.length.toLocaleString()}</span>
+          <span class="car">▸</span></summary>
+        <div class="grid">${list.map(i => cellHTML(G[i], i)).join("")}</div>
+      </details>`;
+    }).join("");
+  }
+
+  secs.addEventListener("click", e => {
+    const b = e.target.closest(".cell");
+    if (b) select(Number(b.dataset.i));
+  });
+
+  function select(i){
+    state.sel = i;
+    for (const el of secs.querySelectorAll('.cell[aria-current="true"]')) el.removeAttribute("aria-current");
+    const el = secs.querySelector(`.cell[data-i="${i}"]`);
+    if (el) el.setAttribute("aria-current", "true");
+    detail(G[i]);
+  }
+
+  const dt = $("detail");
+  function detail(g){
+    if (!g){ dt.innerHTML = `<p class="empty">Pick an element.</p>`; return; }
+    const rep = g.asm !== undefined ? g.asm : g.mem[0].t;
+    const paths = g.mem.map(m => m.p).join("\n");
+    const kindNote = {
+      state: "A control. Use the <code>up</code> face at rest and swap to <code>over</code> and <code>down</code> on hover and press.",
+      nine: "A nine-slice. The corners stay fixed and the four edges tile, so it frames a box of any size — this preview is the pieces assembled.",
+      series: "A numbered set. The run is meant to be read together; the game picks one by index.",
+      one: "A single texture with no family.",
+    }[g.k];
+    dt.innerHTML = `<div class="dt">
+      <h3>${esc(g.key)}</h3>
+      <div class="dtshot"><span class="tex" style="${tileStyle(rep, 272, 200)}"></span></div>
+      <p class="note">${kindNote}</p>
+      <div>
+        <span class="lbl">${g.mem.length} file${g.mem.length === 1 ? "" : "s"}</span>
+        ${g.mem.map(m => `<div class="dtrow">
+            <span class="tex thumbnail" style="${tileStyle(m.t, 44, 30)}"></span>
+            <span class="st">${esc(m.l || "—")}${m.m ? " msk" : ""}</span>
+            <span class="px">${m.w}×${m.h}</span>
+          </div>`).join("")}
+      </div>
+      <span class="lbl">Paths inside UI.arc</span>
+      <textarea class="pathbox" id="paths" rows="${Math.min(8, g.mem.length + 1)}" readonly>${esc(paths)}</textarea>
+      <button class="copy" id="copy" type="button">Copy path${g.mem.length === 1 ? "" : "s"}</button>
+      <span class="said" id="said"></span>
+    </div>`;
+
+    $("copy").addEventListener("click", async () => {
+      const box = $("paths"), said = $("said");
+      box.select();
+      /* The clipboard API is often refused inside a sandboxed frame, and a
+         button that silently does nothing is worse than one that says so --
+         so fall back, then tell the truth either way. */
+      let ok = false;
+      try { await navigator.clipboard.writeText(box.value); ok = true; }
+      catch { try { ok = document.execCommand("copy"); } catch { ok = false; } }
+      said.textContent = ok ? "Copied." : "Couldn't copy — the text is selected, press Ctrl+C.";
+    });
+  }
+
+  let t;
+  $("q").addEventListener("input", e => {
+    clearTimeout(t);
+    t = setTimeout(() => { state.q = e.target.value.trim().toLowerCase(); render(); }, 130);
+  });
+  $("kinds").addEventListener("click", e => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    state.kind = b.dataset.k;
+    for (const c of $("kinds").querySelectorAll(".chip"))
+      c.setAttribute("aria-pressed", String(c === b));
+    render();
+  });
+
+  render();
+  /* Open on the stat window's resistance icons: they are in the window this
+     palette was asked about, they are a real ten-member family, and a set is
+     the kind whose tile needs the most explaining. */
+  const opener = G.findIndex(g => g.key.endsWith("infotabs/resistance"));
+  select(opener >= 0 ? opener : 0);
+})();
+</script>
