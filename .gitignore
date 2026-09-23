@@ -10,3 +10,7 @@ __pycache__/
 *.py[cod]
 .venv/
 node_modules/
+
+# The frozen saves are this player's own characters and must never be
+# committed: cache/ covers build output, this covers the fixtures.
+tests/fixtures/

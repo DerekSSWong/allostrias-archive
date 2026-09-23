@@ -128,17 +128,34 @@ assert one('SELECT count(*) FROM character') == len(characters)
 assert one('SELECT count(*) FROM character_skill') == counts['skills']
 
 # -- 4. what a checksum cannot say: bound devotion, counted twice ----------
-# Block 8 lists the devotion records and block 2 states a total. They are
-# decoded under two different layouts, so agreement is evidence about the
-# meaning of both, not just about the arithmetic.
-for row in conn.execute('SELECT dir_name, devotion_total FROM character'):
+# Block 8 lists the devotion records and block 2 states a total AND a number
+# still unspent. They are decoded under two different layouts, so agreement is
+# evidence about the meaning of both, not just about the arithmetic.
+#
+# ⚠️ THE RULE IS total - unspent, NOT total. This asserted `bound == total` and
+# passed for months because every character anyone had looked at had spent
+# every point they had: the two readings are identical at unspent = 0, and the
+# sample could not tell them apart. _Boomboom earning a point and not spending
+# it is what separated them ([[characterise-dont-sample]]). A count of which
+# characters actually exercise the difference is printed, so this cannot
+# quietly go back to being untested if they all spend up again.
+spenders = []
+for row in conn.execute('SELECT dir_name, devotion_total, devotion_points '
+                        'FROM character'):
     bound = one('SELECT count(*) FROM character_skill WHERE dir_name = ? '
                 'AND devotion_group != 0 AND level > 0', row['dir_name'])
-    assert bound == row['devotion_total'], (
-        f"{row['dir_name']}: {bound} devotion skills bound but block 2 says "
-        f"{row['devotion_total']}")
-print(f"  devotion: block 8's bound count equals block 2's total on all "
-      f"{len(characters)} characters")
+    assert bound == row['devotion_total'] - row['devotion_points'], (
+        f"{row['dir_name']}: {bound} devotion skills bound, but block 2 says "
+        f"{row['devotion_total']} total less {row['devotion_points']} unspent")
+    if row['devotion_points']:
+        spenders.append(row['dir_name'])
+print(f"  devotion: block 8's bound count equals block 2's total less unspent "
+      f"on all {len(characters)} characters")
+if spenders:
+    print(f"    the unspent term is exercised by {', '.join(spenders)}")
+else:
+    print('    ⚠ every character has spent every point, so `- unspent` is '
+          'asserted against nothing and total would pass here too')
 
 # -- 4b. devotion_group partitions the devotion records exactly ------------
 # BOTH DIRECTIONS. A check in one direction passes for a field that is simply

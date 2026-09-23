@@ -38,7 +38,7 @@ from allostrias import settings as S
 from allostrias.archive import arc, arz
 from allostrias.archive import gdc, gst
 from allostrias.archive.savecrypt import SaveError
-from allostrias.db import catalogue, character, iagd, stash
+from allostrias.db import catalogue, character, freeze, iagd, stash
 from allostrias.db.extract import (affixes, bonuses, factions, items, mi,
                                    recipes, shared_pass, skills, vendors,
                                    zones)
@@ -187,6 +187,30 @@ def cmd_rebuild(cfg: S.Settings, args) -> int:
     return 0
 
 
+def cmd_freeze(cfg, args) -> int:
+    """Take, or show, the frozen copy of the saves the gates assert against."""
+    root = S.ROOT
+    if args.list:
+        print(f'frozen saves in {freeze.FIXTURE_RELPATH}/')
+        for line in freeze.describe(root):
+            print(line)
+        return 0
+    try:
+        taken = freeze.freeze(cfg, root)
+    except (SaveError, OSError) as exc:
+        print(f'freeze: {exc}', file=sys.stderr)
+        return 2
+    moved = [n for n, _, changed in taken if changed]
+    print(f'froze {len(taken)} character(s) into {freeze.FIXTURE_RELPATH}/')
+    for name, size, changed in taken:
+        print(f'  {name:<14} {size:>7} B{"   CHANGED" if changed else ""}')
+    if moved:
+        print(f'\n⚠ {len(moved)} fixture(s) changed, so any gate pinned to a '
+              f'number from them may now be asserting the old character: '
+              f'{", ".join(moved)}')
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog='allostrias-archive')
     sub = parser.add_subparsers(dest='command', required=True)
@@ -194,6 +218,10 @@ def main(argv=None) -> int:
     rebuild = sub.add_parser('rebuild', help='rebuild the catalogue')
     rebuild.add_argument('--force', action='store_true',
                          help='rebuild even if the archives are unchanged')
+    frz = sub.add_parser('freeze',
+                         help='copy the live saves into the gate fixture dir')
+    frz.add_argument('--list', action='store_true',
+                     help='show what is frozen instead of refreezing')
     args = parser.parse_args(argv)
 
     try:
@@ -241,7 +269,8 @@ def main(argv=None) -> int:
         stash_failure = stash_failure or exc
         print(f'characters: {exc}', file=sys.stderr)
 
-    code = {'status': cmd_status, 'rebuild': cmd_rebuild}[args.command](cfg, args)
+    code = {'status': cmd_status, 'rebuild': cmd_rebuild,
+            'freeze': cmd_freeze}[args.command](cfg, args)
     return code or (1 if stash_failure else 0)
 
 

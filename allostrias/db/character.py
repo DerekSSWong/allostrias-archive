@@ -96,11 +96,17 @@ def _item_rows(dir_name: str, save: dict):
                _blank(item['augment']))
 
 
-def refresh(cfg) -> dict[str, int]:
-    """Rebuild the character tables. Returns counts, for the caller to show."""
+def refresh(cfg, profile_db: str = None) -> dict[str, int]:
+    """Rebuild the character tables. Returns counts, for the caller to show.
+
+    `profile_db` overrides where they are written. It exists for the frozen
+    fixtures: a gate reads saves that are NOT the live ones and must not write
+    its answer over the profile the live ones filled. Everything else leaves it
+    alone and gets cfg.profile_db.
+    """
     parsed, failed = _read_all(cfg.saves)
 
-    conn = connect(cfg.profile_db)
+    conn = connect(profile_db or cfg.profile_db)
     try:
         apply_schema(conn, SCHEMA_PATH)
         row = conn.execute("SELECT value FROM character_meta "
