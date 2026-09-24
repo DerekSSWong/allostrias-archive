@@ -1985,32 +1985,40 @@ def build_chrome(ui):
         raise SystemExit('UI.arc has no mainmenu/buttongemover')
     out['gem'], out['gemSize'] = png_b64(gem), gem.size
 
-    # The navigation bar under it: the main menu's game-options button, one
-    # texture per state, all four the same size.
-    nav = {}
-    for state in ('up', 'over', 'down', 'disabled'):
-        im = ui.get(f'mainmenu/button_gameoptions_{state}.tex')
-        if im is None:
-            raise SystemExit(f'UI.arc has no mainmenu/button_gameoptions_{state}')
-        nav[state] = im
-    if len({im.size for im in nav.values()}) != 1:
-        raise SystemExit('the game-options button states are not one size')
-    # Stretched to share the page width, so sliced into three across like the
-    # bar above. The frame is stone grain, not flat, so the cap is where the
-    # ornament LAST stands out strongly within each outer third -- measured on
-    # every state, and the widest wins.
-    def nav_cap(im):
-        im = im.convert('RGBA')
-        px, (w, h) = im.load(), im.size
-        mid = [px[w // 2, y] for y in range(h)]
-        off = lambda x: max(max(abs(a - c) for a, c in zip(px[x, y], mid[y])) for y in range(h))
-        return max(1 + max(x for x in range(w // 3) if off(x) >= 120),
-                   w - min(x for x in range(2 * w // 3, w) if off(x) >= 120))
-    ncap = max(nav_cap(im) for im in nav.values())
-    if not 4 < ncap < nav['up'].width // 3:
-        raise SystemExit(f'the nav button ornament measures {ncap}px; that is not an end cap')
-    out['nav'] = {k: png_b64(v) for k, v in nav.items()}
-    out['navSize'], out['navCap'] = nav['up'].size, ncap
+    # The navigation bar under it. Each button is one texture per state, all
+    # four the same size, stretched to share the page width -- so sliced into
+    # three across like the bar above. The frames are stone grain, not flat, so
+    # the cap is where the ornament LAST stands out strongly within each outer
+    # third -- measured on every state, and the widest wins.
+    def nav_states(stem):
+        st = {}
+        for state in ('up', 'over', 'down', 'disabled'):
+            im = ui.get(f'mainmenu/{stem}_{state}.tex')
+            if im is None:
+                raise SystemExit(f'UI.arc has no mainmenu/{stem}_{state}')
+            st[state] = im.convert('RGBA')
+        if len({im.size for im in st.values()}) != 1:
+            raise SystemExit(f'the {stem} states are not one size')
+
+        def cap_of(im):
+            px, (w, h) = im.load(), im.size
+            mid = [px[w // 2, y] for y in range(h)]
+            off = lambda x: max(max(abs(a - c) for a, c in zip(px[x, y], mid[y])) for y in range(h))
+            return max(1 + max(x for x in range(w // 3) if off(x) >= 120),
+                       w - min(x for x in range(2 * w // 3, w) if off(x) >= 120))
+        cap = max(cap_of(im) for im in st.values())
+        if not 4 < cap < st['up'].width // 2:
+            raise SystemExit(f'the {stem} ornament measures {cap}px; that is not an end cap')
+        return {k: png_b64(v) for k, v in st.items()}, st['up'].size, cap
+
+    # The six general buttons, and the Character button that leads the row.
+    out['nav'], out['navSize'], out['navCap'] = nav_states('button_gameoptions')
+    out['navChar'], _, out['navCharCap'] = nav_states('buttonlargeshort01')
+    # The selected button's marker, hung under it.
+    mark = ui.get('mainmenu/buttonscrolldowndown.tex')
+    if mark is None:
+        raise SystemExit('UI.arc has no mainmenu/buttonscrolldowndown')
+    out['navMark'], out['navMarkSize'] = png_b64(mark), mark.size
 
     # The panel-internal rule, for the one seam inside the character sheet:
     # `mainmenu/borderthindivider_ct`, the same hairline family as the frame

@@ -163,17 +163,39 @@ __CLASS_IMAGES__
    every button stays the same width: on a narrow screen seven across would
    crush the ends, so it drops to four columns (4 + 3). Up at rest, over under
    the pointer, down while pressed; disabled is kept for a button that has
-   nothing to open. */
-.navbar{display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); margin-bottom:var(--s3)}
-@media (max-width:760px){ .navbar{grid-template-columns:repeat(4, minmax(0, 1fr))} }
-.navbtn{min-width:0; height:__NAV_H__px; padding:0; background:none;
+   nothing to open. The SELECTED button wears mainmenu/buttonscrolldowndown
+   under it -- native size, scaled down only when the button is narrower --
+   and the row reserves that height, between rows too, so it covers nothing. */
+.navbar{display:grid; grid-template-columns:repeat(7, minmax(0, 1fr));
+  row-gap:__NAV_MARK_H__px; padding-bottom:__NAV_MARK_H__px; margin-bottom:var(--s2)}
+/* Four columns on a narrow screen. Character's ends are twice as wide as the
+   others', so it takes two cells -- which is also what fills the grid exactly:
+   2 + 1 + 1, then 4. */
+@media (max-width:760px){
+  .navbar{grid-template-columns:repeat(4, minmax(0, 1fr))}
+  .navbtn.char{grid-column:span 2}
+}
+.navbtn{position:relative; min-width:0; height:__NAV_H__px; padding:0; background:none;
   border-style:solid; border-color:transparent; border-width:0 __NAV_CAP__px;
   border-image:url("__NAV_UP__") 0 __NAV_CAP__ fill / 0 __NAV_CAP__px stretch;
   cursor:pointer; font-family:Cinzel,serif; font-size:13px; font-weight:600;
   letter-spacing:.08em; color:var(--band-ink); text-shadow:0 1px 2px #000}
 .navbtn:hover{border-image-source:url("__NAV_OVER__")}
-.navbtn:active, .navbtn[aria-current="page"]{border-image-source:url("__NAV_DOWN__")}
+.navbtn:active{border-image-source:url("__NAV_DOWN__")}
 .navbtn:disabled{border-image-source:url("__NAV_DISABLED__"); cursor:default}
+/* The Character button: mainmenu/buttonlargeshort01, same rules and the same
+   share of the row, drawn at the row's height -- its 50px art squashed to fit. */
+.navbtn.char{border-width:0 __NAVC_CAP__px;
+  border-image:url("__NAVC_UP__") 0 __NAVC_CAP__ fill / 0 __NAVC_CAP__px stretch}
+.navbtn.char:hover{border-image-source:url("__NAVC_OVER__")}
+.navbtn.char:active{border-image-source:url("__NAVC_DOWN__")}
+.navbtn.char:disabled{border-image-source:url("__NAVC_DISABLED__")}
+.navbtn[aria-current="page"]::after{content:""; position:absolute; top:100%; left:50%;
+  transform:translateX(-50%); pointer-events:none;
+  width:min(__NAV_MARK_W__px, calc(100% + 2 * __NAV_CAP__px)); height:__NAV_MARK_H__px;
+  background:url("__NAV_MARK__") center top / contain no-repeat}
+.navbtn.char[aria-current="page"]::after{width:min(__NAV_MARK_W__px, calc(100% + 2 * __NAVC_CAP__px))}
+[hidden]{display:none !important}
 /* Pinned to the right end so it never moves the centred row. */
 .bar .refreshbox{position:absolute; right:var(--s2); top:50%; transform:translateY(-50%);
   display:flex; align-items:center; gap:var(--s2)}
@@ -543,18 +565,19 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     </div>
   </div>
 
-  <!-- Placeholders: no button has a destination or a label yet. -->
+  <!-- Character is this view. The other six have no destination or label
+       yet: choosing one hides this view and shows nothing in its place. -->
   <nav class="navbar" id="navbar" aria-label="Sections">
-    <button class="navbtn" type="button" aria-label="Unassigned"></button>
-    <button class="navbtn" type="button" aria-label="Unassigned"></button>
-    <button class="navbtn" type="button" aria-label="Unassigned"></button>
-    <button class="navbtn" type="button" aria-label="Unassigned"></button>
-    <button class="navbtn" type="button" aria-label="Unassigned"></button>
-    <button class="navbtn" type="button" aria-label="Unassigned"></button>
-    <button class="navbtn" type="button" aria-label="Unassigned"></button>
+    <button class="navbtn char" type="button" data-view="character" aria-current="page">Character</button>
+    <button class="navbtn" type="button" data-view="nav2" aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" data-view="nav3" aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" data-view="nav4" aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" data-view="nav5" aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" data-view="nav6" aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" data-view="nav7" aria-label="Unassigned"></button>
   </nav>
 
-  <div class="cols">
+  <div class="cols" id="mainview">
     <div>
       <div id="skillpanels"></div>
       <details class="panel" open>
@@ -1506,7 +1529,20 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     $("railtab").setAttribute("aria-expanded", open ? "true" : "false");
   }
 
+  /* Which view the navigation bar has selected. Character is the page as it
+     has always been; any other button hides it, leaving the drawer, the
+     character bar and the navigation bar. The marker follows aria-current. */
+  function setView(view){
+    $("mainview").hidden = view !== "character";
+    document.querySelectorAll(".navbtn").forEach(b => {
+      if (b.dataset.view === view) b.setAttribute("aria-current", "page");
+      else b.removeAttribute("aria-current");
+    });
+  }
+
   document.addEventListener("click", e => {
+    const nb = e.target.closest(".navbtn");
+    if (nb){ setView(nb.dataset.view); return; }
     if (e.target.closest(".railtab")){
       drawer($("rail").getAttribute("data-open") !== "1"); return;
     }

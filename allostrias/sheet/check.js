@@ -1351,11 +1351,19 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
   // The navigation bar sits between the character bar and the columns, seven
   // buttons wide, and every state it can wear has art behind it.
   const nb=html.indexOf('id="navbar"');
-  want(nb>html.indexOf('<div class="bar">') && nb<html.indexOf('<div class="cols">'),
+  want(nb>html.indexOf('<div class="bar">') && nb<html.indexOf('<div class="cols"'),
        'the navigation bar is not between the character bar and the columns');
   const navHtml=html.slice(nb, html.indexOf('</nav>', nb));
-  want((navHtml.match(/class="navbtn"/g)||[]).length===7,
-       `the navigation bar has ${(navHtml.match(/class="navbtn"/g)||[]).length} buttons, not 7`);
+  const navBtns=navHtml.match(/<button class="navbtn[ "][^>]*>[^<]*/g)||[];
+  want(navBtns.length===7, `the navigation bar has ${navBtns.length} buttons, not 7`);
+  // The first is Character: its own art, this view, and selected on load.
+  want(/class="navbtn char"[^>]*data-view="character"[^>]*aria-current="page"[^>]*>Character$/
+         .test(navBtns[0]||''), `the first navigation button is not a selected Character: ${navBtns[0]}`);
+  for (const st of ['', ':hover', ':active', ':disabled'])
+    want(new RegExp(`\\.navbtn\\.char${st}\\{[^}]*border-image(-source)?:url\\("data:image/png;base64,[^"]{200,}`).test(html),
+         `the Character button has no ${st||'resting'} art`);
+  want(/\.navbtn\[aria-current="page"\]::after\{[^}]*url\("data:image\/png;base64,[^"]{200,}/.test(html),
+       'the selected navigation button has no marker art');
   for (const st of [':hover', ':active', ':disabled'])
     want(new RegExp(`\\.navbtn${st}[^{]*\\{border-image-source:url\\("data:image/png;base64,[^"]{200,}`).test(html),
          `the navigation button has no ${st} art`);
@@ -1464,6 +1472,20 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
     want(p, `${solo.name}'s only mastery has no class number`);
   }
 }
+// ---- the navigation bar switches the view ---------------------------------
+// Character is this view; any other button hides it. Both directions, so
+// "never hides" and "never comes back" each fail.
+{
+  const nav=v=>{ const el={id:'', dataset:{view:v}};
+    el.closest=s=>s==='.navbtn'?el:null; return el; };
+  const mv=get('mainview');
+  want(mv.hidden===false, 'the character view starts hidden');
+  fire('click', nav('nav2'));
+  want(mv.hidden===true, 'choosing another section did not hide the character view');
+  fire('click', nav('character'));
+  want(mv.hidden===false, 'choosing Character did not bring the character view back');
+}
+
 // ---- the pet verdict, driven through the page -----------------------------
 // ⚠️ THE BRANCH THAT MATTERS BELONGS TO A CHARACTER THE PAGE DOES NOT OPEN ON.
 // The opener fields a summon that scales off the PLAYER and can use nothing on
