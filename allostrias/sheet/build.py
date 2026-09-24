@@ -833,7 +833,6 @@ SHEET = [
         R('Crit Damage', 'offensiveCritDamageModifier', pct=True),
         R('Cooldown Reduction', 'skillCooldownReduction', pct=True),
         R('Energy Cost Reduction', 'skillManaCostReduction', pct=True),
-        R('Life Steal', 'offensiveLifeLeechMin', pct=True),
         R('Total Speed', 'characterTotalSpeedModifier', pct=True),
         # A COST, and printed without a leading + in game. Reserved energy is
         # what an aura charges you for keeping it up, so it belongs beside the
@@ -847,6 +846,9 @@ SHEET = [
         R('Block Chance', 'defensiveBlockChance', pct=True),
         R('Damage Blocked', 'defensiveBlock'),
         R('Block Recovery', 'characterDefensiveBlockRecoveryReduction', pct=True),
+        # character*, not defensive* -- a defensive* spelling sums to a silent 0.
+        R('Dodge Chance', 'characterDodgePercent', pct=True),
+        R('Deflect Chance', 'characterDeflectProjectile', pct=True),
         R('Health Regeneration', 'characterLifeRegen', k='mod'),
         R('Energy Regeneration', 'characterManaRegen', k='mod'),
     ]),
@@ -877,6 +879,23 @@ SHEET = [
     ('Retaliation', [
         R('Total Retaliation Damage', 'retaliationTotalDamageModifier', pct=True),
     ] + [R(n, [f'retaliation{s}Min', f'retaliation{s}Max'], k='range') for n, s in DMG]),
+    # The game's own words (tagCharStatsDamageToHealth / DamageReflect /
+    # CurrentLifeReflect). ⚠️ offensiveLifeLeechMin is LIFE STEAL -- "% of Attack
+    # Damage converted to Health" -- not the game's Life Leech, which is a
+    # different stat; GD Lens labels this field Life Leech.
+    ('Leech and Reflect', [
+        R('Life Steal', 'offensiveLifeLeechMin', pct=True),
+        R('Damage Reflect', 'damageAbsorptionReflectPercent', pct=True),
+        R('Life Retaliation', 'offensivePercentCurrentLifeMin', pct=True),
+    ]),
+    # The bonus ON TOP of the base 80 -- the same fields the resist rule reads
+    # its caps from. No Physical row: nothing in the game grants one.
+    ('Max Resistances', [R('All', 'defensiveAllMaxResist', pct=True)]
+                        + [R(n, f, pct=True) for n, f in RESIST_MAX.items()]),
+    ('Misc', [
+        R('Light Radius', 'characterLightRadius', pct=True),
+        R('Experience Gained', 'characterIncreasedExperience', pct=True),
+    ]),
 ]
 
 # Item tooltip lines reuse the sheet's own labels wherever a field appears on
@@ -906,6 +925,9 @@ SECTION_RULE = {
     'Resistances': 'resist', 'Control Resistances': 'control',
     'Bonus Damage': 'linear', 'Damage Modifiers': 'linear',
     'Damage over Time Modifiers': 'linear', 'Retaliation': 'linear',
+    'Leech and Reflect': 'linear', 'Max Resistances': 'linear',
+    # 'Misc' has NO section rule on purpose: its rows are stamped one by one
+    # below, so a row added there without a decision fails the build.
 }
 # A row in one of these is stamped with the damage TYPE it is about, which is
 # what lets the linear rule promote the type a build actually deals and call a
@@ -936,6 +958,9 @@ ROW_RULE = {
     # is nothing to advise. Same call GD Lens makes for Energy Regeneration.
     ('Combat', 'Energy Reserved'): 'none',
     ('Defence', 'Energy Regeneration'): 'none',
+    # Not character power. Nothing to advise (GD Lens makes the same call).
+    ('Misc', 'Light Radius'): 'none',
+    ('Misc', 'Experience Gained'): 'none',
 }
 # The control targets are keyed by the game's full stat name; this sheet's
 # labels drop the word every row in the section shares.

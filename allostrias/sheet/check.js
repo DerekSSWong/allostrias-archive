@@ -1325,6 +1325,12 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
   fire('click', pick);
   want(rail.getAttribute('data-open')==='0', 'picking a character left the drawer open');
   want(get('picker')._html.includes('class="pick"'), 'the drawer renders no characters');
+  // ...and put the opener back. Every gate below reads the rendered DOM against
+  // `opener`; leaving the page on character 1 made them check whoever sits
+  // there, which passed only while that happened to be the opener.
+  const back={id:'',dataset:{c:String(B.characters.indexOf(opener))}};
+  back.closest=s=>s==='.pick'?back:null;
+  fire('click', back);
   // The game's own character-select palette, off its style records. Resting
   // and highlighted are DIFFERENT records, so both must be present -- a page
   // carrying only one looks finished and is half the screen.
