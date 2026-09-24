@@ -171,6 +171,50 @@ for ch in chars:
 assert not leaked, f'petSkillName targets reached the tab: {leaked[:3]}'
 print('  petSkillName (one pet type only) stays out')
 
+# -- 6. who the bonuses are FOR, which is the whole verdict ---------------
+# ⚠️ A SUMMON IS NOT A PET. `Class=Pet` scales off this tab; `PetPlayerScaling`
+# inherits the PLAYER's stats and takes nothing from it. Both spawn from a
+# skill and both look identical to any structural test, so the build reads the
+# game's own class declaration ([[structural-proxy-is-not-evidence]]) and this
+# derives the same answer from the records rather than trusting the list it
+# shipped -- a `vctx.pets` copied out of thin air would match itself.
+scaling = []
+for ch in chars:
+    want_pets, has_scaling = set(), []
+    for sk in ch['skills']:
+        if sk['eff'] <= 0:
+            continue
+        for target in (build.rec(sk['path']) or {}).get('spawnObjects') or []:
+            cls = ((build.rec(target) or {}).get('Class') or [''])[0]
+            if cls == 'Pet':
+                want_pets.add(sk['n'])
+            elif cls == 'PetPlayerScaling':
+                has_scaling.append(sk['n'])
+    got = set(ch['vctx'].get('pets') or [])
+    assert got == want_pets, (
+        f'{ch["name"]}: ships pets={sorted(got)}, the records say '
+        f'{sorted(want_pets)}')
+    if has_scaling and not want_pets:
+        scaling.append((ch['name'], sorted(set(has_scaling))))
+    print(f'  {ch["name"]:<12} {len(want_pets)} real pet skill(s), '
+          f'{len(set(has_scaling))} player-scaling summon(s)')
+if scaling:
+    n, what = scaling[0]
+    print(f'  the trap is live: {n} fields {", ".join(what)} and no real pet, '
+          f'so a "has spawnObjects" test would grant '
+          f'{len(pet_rows)} rows of advice nothing can spend')
+else:
+    uncovered.append('no character summons something player-scaling without '
+                     'also having a real pet, so "not every summon is a pet" '
+                     'is asserted against nothing here')
+
+# ...and the tab is judged, which needs both a rule on the row and a threshold
+# to read. Either half missing leaves 24 rows rendering a mark nothing decided.
+assert all(r.get('rule') == 'pet' for r in pet_rows), (
+    'the pet rows are not stamped with the pet rule: '
+    f'{sorted({r.get("rule") for r in pet_rows})}')
+assert build.TARGETS.get('petBuildDamage'), 'no pet-build threshold is shipped'
+
 if uncovered:
     print('\nUNCOVERED (no frozen character exercises these)')
     for u in uncovered:

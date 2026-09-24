@@ -649,6 +649,34 @@ def conversion_pairs(path):
     return out
 
 
+def real_pets(skills):
+    """The invested skills whose summons can actually USE a pet bonus.
+
+    ⚠️ NOT EVERY SUMMON IS A PET HERE, and the difference is the whole verdict.
+    The game declares two classes: `Class=Pet` scales off pet bonuses, while
+    `Class=PetPlayerScaling` inherits the PLAYER's -- Guardian of Empyrion,
+    Blade Spirit, Wind Devil and every totem are the latter, and pet bonuses do
+    nothing for them however many the gear happens to grant. Characters here
+    field one and no real pet at all, so "has spawnObjects" would hand them a
+    whole tab of advice nothing can spend -- tests/test_pet_bonuses.py names
+    which. This is the game's own class declaration, not a structural proxy
+    ([[structural-proxy-is-not-evidence]]); GD Lens's real_pets() reads it the
+    same way.
+
+    Scope: INVESTED skills. A summon granted by an item is not counted -- the
+    same scope GD Lens has, stated rather than silently assumed.
+    """
+    out = set()
+    for s in skills:
+        if s['eff'] <= 0:
+            continue
+        for target in (rec(s['path']) or {}).get('spawnObjects') or []:
+            if ((rec(target) or {}).get('Class') or [''])[0] == 'Pet':
+                out.add(s['n'])
+                break
+    return sorted(out)
+
+
 def damage_context(worn, skills, C):
     """Everything the verdict needs about damage, resolved here rather than on
     the page: all of it walks game records, which the page cannot read.
@@ -965,12 +993,16 @@ def _apply_rules():
     """
     for sec, rows, bucket in ((t + ('',))[:3] for t in SHEET):
         if bucket:
-            # ⚠️ NO VERDICT ON A PET ROW. The verdict engine grades the
-            # PLAYER against endgame targets; there is no published target for
-            # "+70% pet Damage", and inventing one would be a judgement the
-            # game does not make. These rows render a number and nothing else.
+            # ⚠️ ONE BRANCH FOR THE WHOLE BUCKET, and it asks a different
+            # question from every other rule here. There is no published
+            # endgame target for "+70% pet Damage" and inventing one would be a
+            # judgement the game does not make, so the pet rule never grades a
+            # value against a number: it asks whether the character has a
+            # summon that can use the bonus at all, and whether the pets ARE
+            # the build. Same rule and same section-wide stamp as GD Lens's
+            # sheet.py. See verdict()'s `pet` branch in shell.html.
             for r in rows:
-                r['rule'] = 'none'
+                r['rule'] = 'pet'
             continue
         for r in rows:
             rule = ROW_RULE.get((sec, r['label']), SECTION_RULE.get(sec))
@@ -2078,6 +2110,9 @@ def main(profile_db=None, out_dir=None):
         # After the skills, because it reads their EFFECTIVE levels -- a
         # conversion on a transmuter is read at the rank gear has lifted it to.
         vctx = damage_context(worn, skills, C)
+        # Which summons can use a pet bonus -- a record walk, so it is answered
+        # here with everything else the page cannot derive.
+        vctx['pets'] = real_pets(skills)
         masteries = [s for s in skills if s['cls'] == 'Skill_Mastery']
         out.append({
             'dir': dn, 'name': ch['name'], 'level': ch['level'],

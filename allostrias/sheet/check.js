@@ -453,16 +453,20 @@ for (const c of B.characters)
   want(VERDICTS.length===4, `the legend declares ${VERDICTS.length} marks, not 4`);
   want(T && T.control && T.endgame && T.pct, 'the bundle carries no targets');
   // Every row is stamped, and only with rules this page can actually answer.
-  const RULES=new Set(['resist','control','benchmark','linear','none','withheld']);
+  const RULES=new Set(['resist','control','benchmark','linear','none','withheld','pet']);
   const unruled=B.sheet.flatMap(([sec,l])=>l.filter(r=>!RULES.has(r.rule))
     .map(r=>`${sec}/${r.label}=${r.rule}`));
   want(unruled.length===0, `rows with no usable rule: ${unruled.slice(0,4)}`);
-  // `pet` and `mastery` are ported and must stay unreachable: this sheet has no
-  // pet-bonus section and no "+N to a mastery" row, so a row carrying either
-  // would be judged by a branch nothing feeds.
-  const unreachable=B.sheet.flatMap(([sec,l])=>l.filter(r=>r.rule==='pet'||r.mastery)
+  // `mastery` is ported and must stay unreachable: this sheet has no "+N to a
+  // mastery" row, so a row carrying it would be judged by a branch nothing
+  // feeds. `pet` IS fed now -- the whole Pet Bonuses section -- and is driven
+  // through the page at the bottom of this file.
+  const unreachable=B.sheet.flatMap(([sec,l])=>l.filter(r=>r.mastery)
     .map(r=>`${sec}/${r.label}`));
   want(unreachable.length===0, `a row uses a branch this page cannot feed: ${unreachable}`);
+  // Without a threshold the pet rule's `>= (T.petBuildDamage || Infinity)`
+  // reads false forever and every pet row silently drops to the value test.
+  want(T.petBuildDamage>0, 'the bundle carries no pet-build threshold');
   // Every benchmark and control row names a target that exists -- a missing key
   // reads as `ignore`, which is a verdict, so it cannot be left to fall through.
   B.sheet.forEach(([sec,l])=>l.forEach(r=>{
@@ -1397,6 +1401,110 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
     want(p, `${solo.name}'s only mastery has no class number`);
   }
 }
+// ---- the pet verdict, driven through the page -----------------------------
+// ⚠️ THE BRANCH THAT MATTERS BELONGS TO A CHARACTER THE PAGE DOES NOT OPEN ON.
+// The opener fields a summon that scales off the PLAYER and can use nothing on
+// this tab, so a gate that only reads what boots would prove the pet rule by
+// never running it. The page's functions are private to new Function(code), so
+// reach the other character the way a reader does -- pick them, and read the
+// marks the page's own verdict() drew.
+//
+// LAST, and it puts the opener back: every gate above reads the rendered DOM,
+// and this is the only block that moves off the character they were written
+// against.
+{
+  const T=B.targets;
+  const petRows=(B.sheet.find(x=>x[0]==='Pet Bonuses')||[,[]])[1];
+  want(petRows.length>0 && petRows.every(r=>r.rule==='pet'),
+       'the Pet Bonuses rows are not stamped with the pet rule');
+  const pick=i=>{ const el={id:'',dataset:{c:String(i)}};
+                  el.closest=sel=>sel==='.pick'?el:null; fire('click', el); };
+  const petMarks=()=>{
+    const grp=(get('sheet')._html.split('<div class="grp">')
+      .find(g=>g.includes('>Pet Bonuses<')))||'';
+    return [...grp.matchAll(/<span class="vd"(?: data-v="(\w+)")?><\/span>/g)].map(m=>m[1]||null);
+  };
+  const petDamage=c=>{
+    const on=new Set(c.toggles.filter(t=>t.kind==='toggle'||t.kind==='granted').map(t=>t.id));
+    return ((c.petContrib||{}).offensiveTotalDamageModifier||[])
+      .reduce((n,[v,,tid])=>n+(!tid||on.has(tid)?v:0), 0);
+  };
+  const iOpen=B.characters.indexOf(opener);
+
+  // 1. NO REAL PET -> every row neutral, however well fed the bucket is. This
+  //    is the player-scaling trap as it renders: the opener has pet bonuses,
+  //    and no summon that can spend them.
+  want((opener.vctx.pets||[]).length===0,
+       `${opener.name} has a real pet now, so this block no longer checks the `
+       + `"summon that is not a pet" case -- rewrite it against a character that does not`);
+  want(Object.keys(opener.petContrib||{}).length>0,
+       `${opener.name} has no pet bonuses at all, so "fed but unusable" is vacuous here`);
+  {
+    const m=petMarks();
+    want(m.length===petRows.length, `${m.length} pet gutters for ${petRows.length} rows`);
+    want(m.every(v=>v==='ignore'),
+         `${opener.name} has no pet that can use a bonus, so every pet row is `
+         + `neutral -- got ${[...new Set(m)]}`);
+  }
+
+  // 2. A PET BUILD -> priority on every row, the zeroes included. That is the
+  //    claim the rule makes and the one worth getting wrong: at this much
+  //    invested pet damage a 0% pet resist is a hole, not a non-issue.
+  const iPet=B.characters.findIndex(c=>(c.vctx.pets||[]).length>0
+                                       && petDamage(c)>=T.petBuildDamage);
+  if (iPet<0) uncovered.push(
+    'no frozen character is a pet build, so the pet rule\'s priority branch '
+    + 'runs in no gate -- freeze one to cover it');
+  else {
+    const c=B.characters[iPet];
+    pick(iPet);
+    const m=petMarks();
+    want(m.length===petRows.length, `${m.length} pet gutters for ${c.name}`);
+    want(m.every(v=>v==='priority'),
+         `${c.name} carries ${petDamage(c)}% pet damage over ${T.petBuildDamage} `
+         + `and ${c.vctx.pets.length} real pet skill(s), so every pet row is a `
+         + `priority -- got ${[...new Set(m)]}`);
+    const bt={}; for (const [f,rs] of Object.entries(c.petContrib||{}))
+      for (const [v] of rs) bt[f]=(bt[f]||0)+v;
+    const zero=petRows.filter(r=>!(r.f||[]).some(f=>bt[f]));
+    want(zero.length>0 && m[petRows.indexOf(zero[0])]==='priority',
+         `${c.name}'s empty pet rows must be priorities too -- a zero on a pet `
+         + `build is the gap, and ${zero.length} row(s) are empty`);
+    console.log(`pet verdict: ${opener.name} neutral on ${petRows.length} rows `
+      + `(no real pet, ${Object.keys(opener.petContrib||{}).length} fields fed), `
+      + `${c.name} priority on ${petRows.length} (${petDamage(c)}% pet damage, `
+      + `pets: ${c.vctx.pets.join(', ')})`);
+    pick(iOpen);                      // back to the character every gate above read
+  }
+
+  // 3. The middle of the rule -- a real pet, but not a pet build -- is where
+  //    the row's own VALUE decides, and it is the only place the bucket the
+  //    number comes from can be seen. No frozen character is in that window,
+  //    so the bucket choice is asserted as SOURCE and the gap is printed
+  //    rather than left looking covered.
+  if (!B.characters.some(c=>(c.vctx.pets||[]).length>0 && petDamage(c)<T.petBuildDamage))
+    uncovered.push('no frozen character has a real pet without being a pet '
+      + 'build, so the pet rule never reads a row VALUE here -- which is the '
+      + 'only case where judging a pet row against the player bucket would show');
+  want(/const bt = bucket \? pt : t;/.test(html)
+       && /rowNumber\(ch, entry\[2\] \? pt : t, row\)/.test(html),
+       'a pet row is judged against the player bucket somewhere -- defensiveFire '
+       + 'is a field in both, so the mark drawn and the mark a click steps from '
+       + 'would silently differ');
+  // Choosing a character must leave the same state booting does. The picker
+  // used to clear every toggle, and a buff-gated pet bonus can cross the
+  // pet-build threshold, so "which character you came from" could change advice.
+  want(/function select\(i\)\{/.test(html)
+       && !/if \(p\)\{ state\.i = /.test(html),
+       'the picker sets the character up its own way again');
+  {
+    const on=(get('toggles')._html.match(/aria-pressed="true"/g)||[]).length;
+    const dflt=opener.toggles.filter(t=>t.kind==='toggle'||t.kind==='granted').length;
+    want(on===dflt, `after picking a character ${on} toggles are on, `
+      + `${opener.name} boots with ${dflt}`);
+  }
+}
+
 // ---- the collapse arrow is the game's own panel button --------------------
 want(/details\.panel > summary\.hd::after\{[^}]*background:url\("data:image\/png;base64,[^"]{400,}"\)/
      .test(html), 'the collapse arrow is not the vendor panel texture');

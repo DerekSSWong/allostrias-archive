@@ -671,11 +671,12 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
      questions at build time and ships the answers in `ch.vctx`. Everything
      below reads them; nothing below re-derives them.
 
-     The `pet` and `mastery` branches are ported and unreachable on purpose:
-     this sheet has no pet-bonus section and no "+N to a mastery" row, so no row
-     carries those rules. They stay so the port is the whole rule set rather
-     than the half that happened to apply, and check_sheet asserts no row uses
-     them. */
+     The `mastery` branch is ported and unreachable on purpose: this sheet has
+     no "+N to a mastery" row, so no row carries it. It stays so the port is the
+     whole rule set rather than the half that happened to apply, and check_sheet
+     asserts no row uses it. The `pet` branch IS reached -- it is the whole Pet
+     Bonuses section -- and it is the one rule that needs the other bucket, so
+     everything that computes a verdict has to say which bucket it is in. */
   const T = B.targets;
 
   const CONV_TYPE = {Poison: "Acid", Life: "Vitality"};
@@ -880,12 +881,21 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   const targetBand = (key, target) =>
     (T.pct || {})[key] !== undefined ? target + T.sigma : target * 1.25;
 
-  function verdictContext(ch, t){
+  function verdictContext(ch, t, pt){
     return {level: ch.level, difficulty: ch.difficulty,
             resist: resistances(ch, t),
             resistUnrolled: ch.vctx.resistUnrolled || {},
             canBlock: (t.defensiveBlockChance || 0) > 0,
-            hasPets: false, petBuild: false,
+            /* ⚠️ A SUMMON IS NOT A PET. A player-scaling summon inherits the
+               PLAYER's stats and takes nothing off this tab, and nothing about
+               its shape says so -- the build walks the summon's own class
+               declaration and ships what it found. */
+            hasPets: (ch.vctx.pets || []).length > 0,
+            /* Read from the PET bucket. The player's own
+               offensiveTotalDamageModifier is a different number about a
+               different subject, and it is the one `t` holds. */
+            petBuild: (pt.offensiveTotalDamageModifier || 0)
+                      >= (T.petBuildDamage || Infinity),
             damage: damageProfile(ch, t),
             invested: ch.vctx.invested || {},
             masteries: ch.skills.filter(s => s.cls === "Skill_Mastery").map(s => s.n)};
@@ -932,6 +942,21 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     } catch (e) { /* nothing stored, nothing lost -- the session still works */ }
   }
 
+  /* Choosing a character is one act in three places -- boot, the picker and a
+     refresh -- and the three had drifted: the picker left every buff OFF where
+     the other two switch the plain ones on, so the same character read two
+     different ways depending on how you reached them. A pet verdict is decided
+     off the toggled pet totals, so that difference now changes advice.
+
+     A duration buff starts OFF because in game it would not be up. */
+  function select(i){
+    state.i = i;
+    state.on = new Set();
+    for (const t of CH[i].toggles)
+      if (t.kind === "toggle" || t.kind === "granted") state.on.add(t.id);
+    loadOver(CH[i]);
+  }
+
   /* `dir` is the step: +1 on a click, -1 on a right-click.
 
      Landing back on the engine's OWN answer clears the override rather than
@@ -939,10 +964,15 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
      and the store only ever holds rows a reader actually moved. */
   function cycleVerdict(sec, ri, dir){
     const ch = CH[state.i];
-    const row = (SHEET.find(x => x[0] === sec) || [, []])[1][ri];
+    const entry = SHEET.find(x => x[0] === sec) || [, []];
+    const row = entry[1][ri];
     if (!row) return;
-    const t = totals(ch);
-    const computed = verdict(row, rowNumber(ch, t, row), verdictContext(ch, t));
+    const t = totals(ch), pt = totals(ch, "pet");
+    /* ⚠️ THE ROW'S OWN BUCKET. `defensiveFire` is a field in both, so judging a
+       pet row against the player's totals would step away from a mark the
+       painter never drew. */
+    const computed = verdict(row, rowNumber(ch, entry[2] ? pt : t, row),
+                             verdictContext(ch, t, pt));
     /* A row the engine withheld is not a control: there is no answer to step
        away from, and inventing a starting point would state advice the engine
        refused to give. */
@@ -1038,22 +1068,23 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   }
 
   /* The one number the verdict judges, by the same rule the row prints it: a
-     range row's magnitude is its whole span. Shared with cycleVerdict, so the
-     mark a click steps away from is the mark the painter drew. */
+     range row's magnitude is its whole span, and a capped row is judged at the
+     ceiling it displays. Shared with cycleVerdict, so the mark a click steps
+     away from is the mark the painter drew. */
   function rowNumber(ch, t, r){
-    const v = rowValue(ch, t, r);
+    const v = capped(r, rowValue(ch, t, r));
     return Array.isArray(v) ? v[0] + v[1] : v;
   }
 
   function renderSheet(ch){
-    const t = totals(ch);
-    const ctx = verdictContext(ch, t);
+    const t = totals(ch), pt = totals(ch, "pet");
+    const ctx = verdictContext(ch, t, pt);
     const shown = (sec, r, computed) =>
       computed ? (state.over[vkey(sec, r.label)] || computed) : null;
     $("sheet").innerHTML = SHEET.map(([name, list, bucket]) => {
       /* A bucketed section reads its own contributions and is computed once
          per render, like the player's. */
-      const bt = bucket ? totals(ch, bucket) : t;
+      const bt = bucket ? pt : t;
       const body = list.map((r, ri) => {
         const v = capped(r, rowValue(ch, bt, r));
         if (Array.isArray(v)) {
@@ -1376,8 +1407,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
       drawer($("rail").getAttribute("data-open") !== "1"); return;
     }
     const p = e.target.closest(".pick");
-    if (p){ state.i = Number(p.dataset.c); state.on = new Set();
-            loadOver(CH[state.i]); render(); drawer(false); return; }
+    if (p){ select(Number(p.dataset.c)); render(); drawer(false); return; }
     // clicking anywhere else shuts it, the way the game's own tab behaves
     if (!e.target.closest("#rail")) drawer(false);
     const t = e.target.closest(".tg");
@@ -1407,8 +1437,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   });
 
   /* Open on the character with the most to show -- derived, so it follows the
-     data rather than a name typed here -- with every plain toggle on. A
-     duration buff starts OFF because in game it would not be up. */
+     data rather than a name typed here. */
   /* ⚠️ BUCKETED SECTIONS DO NOT VOTE. "The most to show" has always meant the
      character sheet, and a pet tab is a different subject -- letting it choose
      would open the page on whoever has pets rather than on whoever has the
@@ -1419,9 +1448,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     n + list.filter(r =>
       r.k === "attr" || r.k === "pool" || r.k === "ability" ||
       (r.f || []).some(f => c.contrib[f])).length, 0);
-  state.i = CH.reduce((best, c, i) => fedRows(c) > fedRows(CH[best]) ? i : best, 0);
-  for (const t of CH[state.i].toggles) if (t.kind === "toggle" || t.kind === "granted") state.on.add(t.id);
-  loadOver(CH[state.i]);
+  select(CH.reduce((best, c, i) => fedRows(c) > fedRows(CH[best]) ? i : best, 0));
 
   /* The refresh button only means anything when a local process is serving this
      page; it asks that process to re-read the saves into profile.sqlite and hand
@@ -1450,10 +1477,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
          longer be the same person. Hold the NAME, not the position. */
       const wasName = (CH[state.i] || {}).name;
       const again = CH.findIndex(c => c.name === wasName);
-      state.i = again >= 0 ? again : 0;
-      state.on = new Set();
-      for (const t of CH[state.i].toggles)
-        if (t.kind === "toggle" || t.kind === "granted") state.on.add(t.id);
+      select(again >= 0 ? again : 0);
       render();
       note.textContent = "read in " + d.seconds + "s"
         + (d.unreadable ? " · " + d.unreadable + " save(s) unreadable" : "");
