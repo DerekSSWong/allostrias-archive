@@ -905,6 +905,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   function verdictContext(ch, t, pt){
     return {level: ch.level, difficulty: ch.difficulty,
             pools: damagePools(ch, t),
+            conv: ch.vctx.conv || {},
             resist: resistances(ch, t),
             resistUnrolled: ch.vctx.resistUnrolled || {},
             canBlock: (t.defensiveBlockChance || 0) > 0,
@@ -1028,6 +1029,16 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     const dtype = row.dtype, mech = row.mech, dmg = ctx.damage || {};
     /* Zero measurable damage is a STATED condition, not a silent empty. */
     if ((dtype || mech) && dmg.blind) return "ignore";
+    /* Sheet-only: flat damage mostly converted into a main type is feeding
+       that type, so its flat row is Neutral. Its % row still falls through to
+       Avoid below -- a modifier of the SOURCE type does nothing for damage that
+       is no longer that type. Global conversions only, and direct ones:
+       Pierce -> Fire -> Acid counts as Pierce -> Fire. */
+    if (row.dmgPool === "Bonus Damage"){
+      let moved = 0;
+      (dmg.wanted || []).forEach(w => { moved += ctx.conv[dtype + "|" + w] || 0; });
+      if (moved > T.convertedToMain) return "ignore";
+    }
     /* Sheet-only: a type under poolFloor of EITHER pool is `avoid` on both its
        flat and its % row, whatever the rest of the build says about it. */
     if (row.dmgPool){

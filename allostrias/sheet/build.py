@@ -582,6 +582,9 @@ SHEET_TARGETS = {
     # A damage type under this share of EITHER pool -- the Bonus Damage rows
     # summed, or the Damage Modifiers rows summed -- is `avoid` on both rows.
     'poolFloor': 0.10,
+    # A type with MORE than this % globally converted straight into one of the
+    # build's main types is Neutral on its flat row, not Avoid.
+    'convertedToMain': 50,
 }
 
 # The game's own type words, and the two it spells differently from the sheet.
@@ -694,20 +697,31 @@ def damage_context(worn, skills, C):
 
     ⚠️ ONE DELIBERATE DIVERGENCE. GD Lens finds a modifier's parent by matching
     the record-name STEM, which merges unrelated skills; this build already
-    resolves parentage from `skillDependancy` for the mastery panels, and uses
-    that. Same question, better answer, and the answer only decides whether a
-    transmuter's conversion is global or scoped to one attack.
+    resolves parentage for the mastery panels -- `skillDependancy`, then the
+    display-tag family -- and uses the same two steps. Same question, better
+    answer, and the answer only decides whether a transmuter's conversion is
+    global or scoped to one attack.
     """
     by_path = {s['path']: s for s in skills}
+    heads = {}
+    for s in skills:
+        m = TAG_FAMILY.match(display_tag(s['path']) or '')
+        if m and m.group(3) == 'A':
+            heads[m.group(1, 2)] = s
 
     def parent_always_on(path):
-        for dep in dependencies(rec(path) or {}):
-            p = by_path.get(dep)
-            if not p:
-                continue
-            return p['cls'] == 'Skill_Passive' or 'Toggled' in p['cls'] \
-                or p['cls'] == 'Skill_Shapeshift'
-        return False
+        p = next((by_path[d] for d in dependencies(rec(path) or {}) if d in by_path), None)
+        if p is None:
+            # A transmuter often declares no dependency at all -- Wereraven's
+            # Talons of Cthon is one -- and hangs off its family's `A` skill.
+            m = TAG_FAMILY.match(display_tag(path) or '')
+            p = heads.get(m.group(1, 2)) if m else None
+            if p is not None and p['path'] == path:
+                p = None
+        if p is None:
+            return False
+        return p['cls'] == 'Skill_Passive' or 'Toggled' in p['cls'] \
+            or p['cls'] == 'Skill_Shapeshift'
 
     gear = []
     for r in worn:
@@ -1060,7 +1074,7 @@ def _apply_rules():
                 if t in DAMAGE_TYPE_NAMES:
                     r['dtype'] = t
                     if sec in POOL_SECTIONS:
-                        r['dmgPool'] = True
+                        r['dmgPool'] = sec
                 if MECHANISM.get(sec):
                     r['mech'] = MECHANISM[sec]
 
