@@ -134,14 +134,14 @@ __CLASS_IMAGES__
 .num{font-variant-numeric:tabular-nums}
 
 /* ---------- character bar ----------
-   inventor/crafting_completionbuttondown, sliced into three across at its
-   measured cap: the gold end ornaments at native size, the middle repeating
-   (it is grain, not a gradient, so stretching it would smear). Native height.
+   mainmenu/buttonlargefancy01_up, sliced into three across at its
+   measured cap: the gold end ornaments at native size, the middle stretched
+   (it is a smooth vignette, so repeating it would seam). Native height.
    Difficulty, name and level, centred, with mainmenu/buttongemover between. */
 .bar{position:relative; display:flex; align-items:center; justify-content:center;
   height:__BAR_H__px; margin-bottom:var(--s3); padding:0 var(--s2);
   border-style:solid; border-color:transparent; border-width:0 __BAR_CAP__px;
-  border-image:url("__BAR_FRAME__") 0 __BAR_CAP__ fill / 0 __BAR_CAP__px round stretch}
+  border-image:url("__BAR_FRAME__") 0 __BAR_CAP__ fill / 0 __BAR_CAP__px stretch}
 .who{display:flex; align-items:center; gap:var(--s3); min-width:0; white-space:nowrap}
 .who .nm{font-family:Cinzel,serif; font-size:21px; font-weight:600; color:#E8D7AE;
   line-height:1; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 2px #000}

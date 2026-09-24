@@ -1964,13 +1964,13 @@ def build_chrome(ui):
 
     out['divider'] = png_b64(ui.get('generic/listboxdivider.tex'))
 
-    # The character bar wears the crafting window's completion button, sliced
-    # into three across: the gold end ornaments stay native and the dark-red
-    # middle repeats. The cap is MEASURED -- the first column, from each end,
-    # that stops differing sharply from the middle one -- not typed.
-    bar = ui.get('inventor/crafting_completionbuttondown.tex')
+    # The character bar wears the main menu's large fancy button, sliced into
+    # three across: the gold end ornaments stay native and the dark-red middle
+    # stretches. The cap is MEASURED -- the first column, from each end, that
+    # stops differing sharply from the middle one -- not typed.
+    bar = ui.get('mainmenu/buttonlargefancy01_up.tex')
     if bar is None:
-        raise SystemExit('UI.arc has no inventor/crafting_completionbuttondown')
+        raise SystemExit('UI.arc has no mainmenu/buttonlargefancy01_up')
     bar = bar.convert('RGBA')
     bpx, (bw, bh) = bar.load(), bar.size
     mid = [bpx[bw // 2, y] for y in range(bh)]
