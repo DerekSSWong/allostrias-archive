@@ -564,9 +564,9 @@ TARGETS = {
     'petBuildDamage': 250,
     'mechanismDominance': 0.5,
     'control': {
-        'Stun Resist': 60, 'Freeze Resist': 40, 'Trap Resist': 40,
-        'Slow Resist': 30, 'Life Leech Resist': 20, 'Petrify Resist': 0,
-        'Sleep Resist': 0, 'Disruption Resist': 0, 'Energy Leech Resist': 0,
+        'Stun Resist': 80, 'Freeze Resist': 80, 'Trap Resist': 60,
+        'Slow Resist': 60, 'Life Leech Resist': 20, 'Petrify Resist': 80,
+        'Sleep Resist': 0, 'Disruption Resist': 60, 'Energy Leech Resist': 0,
         'Reflect Resist': 0,
     },
     'endgame': {'OffensiveAbility': 2500, 'DefensiveAbility': 2600,
