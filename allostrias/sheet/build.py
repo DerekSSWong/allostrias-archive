@@ -869,7 +869,11 @@ SHEET = [
     ]),
     ('Bonus Damage', [R(n, [f'offensive{s}Min', f'offensive{s}Max'], k='range')
                       for n, s in DMG]),
-    ('Damage Modifiers', [R(n, f'offensive{s}Modifier', pct=True) for n, s in DMG]),
+    # % Elemental is part of the game's Fire, Cold and Lightning modifiers, the
+    # same way Elemental Resist is part of each resist row above.
+    ('Damage Modifiers', [R(n, [f'offensive{s}Modifier']
+                            + (['offensiveElementalModifier'] if n in ELEMENTAL_SPLIT else []),
+                            pct=True) for n, s in DMG]),
     ('Damage over Time Modifiers', [
         R(n, f'offensiveSlow{s}Modifier', pct=True)
         for n, s in [('Burn', 'Fire'), ('Frostburn', 'Cold'), ('Electrocute', 'Lightning'),

@@ -1015,8 +1015,11 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
          WITHHELD when `wanted` is empty -- a reader that cannot say what the
          build IS has no standing to say what it is not. */
       const chans = [];
+      /* Elemental is skipped: the build already folds every Elemental line
+         into the Fire, Cold and Lightning channels, so counting it here too
+         would double a row's support. */
       (row.f || []).map(damageChannel).forEach(c => {
-        if (c && chans.indexOf(c) === -1) chans.push(c);
+        if (c && c.indexOf("Elemental") === -1 && chans.indexOf(c) === -1) chans.push(c);
       });
       let support = 0;
       chans.forEach(c => { support += (ctx.invested || {})[c] || 0; });
