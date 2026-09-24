@@ -1123,7 +1123,9 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     }
 
     if (rule === "pet"){
-      if (!ctx.hasPets) return "ignore";
+      /* No invested skill summons a pet that scales off pet bonuses, so there
+         is nothing a pet bonus can reach: every line is Avoid. */
+      if (!ctx.hasPets) return "avoid";
       if (ctx.petBuild) return "priority";
       return v ? "nice" : "ignore";
     }

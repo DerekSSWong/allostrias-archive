@@ -511,12 +511,13 @@ for (const c of B.characters)
   for (const v of ['priority','nice','ignore','avoid'])
     want(marks.indexOf(v)!==-1,
       `${opener.name} renders no "${v}" mark, so that branch is unexercised`);
-  // `avoid` is a statement about a damage TYPE, so only a typed row may carry
-  // it. A row flag that collided with an existing key once sent Health and
-  // Energy to avoid on every character with nothing here noticing.
+  // `avoid` is a statement about a damage TYPE, or about a pet bonus nothing
+  // can spend -- only a typed row or a pet row may carry it. A row flag that
+  // collided with an existing key once sent Health and Energy to avoid on
+  // every character with nothing here noticing.
   const avoidUntyped=[...sheet.matchAll(/data-sec="([^"]*)" data-ri="(\d+)" data-v="avoid"/g)]
     .map(m=>[m[1], (B.sheet.find(x=>x[0]===m[1])||[,[]])[1][+m[2]]])
-    .filter(([,r])=>!r||!r.dtype).map(([sec,r])=>`${sec}/${r&&r.label}`);
+    .filter(([,r])=>!r||!(r.dtype||r.rule==='pet')).map(([sec,r])=>`${sec}/${r&&r.label}`);
   want(avoidUntyped.length===0, `avoid on rows with no damage type: ${avoidUntyped.join(', ')}`);
   // A withheld row shows an empty gutter, never the neutral mark. Nothing is
   // withheld today, so assert the mechanism on the rule rather than on a row.
@@ -1478,7 +1479,7 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
   };
   const iOpen=B.characters.indexOf(opener);
 
-  // 1. NO REAL PET -> every row neutral, however well fed the bucket is. This
+  // 1. NO REAL PET -> every row avoid, however well fed the bucket is. This
   //    is the player-scaling trap as it renders: the opener has pet bonuses,
   //    and no summon that can spend them.
   want((opener.vctx.pets||[]).length===0,
@@ -1489,9 +1490,9 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
   {
     const m=petMarks();
     want(m.length===petRows.length, `${m.length} pet gutters for ${petRows.length} rows`);
-    want(m.every(v=>v==='ignore'),
+    want(m.every(v=>v==='avoid'),
          `${opener.name} has no pet that can use a bonus, so every pet row is `
-         + `neutral -- got ${[...new Set(m)]}`);
+         + `avoid -- got ${[...new Set(m)]}`);
   }
 
   // 2. A PET BUILD -> priority on every row, the zeroes included. That is the
@@ -1517,7 +1518,7 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
     want(zero.length>0 && m[petRows.indexOf(zero[0])]==='priority',
          `${c.name}'s empty pet rows must be priorities too -- a zero on a pet `
          + `build is the gap, and ${zero.length} row(s) are empty`);
-    console.log(`pet verdict: ${opener.name} neutral on ${petRows.length} rows `
+    console.log(`pet verdict: ${opener.name} avoid on ${petRows.length} rows `
       + `(no real pet, ${Object.keys(opener.petContrib||{}).length} fields fed), `
       + `${c.name} priority on ${petRows.length} (${petDamage(c)}% pet damage, `
       + `pets: ${c.vctx.pets.join(', ')})`);
