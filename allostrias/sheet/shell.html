@@ -161,9 +161,9 @@ __CLASS_IMAGES__
    width of the character bar equally. Each is sliced into three across at its
    measured cap: the ornamented ends native, the middle stretched. A grid, so
    every button stays the same width: on a narrow screen seven across would
-   crush the ends, so it drops to four columns (4 + 3). Up, over and down are
-   wired for when a button has a job; until then every one is disabled and
-   wears that state. */
+   crush the ends, so it drops to four columns (4 + 3). Up at rest, over under
+   the pointer, down while pressed; disabled is kept for a button that has
+   nothing to open. */
 .navbar{display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); margin-bottom:var(--s3)}
 @media (max-width:760px){ .navbar{grid-template-columns:repeat(4, minmax(0, 1fr))} }
 .navbtn{min-width:0; height:__NAV_H__px; padding:0; background:none;
@@ -543,16 +543,15 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     </div>
   </div>
 
-  <!-- Placeholders: no button has a destination yet, so all seven are
-       disabled and unlabelled. -->
+  <!-- Placeholders: no button has a destination or a label yet. -->
   <nav class="navbar" id="navbar" aria-label="Sections">
-    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
-    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
-    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
-    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
-    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
-    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
-    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" aria-label="Unassigned"></button>
   </nav>
 
   <div class="cols">

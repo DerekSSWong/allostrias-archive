@@ -1356,9 +1356,13 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
   const navHtml=html.slice(nb, html.indexOf('</nav>', nb));
   want((navHtml.match(/class="navbtn"/g)||[]).length===7,
        `the navigation bar has ${(navHtml.match(/class="navbtn"/g)||[]).length} buttons, not 7`);
-  for (const st of [':hover', ':disabled'])
+  for (const st of [':hover', ':active', ':disabled'])
     want(new RegExp(`\\.navbtn${st}[^{]*\\{border-image-source:url\\("data:image/png;base64,[^"]{200,}`).test(html),
          `the navigation button has no ${st} art`);
+  want(/\.navbtn\{[^}]*border-image:url\("data:image\/png;base64,[^"]{200,}/.test(html),
+       'the navigation button has no resting (up) art');
+  // Enabled, or the up/over/down states can never show.
+  want(!/class="navbtn"[^>]*\bdisabled\b/.test(navHtml), 'a navigation button is still disabled');
   // The top bar shows difficulty, name and level -- in that order, a gem
   // between each -- and nothing else about the character.
   const who=get('who')._html, oc=B.characters.find(c=>c.name===opener.name)||opener;
