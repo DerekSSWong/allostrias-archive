@@ -64,11 +64,26 @@ def kind_of(path: str) -> str | None:
     return None
 
 
+PET_FIELD = 'petBonusName'
+
+
+def _banded(affix_id, attrs, jitter):
+    for row in V.stat_rows(attrs):
+        if row.field in BOOKKEEPING:
+            continue
+        if row.txt is not None:
+            yield (affix_id, row.field, row.idx, None, None, None, row.txt)
+        else:
+            lo, hi = roll_band(row.num, jitter)
+            yield (affix_id, row.field, row.idx, row.num, lo, hi, None)
+
+
 def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
+    conn.execute('DELETE FROM affix_pet_stat')
     conn.execute('DELETE FROM affix_stat')
     conn.execute('DELETE FROM affix')
 
-    affix_rows, stat_rows = [], []
+    affix_rows, stat_rows, pet_rows = [], [], []
     next_id = 1
     skipped_class = skipped_kind = 0
     for path, attrs in db.iter_records(AFFIX_PREFIX):
@@ -92,16 +107,16 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
             jitter,
             V.first(attrs, 'lootRandomizerCost'),
         ))
-        for row in V.stat_rows(attrs):
-            if row.field in BOOKKEEPING:
-                continue
-            if row.txt is not None:
-                stat_rows.append((affix_id, row.field, row.idx, None, None,
-                                  None, row.txt))
-            else:
-                lo, hi = roll_band(row.num, jitter)
-                stat_rows.append((affix_id, row.field, row.idx, row.num,
-                                  lo, hi, None))
+        stat_rows.extend(_banded(affix_id, attrs, jitter))
+        # The pet stats sit on the record the affix names, rolled with the
+        # AFFIX's jitter. A name that resolves to nothing raises: scoring it as
+        # "no pet bonus" would shorten exactly the affixes it broke.
+        pet = V.first_str(attrs, PET_FIELD)
+        if pet:
+            pet = pet.lower()
+            if pet not in db:
+                raise ValueError(f'{path}: {PET_FIELD} {pet} does not resolve')
+            pet_rows.extend(_banded(affix_id, V.non_default(db.read(pet)), jitter))
 
     conn.executemany(
         'INSERT INTO affix (id, path, kind, name_tag, name, rarity, '
@@ -109,7 +124,11 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
     conn.executemany(
         'INSERT INTO affix_stat (affix_id, field, idx, value, lo, hi, txt) '
         'VALUES (?,?,?,?,?,?,?)', stat_rows)
+    conn.executemany(
+        'INSERT INTO affix_pet_stat (affix_id, field, idx, value, lo, hi, txt) '
+        'VALUES (?,?,?,?,?,?,?)', pet_rows)
     conn.commit()
     return {'affixes': len(affix_rows), 'affix stats': len(stat_rows),
+            'affix pet stats': len(pet_rows),
             'non-randomizer skipped': skipped_class,
             'unfiled skipped': skipped_kind}

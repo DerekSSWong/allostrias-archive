@@ -180,6 +180,24 @@ CREATE TABLE IF NOT EXISTS affix_stat (
 
 CREATE INDEX IF NOT EXISTS affix_stat_field_idx ON affix_stat(field);
 
+-- The stats an affix grants its PETS, through `petBonusName`.
+--
+-- The affix names a petbonus record and the stats live there, but the BAND is
+-- the affix's: the game rolls them with the affix's own lootRandomizerJitter
+-- (Subjugator's I stores +10% pet damage at jitter 32 and shows 7-13). Two pet
+-- records are named by affixes of different jitter, so the band cannot live on
+-- the pet record -- which is why this is not the `bonus` table.
+CREATE TABLE IF NOT EXISTS affix_pet_stat (
+    affix_id INTEGER NOT NULL REFERENCES affix(id) ON DELETE CASCADE,
+    field    TEXT    NOT NULL,
+    idx      INTEGER NOT NULL,
+    value    REAL,
+    lo       REAL,
+    hi       REAL,
+    txt      TEXT,
+    PRIMARY KEY (affix_id, field, idx)
+) WITHOUT ROWID;
+
 -- ---------------------------------------------------------------------------
 -- Affix eligibility: which item classes an affix can roll onto.
 --

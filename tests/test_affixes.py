@@ -83,13 +83,16 @@ if not os.path.isfile(oracle_path):
           f'borrows, never something allostrias needs.')
     sys.exit(0)
 
+# Keyed by bucket: a pet line and a player line can share a field name, and a
+# single dict let one overwrite the other.
 oracle = collections.defaultdict(dict)
+oracle_pet = collections.defaultdict(dict)
 oracle_records = set()
 for row in csv.DictReader(open(oracle_path, encoding='utf-8')):
     oracle_records.add(PREFIX + row['file'])
     if row['value'] in ('', None) or row['lo'] == '':
         continue                      # skill/text lines carry no band
-    oracle[PREFIX + row['file']][row['field']] = (
+    (oracle_pet if row['bucket'] == 'pet' else oracle)[PREFIX + row['file']][row['field']] = (
         float(row['value']), float(row['lo']), float(row['hi']))
 
 mine = collections.defaultdict(dict)
@@ -145,6 +148,35 @@ assert compared >= 15000, f'only {compared} lines compared; too few to mean anyt
 assert value_bad == 0, f'{value_bad} stored values disagree'
 assert band_bad == 0, f'{band_bad} roll bands disagree'
 print('  every value and every band identical')
+
+# -- 5b. pet stats: the record the affix names, banded by the AFFIX's jitter --
+mine_pet = collections.defaultdict(dict)
+for row in conn.execute(
+        'SELECT a.path, s.field, s.value, s.lo, s.hi FROM affix a '
+        'JOIN affix_pet_stat s ON s.affix_id=a.id WHERE s.value IS NOT NULL'):
+    mine_pet[row['path']][row['field']] = (row['value'], row['lo'], row['hi'])
+pet_bad = []
+pet_compared = 0
+for path, lines in oracle_pet.items():
+    for field, want in lines.items():
+        pet_compared += 1
+        got = mine_pet.get(path, {}).get(field)
+        if got is None or any(abs(a - b) > 1e-6 for a, b in zip(got, want)):
+            pet_bad.append(f'  {path} [{field}]: {got} vs {want}')
+# Both directions: every pet line the oracle has, and no pet line it lacks on a
+# record it knows.
+extra = [f'  {p} [{f}]' for p in mine_pet if p in oracle_records
+         for f in mine_pet[p] if f not in oracle_pet.get(p, {})]
+print(f'\npet lines vs oracle: {pet_compared} compared, {len(pet_bad)} wrong, '
+      f'{len(extra)} extra')
+for line in (pet_bad + extra)[:5]:
+    print(line)
+assert pet_compared >= 400, f'only {pet_compared} pet lines compared'
+assert not pet_bad and not extra, 'pet lines disagree with the oracle'
+named = one("SELECT count(DISTINCT affix_id) FROM affix_stat WHERE field='petBonusName'")
+carried = one('SELECT count(DISTINCT affix_id) FROM affix_pet_stat')
+assert named == carried, f'{named} affixes name a pet bonus, {carried} carry its stats'
+print(f'  all {named} affixes naming a pet bonus carry its stats')
 
 # -- 6. the worked example -------------------------------------------------
 print('\nImpervious tiers (Pierce + partner resist):')
