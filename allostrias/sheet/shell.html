@@ -592,13 +592,15 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   const DIFF = ["Normal", "Elite", "Ultimate"];
   /* Ultimate takes 50 off the top row and 25 off the bottom; Elite 25 and 0.
      PHYSICAL IS EXEMPT at every difficulty, which is why a point of it is worth
-     more than a point of anything else on the list. */
+     more than a point of anything else on the list. ⚠️ SO ARE THE CONTROL
+     RESISTS: they share the `resist` row kind, and taking the bottom row's 25
+     off Stun, Freeze and the rest read every one of them 25 low on Ultimate. */
   const RESIST_TOP = new Set(["Fire", "Cold", "Lightning", "Acid", "Pierce"]);
+  const RESIST_BOTTOM = new Set(["Vitality", "Aether", "Chaos", "Bleeding"]);
   const PENALTY = [[0, 0], [-25, 0], [-50, -25]];
   function penaltyFor(label, diff){
-    if (label === "Physical") return 0;
     const p = PENALTY[diff] || [0, 0];
-    return RESIST_TOP.has(label) ? p[0] : p[1];
+    return RESIST_TOP.has(label) ? p[0] : RESIST_BOTTOM.has(label) ? p[1] : 0;
   }
 
   const state = {i: 0, on: new Set(), over: {}};
@@ -661,7 +663,13 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
         return Math.floor(inner * (1 + (t[r.m] || 0)/100) + 53);
       }
       case "mod": return S(t, f) * (1 + (t[r.m] || 0)/100);
-      case "resist": return S(t, f) + penaltyFor(r.label, ch.difficulty);
+      case "resist": {
+        /* A damage resist prints held to its cap, as the game's sheet does; the
+           excess is in the hover detail. The resist VERDICT reads the uncapped
+           figure from resistances(), never this. */
+        const v = S(t, f) + penaltyFor(r.label, ch.difficulty);
+        return RESIST_FIELDS[r.label] ? Math.min(v, resistCap(t, r.label)) : v;
+      }
       case "range": {
         const lo = t[f[0]] || 0, hi = t[f[1]] || lo;
         return lo || hi ? [lo, hi] : 0;
@@ -863,14 +871,17 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
             dominantType: ranked.length ? ranked[0] : null};
   }
 
+  /* The maximum a damage resist can reach: 80 plus its own and the all-type
+     max-resist bonus. */
+  const resistCap = (t, ty) => 80 + (t[RESIST_MAX[ty]] || 0) + (t.defensiveAllMaxResist || 0);
+
   /* raw, the difficulty penalty, and the cap the character actually has. */
   function resistances(ch, t){
     const out = {};
     Object.keys(RESIST_FIELDS).forEach(ty => {
       let raw = 0;
       RESIST_FIELDS[ty].forEach(f => { raw += t[f] || 0; });
-      out[ty] = {raw: raw, penalty: penaltyFor(ty, ch.difficulty),
-                 cap: 80 + (t[RESIST_MAX[ty]] || 0) + (t.defensiveAllMaxResist || 0)};
+      out[ty] = {raw: raw, penalty: penaltyFor(ty, ch.difficulty), cap: resistCap(t, ty)};
     });
     return out;
   }
@@ -1163,10 +1174,9 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     }).join("");
   }
 
-  /* No badges on the row. Whether a formula is solved, and what the
-     difficulty took off a resistance, are both still in the hover detail --
-     the row itself is a name and a number. The penalty is still APPLIED; it is
-     only the label that is gone. */
+  /* No badges on the row: the row itself is a name and a number. What the
+     difficulty took off a resistance, and what it holds over its cap, are in
+     the hover detail -- rowTip() adds them under the sources. */
   /* The verdict marker keeps its gutter whether or not there is a verdict:
      dropping the element would shuffle every label in the column the moment a
      row had no opinion, and a verdict this engine WITHHELD must show nothing
@@ -1370,6 +1380,17 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     };
     for (const f of r.f || []) take(f, r.pct);
     if (r.m) take(r.m, true);
+    /* A damage resist's number is its sources plus the difficulty penalty, held
+       to the cap -- so both are listed, or the sources do not add up to it. */
+    const extra = [];
+    if (r.k === "resist" && !entry[2]){
+      const pen = penaltyFor(r.label, ch.difficulty);
+      if (pen) extra.push([`${DIFF[ch.difficulty]} difficulty penalty`, `${fmt(pen)}%`]);
+      if (RESIST_FIELDS[r.label]){
+        const t = totals(ch), full = S(t, r.f) + pen, cap = resistCap(t, r.label);
+        if (full > cap) extra.push([`Over cap (max ${fmt(cap)}%)`, `+${fmt(full - cap)}%`]);
+      }
+    }
     /* Flat above, percentages below, each ordered by weight -- and the rule
        between them only when there is something on both sides of it. The two
        do not add up to each other, so one list sorted by magnitude put a +8%
@@ -1386,12 +1407,14 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
        emptiness is a pointer chasing the reader across half the sheet for no
        information. showTip() treats "" as hide, so returning it here is the
        whole mechanism. */
-    if (!srcs.length) return "";
+    if (!srcs.length && !extra.length) return "";
     return `<div class="tip">
       <h3>${esc(r.label)}</h3>
       ${flat.length ? block(flat) : ""}
       ${flat.length && pct.length ? `<div class="rule"></div>` : ""}
       ${pct.length ? block(pct) : ""}
+      ${extra.length ? `<div class="rule"></div><div class="srcs">${extra.map(([l, v]) =>
+        `<div><span>${esc(l)}</span><span class="sv">${v}</span></div>`).join("")}</div>` : ""}
     </div>`;
   }
 

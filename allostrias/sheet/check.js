@@ -328,6 +328,10 @@ want(/\.sheet\{columns:5;/.test(html), 'the character sheet is not five columns'
     const pen=r.label==='Physical'?0:(TOP.has(r.label)?PEN[0]:PEN[1]);
     if (!pen) return;                       // nothing to prove on this row
     const exp=(r.f||[]).reduce((a,f)=>a+(T[f]||0),0)+pen;
+    // ...held to the cap the game prints it at: 80 plus the type's own and the
+    // all-type max-resist bonus.
+    const cap=80+(T[r.f[0]+'MaxResist']||0)+(T.defensiveAllMaxResist||0);
+    const shown=Math.min(exp, cap);
     // The verdict marker sits in front of the label now, so the anchor is the
     // row's own data-ri and the label that follows it, not their adjacency.
     const m=sheet.match(new RegExp(
@@ -335,8 +339,18 @@ want(/\.sheet\{columns:5;/.test(html), 'the character sheet is not five columns'
       +`class="rv[^"]*">(-?[\\d,.]+)%`));
     want(m, `${r.label} did not render a percentage`);
     if (m){ checked++;
-      want(m[1].replace(/,/g,'')===String(exp),
-           `${r.label} renders ${m[1]}%, recomputed ${exp}% with the ${pen}% penalty`); }
+      want(m[1].replace(/,/g,'')===String(shown),
+           `${r.label} renders ${m[1]}%, expected ${shown}% (${exp}% with the ${pen}% penalty, cap ${cap}%)`); }
+  });
+  // Control resists take NO difficulty penalty. They share the resist row kind,
+  // and the damage resists' bottom-row 25 was once taken off every one of them.
+  const ctl=B.sheet.find(([n])=>n==='Control Resistances');
+  ctl[1].forEach((r,i)=>{
+    const exp=(r.f||[]).reduce((a,f)=>a+(T[f]||0),0);
+    const m=sheet.match(new RegExp(`data-sec="Control Resistances" data-ri="${i}"[^>]*>`
+      +`[\\s\\S]*?class="rv[^"]*">(-?[\\d,.]+)%`));
+    want(m && m[1].replace(/,/g,'')===String(exp),
+         `${r.label} renders ${m&&m[1]}%, but its sources sum to ${exp}% and control resists take no penalty`);
   });
   want(checked>0, `${opener.name} is on difficulty ${opener.difficulty}; no resist `
        + `carries a penalty, so nothing here proves the penalty survived the badge`);
@@ -1206,7 +1220,7 @@ want(/\.srcs div > span\{min-width:0\}/.test(html),
   // rule appears ONLY when both sides are fed -- a divider under an empty
   // block reads as a missing section. Checked over every row of the opener,
   // both directions, so "always draw it" and "never draw it" both fail.
-  let mixed=0, single=0, empty=0;
+  let mixed=0, single=0, empty=0, penalised=0;
   B.sheet.forEach(([sec, rows, bucket])=>rows.forEach((r, ri)=>{
     // A bucketed section is fed by its OWN contribution list. Reading the
     // player's for a pet row asks whether the wrong number has a panel.
@@ -1219,18 +1233,30 @@ want(/\.srcs div > span\{min-width:0\}/.test(html),
     // ⚠️ hideTip() only flips `hidden`; `_html` still holds the LAST panel
     // rendered. Read it only when the panel is actually up, or an unfed row
     // is silently checked against its predecessor's markup.
-    if (!nFlat && !nPct){ empty++;
+    // A penalised damage resist also lists the penalty, under its own rule --
+    // the row's number is held to the cap, so the tooltip is the only place
+    // the penalty still shows.
+    const PENS=[[0,0],[-25,0],[-50,-25]][opener.difficulty]||[0,0];
+    const pen=sec!=='Resistances'||r.label==='Physical' ? 0
+      : (['Fire','Cold','Lightning','Acid','Pierce'].includes(r.label) ? PENS[0] : PENS[1]);
+    if (pen){
+      want(tip.hidden===false && tip._html.includes('difficulty penalty'),
+           `${sec}/${r.label} carries a ${pen}% penalty its tooltip does not list`);
+      penalised++;
+    }
+    const xtra=pen||/Over cap/.test(tip.hidden ? '' : tip._html) ? 1 : 0;
+    if (!nFlat && !nPct && !pen){ empty++;
       want(tip.hidden===true,
            `${sec}/${r.label} has no contributor but still opened a tooltip`);
       return; }
     want(tip.hidden===false, `${sec}/${r.label} is fed but opened no tooltip`);
     const ruled=(tip._html.match(/<div class="rule"><\/div>/g)||[]).length;
     if (nFlat && nPct){ mixed++;
-      want(ruled===1, `${sec}/${r.label} mixes flat and percent but drew ${ruled} rules`);
+      want(ruled===1+xtra, `${sec}/${r.label} mixes flat and percent but drew ${ruled} rules`);
       want(tip._html.indexOf('%</span>') > tip._html.indexOf('<div class="rule">'),
            `${sec}/${r.label}: a percentage is above the rule`);
     } else { single++;
-      want(ruled===0, `${sec}/${r.label} is all one kind but drew ${ruled} rules`); }
+      want(ruled===xtra, `${sec}/${r.label} is all one kind but drew ${ruled} rules`); }
   }));
   want(mixed>0, `${opener.name} has no row mixing flat and percent, so the rule is never exercised`);
   want(single>0, 'every row mixes both kinds, so "always draw it" would pass here');
