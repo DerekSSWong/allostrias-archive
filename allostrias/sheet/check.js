@@ -1348,6 +1348,17 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
        'the character list is still inside the top bar');
   want(html.indexOf('id="picker"') < html.indexOf('<div class="bar">'),
        'the character list is not in the drawer');
+  // The navigation bar sits between the character bar and the columns, seven
+  // buttons wide, and every state it can wear has art behind it.
+  const nb=html.indexOf('id="navbar"');
+  want(nb>html.indexOf('<div class="bar">') && nb<html.indexOf('<div class="cols">'),
+       'the navigation bar is not between the character bar and the columns');
+  const navHtml=html.slice(nb, html.indexOf('</nav>', nb));
+  want((navHtml.match(/class="navbtn"/g)||[]).length===7,
+       `the navigation bar has ${(navHtml.match(/class="navbtn"/g)||[]).length} buttons, not 7`);
+  for (const st of [':hover', ':disabled'])
+    want(new RegExp(`\\.navbtn${st}[^{]*\\{border-image-source:url\\("data:image/png;base64,[^"]{200,}`).test(html),
+         `the navigation button has no ${st} art`);
   // The top bar shows difficulty, name and level -- in that order, a gem
   // between each -- and nothing else about the character.
   const who=get('who')._html, oc=B.characters.find(c=>c.name===opener.name)||opener;

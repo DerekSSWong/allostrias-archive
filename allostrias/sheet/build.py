@@ -1985,6 +1985,33 @@ def build_chrome(ui):
         raise SystemExit('UI.arc has no mainmenu/buttongemover')
     out['gem'], out['gemSize'] = png_b64(gem), gem.size
 
+    # The navigation bar under it: the main menu's game-options button, one
+    # texture per state, all four the same size.
+    nav = {}
+    for state in ('up', 'over', 'down', 'disabled'):
+        im = ui.get(f'mainmenu/button_gameoptions_{state}.tex')
+        if im is None:
+            raise SystemExit(f'UI.arc has no mainmenu/button_gameoptions_{state}')
+        nav[state] = im
+    if len({im.size for im in nav.values()}) != 1:
+        raise SystemExit('the game-options button states are not one size')
+    # Stretched to share the page width, so sliced into three across like the
+    # bar above. The frame is stone grain, not flat, so the cap is where the
+    # ornament LAST stands out strongly within each outer third -- measured on
+    # every state, and the widest wins.
+    def nav_cap(im):
+        im = im.convert('RGBA')
+        px, (w, h) = im.load(), im.size
+        mid = [px[w // 2, y] for y in range(h)]
+        off = lambda x: max(max(abs(a - c) for a, c in zip(px[x, y], mid[y])) for y in range(h))
+        return max(1 + max(x for x in range(w // 3) if off(x) >= 120),
+                   w - min(x for x in range(2 * w // 3, w) if off(x) >= 120))
+    ncap = max(nav_cap(im) for im in nav.values())
+    if not 4 < ncap < nav['up'].width // 3:
+        raise SystemExit(f'the nav button ornament measures {ncap}px; that is not an end cap')
+    out['nav'] = {k: png_b64(v) for k, v in nav.items()}
+    out['navSize'], out['navCap'] = nav['up'].size, ncap
+
     # The panel-internal rule, for the one seam inside the character sheet:
     # `mainmenu/borderthindivider_ct`, the same hairline family as the frame
     # the panel already wears rather than a second rule invented for it.

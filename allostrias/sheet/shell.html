@@ -156,6 +156,24 @@ __CLASS_IMAGES__
 }
 .who .gem{flex:none; width:__GEM_W__px; height:__GEM_H__px;
   background:url("__GEM__") center/contain no-repeat}
+/* ---------- navigation bar ----------
+   Seven mainmenu/button_gameoptions buttons edge to edge, sharing the full
+   width of the character bar equally. Each is sliced into three across at its
+   measured cap: the ornamented ends native, the middle stretched. A grid, so
+   every button stays the same width: on a narrow screen seven across would
+   crush the ends, so it drops to four columns (4 + 3). Up, over and down are
+   wired for when a button has a job; until then every one is disabled and
+   wears that state. */
+.navbar{display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); margin-bottom:var(--s3)}
+@media (max-width:760px){ .navbar{grid-template-columns:repeat(4, minmax(0, 1fr))} }
+.navbtn{min-width:0; height:__NAV_H__px; padding:0; background:none;
+  border-style:solid; border-color:transparent; border-width:0 __NAV_CAP__px;
+  border-image:url("__NAV_UP__") 0 __NAV_CAP__ fill / 0 __NAV_CAP__px stretch;
+  cursor:pointer; font-family:Cinzel,serif; font-size:13px; font-weight:600;
+  letter-spacing:.08em; color:var(--band-ink); text-shadow:0 1px 2px #000}
+.navbtn:hover{border-image-source:url("__NAV_OVER__")}
+.navbtn:active, .navbtn[aria-current="page"]{border-image-source:url("__NAV_DOWN__")}
+.navbtn:disabled{border-image-source:url("__NAV_DISABLED__"); cursor:default}
 /* Pinned to the right end so it never moves the centred row. */
 .bar .refreshbox{position:absolute; right:var(--s2); top:50%; transform:translateY(-50%);
   display:flex; align-items:center; gap:var(--s2)}
@@ -524,6 +542,18 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
       <button class="refresh" id="refresh" type="button">Re-read saves</button>
     </div>
   </div>
+
+  <!-- Placeholders: no button has a destination yet, so all seven are
+       disabled and unlabelled. -->
+  <nav class="navbar" id="navbar" aria-label="Sections">
+    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" disabled aria-label="Unassigned"></button>
+  </nav>
 
   <div class="cols">
     <div>
