@@ -133,18 +133,32 @@ __CLASS_IMAGES__
   letter-spacing:.2em; text-transform:uppercase; color:var(--gold-dim)}
 .num{font-variant-numeric:tabular-nums}
 
-/* ---------- character bar ---------- */
-.bar{display:flex; flex-wrap:wrap; align-items:center; gap:var(--s4);
-  padding:var(--s3) var(--s4); margin-bottom:var(--s3)}
-.who{display:flex; flex-direction:column; gap:2px; min-width:200px}
-.who .nm{font-family:Cinzel,serif; font-size:22px; font-weight:600; color:#E8D7AE; line-height:1.1}
-.who .sub{font-family:Jura,system-ui,sans-serif; font-size:11.5px; letter-spacing:.08em; color:var(--dim)}
-.bar .facts{display:flex; gap:var(--s5); flex-wrap:wrap; margin-left:auto}
-.fact{display:flex; flex-direction:column; gap:1px; min-width:66px}
-.fact b{font-family:Jura,system-ui,sans-serif; font-size:17px; font-weight:600; color:var(--ink)}
-.fact span{font-family:Jura,system-ui,sans-serif; font-size:9.5px; letter-spacing:.16em;
-  text-transform:uppercase; color:var(--faint)}
-.fact.warn b{color:var(--warn)}
+/* ---------- character bar ----------
+   inventor/crafting_completionbuttondown, sliced into three across at its
+   measured cap: the gold end ornaments at native size, the middle repeating
+   (it is grain, not a gradient, so stretching it would smear). Native height.
+   Difficulty, name and level, centred, with mainmenu/buttongemover between. */
+.bar{position:relative; display:flex; align-items:center; justify-content:center;
+  height:__BAR_H__px; margin-bottom:var(--s3); padding:0 var(--s2);
+  border-style:solid; border-color:transparent; border-width:0 __BAR_CAP__px;
+  border-image:url("__BAR_FRAME__") 0 __BAR_CAP__ fill / 0 __BAR_CAP__px round stretch}
+.who{display:flex; align-items:center; gap:var(--s3); min-width:0; white-space:nowrap}
+.who .nm{font-family:Cinzel,serif; font-size:21px; font-weight:600; color:#E8D7AE;
+  line-height:1; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 2px #000}
+.who .ft{font-family:Cinzel,serif; font-size:14px; font-weight:600; letter-spacing:.08em;
+  color:var(--gold); text-shadow:0 1px 2px #000; min-width:0; overflow:hidden; text-overflow:ellipsis}
+/* The name is the one that must survive a narrow screen. */
+.who .nm{flex:none; max-width:100%}
+@media (max-width:560px){
+  .who{gap:var(--s2)}
+  .who .nm{font-size:16px}
+  .who .ft{font-size:11px; letter-spacing:.02em}
+}
+.who .gem{flex:none; width:__GEM_W__px; height:__GEM_H__px;
+  background:url("__GEM__") center/contain no-repeat}
+/* Pinned to the right end so it never moves the centred row. */
+.bar .refreshbox{position:absolute; right:var(--s2); top:50%; transform:translateY(-50%);
+  display:flex; align-items:center; gap:var(--s2)}
 /* ---------- character drawer ----------
    A drawer off the left edge, handled by the devotion panel's own tab: the
    tall rail with a '>' when shut, the small '<' button when open. The list
@@ -193,7 +207,7 @@ __CLASS_IMAGES__
 /* Hidden until something answers /alive. A published artifact is sandboxed with
    no network, so the probe is refused there and the button never appears -- one
    HTML file that is honest in both places rather than a dead control. */
-.refresh{display:none; margin-left:auto; align-items:center; gap:var(--s2);
+.refresh{display:none; align-items:center; gap:var(--s2);
   font-family:Jura,system-ui,sans-serif; font-size:11px; font-weight:600;
   letter-spacing:.12em; text-transform:uppercase; color:#17120B;
   background:var(--gold-dim); border:1px solid var(--gold-dim); padding:5px 14px; cursor:pointer}
@@ -503,11 +517,12 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 <div class="classbg right" id="bgR" aria-hidden="true"></div>
 
 <div class="wrap">
-  <div class="bar panel">
-    <button class="refresh" id="refresh" type="button">Re-read saves</button>
-    <span class="refreshnote" id="refreshnote"></span>
+  <div class="bar">
     <div class="who" id="who"></div>
-    <div class="facts" id="facts"></div>
+    <div class="refreshbox">
+      <span class="refreshnote" id="refreshnote"></span>
+      <button class="refresh" id="refresh" type="button">Re-read saves</button>
+    </div>
   </div>
 
   <div class="cols">
@@ -1287,18 +1302,10 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
         <span class="cn">${esc(c.name)}</span>
         <span class="cl">Level ${c.level}${c.title ? " " + esc(c.title) : ""}</span>
       </button>`).join("");
-    $("who").innerHTML = `<span class="nm">${esc(ch.name)}</span>
-      <span class="sub">${ch.masteries.map(m => esc(m.n || "?") + " " + m.lv).join(" · ") ||
-        "no mastery"}${ch.hardcore ? " · Hardcore" : ""}</span>`;
-    const f = (v, l, warn) =>
-      `<div class="fact${warn ? " warn" : ""}"><b class="num">${v}</b><span>${l}</span></div>`;
-    $("facts").innerHTML =
-      f(ch.level, "Level") + f(DIFF[ch.difficulty] || "?", "Difficulty") +
-      f(`${ch.devotion[0]}/${ch.devotion[1]}`, "Devotion") +
-      f(ch.money.toLocaleString(), "Iron") +
-      (ch.points.attribute ? f(ch.points.attribute, "Attr unspent", true) : "") +
-      (ch.points.skill ? f(ch.points.skill, "Skill unspent", true) : "") +
-      (ch.points.devotion ? f(ch.points.devotion, "Devo unbound", true) : "");
+    const gem = `<span class="gem" aria-hidden="true"></span>`;
+    $("who").innerHTML = `<span class="ft">${esc(DIFF[ch.difficulty] || "?")}</span>${gem}
+      <span class="nm">${esc(ch.name)}</span>${gem}
+      <span class="ft">Level ${ch.level}</span>`;
   }
 
   /* ---- detail ------------------------------------------------------------

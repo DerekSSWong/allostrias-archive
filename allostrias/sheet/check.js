@@ -1316,11 +1316,17 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
   const rail=get('rail'), tab=get('railtab');
   const at=sel=>{const el={id:'',dataset:{}};el.closest=s=>s===sel?el:null;return el;};
   // the picker must have LEFT the top bar, not merely exist somewhere
-  const bar=html.slice(html.indexOf('<div class="bar panel">'));
+  const bar=html.slice(html.indexOf('<div class="bar">'));
   want(!bar.slice(0, bar.indexOf('</div>\n\n')).includes('id="picker"'),
        'the character list is still inside the top bar');
-  want(html.indexOf('id="picker"') < html.indexOf('<div class="bar panel">'),
+  want(html.indexOf('id="picker"') < html.indexOf('<div class="bar">'),
        'the character list is not in the drawer');
+  // The top bar shows difficulty, name and level -- in that order, a gem
+  // between each -- and nothing else about the character.
+  const who=get('who')._html, oc=B.characters.find(c=>c.name===opener.name)||opener;
+  const parts=[...who.matchAll(/class="(ft|nm|gem)"[^>]*>([^<]*)</g)].map(m=>m[1]==='gem'?'◆':m[2]);
+  want(JSON.stringify(parts)===JSON.stringify([['Normal','Elite','Ultimate'][oc.difficulty],'◆',oc.name,'◆',`Level ${oc.level}`]),
+       `the top bar reads ${JSON.stringify(parts)}`);
   // shut -> open -> shut
   fire('click', at('.railtab'));
   want(rail.getAttribute('data-open')==='1' && tab.getAttribute('aria-expanded')==='true',

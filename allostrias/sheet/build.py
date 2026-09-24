@@ -1964,6 +1964,27 @@ def build_chrome(ui):
 
     out['divider'] = png_b64(ui.get('generic/listboxdivider.tex'))
 
+    # The character bar wears the crafting window's completion button, sliced
+    # into three across: the gold end ornaments stay native and the dark-red
+    # middle repeats. The cap is MEASURED -- the first column, from each end,
+    # that stops differing sharply from the middle one -- not typed.
+    bar = ui.get('inventor/crafting_completionbuttondown.tex')
+    if bar is None:
+        raise SystemExit('UI.arc has no inventor/crafting_completionbuttondown')
+    bar = bar.convert('RGBA')
+    bpx, (bw, bh) = bar.load(), bar.size
+    mid = [bpx[bw // 2, y] for y in range(bh)]
+    off = lambda x: max(max(abs(a - c) for a, c in zip(bpx[x, y], mid[y])) for y in range(bh))
+    cap = max(next(x for x in range(bw // 2) if off(x) < 100),
+              bw - 1 - next(x for x in range(bw - 1, bw // 2, -1) if off(x) < 100))
+    if not 8 < cap < bw // 3:
+        raise SystemExit(f'the bar ornament measures {cap}px of {bw}; that is not an end cap')
+    out['barFrame'], out['barCap'], out['barHeight'] = png_b64(bar), cap, bh
+    gem = ui.get('mainmenu/buttongemover.tex')
+    if gem is None:
+        raise SystemExit('UI.arc has no mainmenu/buttongemover')
+    out['gem'], out['gemSize'] = png_b64(gem), gem.size
+
     # The panel-internal rule, for the one seam inside the character sheet:
     # `mainmenu/borderthindivider_ct`, the same hairline family as the frame
     # the panel already wears rather than a second rule invented for it.
