@@ -20,10 +20,11 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _oracle import sibling                         # noqa: E402
 from allostrias import settings as S                  # noqa: E402
 from allostrias.sheet import build                    # noqa: E402
 
-LENS = os.path.join(S.load().game, '.gdlens')
+LENS = sibling('.gdlens')
 
 
 def main():

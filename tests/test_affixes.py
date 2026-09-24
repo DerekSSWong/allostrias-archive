@@ -16,19 +16,19 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _oracle import sibling                         # noqa: E402
 from allostrias import settings as S               # noqa: E402
 from allostrias.archive.rolls import roll_band     # noqa: E402
 from allostrias.db import catalogue                # noqa: E402
 
-# The oracle lives beside the game install, so its location is derived from
-# settings at run time. It must never be written down here: a hardcoded path
-# would both break on any other machine and put this machine's layout in a
-# public repo.
+# The oracle is gd-lib's checkout beside this one, found relative to the repo.
+# It must never be written down here: a hardcoded path would both break on any
+# other machine and put this machine's layout in a public repo.
 ORACLE_RELPATH = os.path.join('.gdlib', 'affix_data', 'affix_lines.csv')
 PREFIX = 'records/items/lootaffixes/'
 
 cfg = S.load()
-oracle_path = os.path.join(cfg.game, ORACLE_RELPATH)
+oracle_path = sibling(ORACLE_RELPATH)
 conn = catalogue.connect(cfg.catalogue_db, create=False)
 one = lambda sql, *a: conn.execute(sql, a).fetchone()[0]
 

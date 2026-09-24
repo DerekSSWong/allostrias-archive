@@ -17,6 +17,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _oracle import sibling                         # noqa: E402
 from allostrias import settings as S               # noqa: E402
 from allostrias.db import catalogue                # noqa: E402
 
@@ -50,7 +51,7 @@ CLASS_TO_LABEL = {
 }
 
 cfg = S.load()
-oracle_path = os.path.join(cfg.game, ORACLE_RELPATH)
+oracle_path = sibling(ORACLE_RELPATH)
 conn = catalogue.connect(cfg.catalogue_db, create=False)
 one = lambda sql, *a: conn.execute(sql, a).fetchone()[0]
 

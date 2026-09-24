@@ -16,12 +16,13 @@ import sqlite3
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _oracle import sibling                         # noqa: E402
 from allostrias import settings as S                # noqa: E402
 from allostrias.archive.records import Records      # noqa: E402
 from allostrias.sheet import seedroll               # the port, under test
 
 cfg = S.load()
-GDLIB = os.path.join(cfg.game, '.gdlib')
+GDLIB = sibling('.gdlib')
 RECORDS = Records(cfg.arz_paths)
 
 

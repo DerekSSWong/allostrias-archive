@@ -20,17 +20,22 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+from _oracle import sibling                         # noqa: E402
 from allostrias import settings as S                    # noqa: E402
 from allostrias import item_stats as port               # the port, under test
 from allostrias.archive.records import Records          # noqa: E402
 
 cfg = S.load()
-GDLIB = os.path.join(cfg.game, '.gdlib')
+GDLIB = sibling('.gdlib')
 if not os.path.isfile(os.path.join(GDLIB, 'item_stats.py')):
     print(f'SKIPPED -- no gd-lib at {GDLIB}, so the ported renderer is '
           f'UNCHECKED in this tree. The build does not need it; this gate does.')
     raise SystemExit(0)
 
+# gd-lib reads `.extracted` beside itself by default; it is still unpacked in
+# the game install, so point it there. Without this every link it follows reads
+# as absent and it renders nothing for them.
+os.environ.setdefault('GD_EXTRACTED', os.path.join(cfg.game, '.extracted'))
 sys.path.insert(0, GDLIB)
 import item_stats as oracle                             # noqa: E402
 

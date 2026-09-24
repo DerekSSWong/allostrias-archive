@@ -580,6 +580,13 @@ TARGETS = {
     'pct': {'PhysicalResist': 28, 'ChanceToBlock': 60},
     'levelFloor': 0.35,
     'diffScale': {'0': 0.55, '1': 0.78, '2': 1.0},
+    # The affix grading scale. The page derives its grade thresholds from these
+    # as GD Lens's grade_thresholds() does, rather than shipping a table of
+    # floors that would freeze a derivation.
+    'verdictWeight': {'priority': 4, 'nice': 2, 'ignore': 0, 'avoid': -4},
+    'coveragePower': 0.5,
+    'bandCoverage': 0.7,
+    'gradeBands': ['C', 'B', 'A', 'S'],
 }
 # Sheet-only verdict constants. GD Lens has no such rule, so they stay out of
 # TARGETS -- the copy the drift gate compares -- and are merged in at bundling.
