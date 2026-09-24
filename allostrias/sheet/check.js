@@ -1359,6 +1359,8 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
   // The first is Character: its own art, this view, and selected on load.
   want(/class="navbtn char"[^>]*data-view="character"[^>]*aria-current="page"[^>]*>Character$/
          .test(navBtns[0]||''), `the first navigation button is not a selected Character: ${navBtns[0]}`);
+  want(/data-view="affixes"[^>]*>Affixes$/.test(navBtns[1]||''),
+       `the second navigation button is not Affixes: ${navBtns[1]}`);
   for (const st of ['', ':hover', ':active', ':disabled'])
     want(new RegExp(`\\.navbtn\\.char${st}\\{[^}]*border-image(-source)?:url\\("data:image/png;base64,[^"]{200,}`).test(html),
          `the Character button has no ${st||'resting'} art`);
@@ -1493,7 +1495,7 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
     el.closest=s=>s==='.navbtn'?el:null; return el; };
   const mv=get('mainview');
   want(mv.hidden===false, 'the character view starts hidden');
-  fire('click', nav('nav2'));
+  fire('click', nav('affixes'));
   want(mv.hidden===true, 'choosing another section did not hide the character view');
   fire('click', nav('character'));
   want(mv.hidden===false, 'choosing Character did not bring the character view back');
