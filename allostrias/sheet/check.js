@@ -739,32 +739,35 @@ for (const c of B.characters)
 // and both were showing raw.
 // ---- an affixed item is not its base --------------------------------------
 // 49 of 77 worn items printed as a bare base because the name came from the
-// base record alone. The bundle carries no prefix/suffix column, so derive the
-// claim from the contributions instead: an item whose roll credits a `· prefix`
-// or `· suffix` source HAS that affix, and its name must therefore be longer
-// than the base part's name -- the base source is the name without them.
+// base record alone. Each item carries the affixes it rolled, so the claim is
+// direct: the display name must show every one of them.
 {
-  let affixed=0;
+  let affixed=0, labelled=0;
   for (const c of B.characters){
-    const roles=new Map();          // item name -> set of roles seen
-    for (const rows of Object.values(c.contrib))
-      for (const [,src] of rows){
-        const m=/^(.*) \u00b7 (prefix|suffix)$/.exec(src);
-        if (m){ if(!roles.has(m[1])) roles.set(m[1], new Set()); roles.get(m[1]).add(m[2]); }
-      }
-    for (const [nm, kinds] of roles){
+    for (const e of c.equipment){
+      const names=Object.values(e.affixes||{});
+      if (!names.length) continue;
       affixed++;
-      const item=c.equipment.find(e=>e.n===nm);
-      want(item, `${c.name}: "${nm}" credits an affix but is not worn`);
-      // a prefix adds a word in front, a suffix adds words after
-      const w=nm.split(' ');
-      if (kinds.has('prefix')) want(w.length>=2, `${c.name}: "${nm}" has a prefix but one word`);
-      if (kinds.has('suffix')) want(/ of | the /i.test(nm)||w.length>=3,
-        `${c.name}: "${nm}" has a suffix that does not show in the name`);
+      for (const a of names)
+        want(e.n.includes(a), `${c.name}: "${e.n}" rolled "${a}" but its name does not show it`);
     }
+    // An affix's contributions are labelled by the affix and its slot --
+    // `Impervious (Shoulders)` -- never by the whole item name.
+    const srcs=new Set(c.equipment.flatMap(e=>
+      Object.values(e.affixes||{}).map(a=>`${a} (${e.slotLabel})`)));
+    for (const rows of Object.values(c.contrib))
+      for (const [,src,,kind] of rows){
+        if (kind==='prefix'||kind==='suffix'){
+          want(srcs.has(src), `${c.name}: ${kind} source "${src}" is not an affix on a worn slot`);
+          if (srcs.has(src)) labelled++;
+        }
+        if (kind==='component'||kind==='augment')
+          want(!src.includes(' \u00b7 '), `${c.name}: ${kind} source "${src}" still carries its item`);
+      }
   }
   // This is the bug's own scale: if it ever reads zero, the check went blind.
-  want(affixed>=40, `only ${affixed} worn items credit an affix; the fix covered 49`);
+  want(affixed>=40, `only ${affixed} worn items carry an affix; the fix covered 49`);
+  want(labelled>0, 'no contribution is labelled by its affix');
 }
 // An affix must never be credited by name as well as by role -- that was the
 // redundant `... of Heroism \u00b7 of Heroism` form.
@@ -794,8 +797,7 @@ for (const c of B.characters)
       if (e.rarity==='Rare') green++;
       if (badge==='mi') mi++;
       // An affixed item must not still be reporting a bare base tier.
-      const affixed=Object.values(c.contrib).some(rs=>rs.some(([,s])=>
-        s===`${e.n} \u00b7 prefix`||s===`${e.n} \u00b7 suffix`));
+      const affixed=Object.keys(e.affixes||{}).length>0;
       if (affixed) want(e.rarity!=='Common',
         `${c.name}: ${e.n} has an affix and still displays as Common`);
     }

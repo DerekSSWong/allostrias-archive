@@ -52,6 +52,11 @@ RECORDS = Records(cfg.arz_paths)
 
 # Attachment columns: separate records fed in unrolled. seedroll covers the
 # item's own record plus prefix and suffix and nothing else.
+# How a worn slot reads in a source label: `Impervious (Shoulders)`.
+SLOT_LABEL = {'head': 'Head', 'amulet': 'Amulet', 'chest': 'Chest', 'shoulders': 'Shoulders',
+              'hands': 'Hands', 'legs': 'Legs', 'feet': 'Feet', 'waist': 'Waist',
+              'ring1': 'Ring 1', 'ring2': 'Ring 2', 'medal': 'Medal', 'relic': 'Relic',
+              'mainhand': 'Main Hand', 'offhand': 'Off Hand'}
 ATTACH = ('component_path', 'modifier_path', 'transmute_path',
           'relic_bonus_path', 'augment_path')
 
@@ -1314,6 +1319,9 @@ def gather(pr, ca, dir_name, icons):
         pfx_a = affix_of(ca, r['prefix_path'], 'prefix')
         sfx_a = affix_of(ca, r['suffix_path'], 'suffix')
         pfx_name, sfx_name = pfx_a[0], sfx_a[0]
+        slot_label = SLOT_LABEL[r['slot']]
+        affixes = {k: v for k, v in (('prefix', pfx_name), ('suffix', sfx_name)) if v}
+        aff_src = {k: f'{v} ({slot_label})' for k, v in affixes.items()}
         name, rarity, style, base_name, badge = item_display(
             base, r['base_path'], pfx_a, sfx_a)
 
@@ -1329,12 +1337,11 @@ def gather(pr, ca, dir_name, icons):
             # into base/prefix/suffix and sums EXACTLY back to roll.stats, so
             # the sheet's totals do not move -- only the attribution gets
             # finer, from "Redeemer Gauntlets +40" to the affix that rolled it.
-            # Labelled by ROLE, not by the affix's name: the affix name is
-            # already in the item's name, so `... of Heroism · of Heroism`
-            # says nothing twice. The full name stays the identity because one
-            # character can wear two items off the same base.
-            src = {'base': name, 'prefix': pfx_name and f'{name} · prefix',
-                   'suffix': sfx_name and f'{name} · suffix'}
+            # An affix is labelled by its OWN name plus the slot, e.g.
+            # `Impervious (Shoulders)`: the slot keeps two items rolling the
+            # same affix apart in one tooltip.
+            src = {'base': name, 'prefix': aff_src.get('prefix'),
+                   'suffix': aff_src.get('suffix')}
             for f, per in roll.parts.items():
                 for where, v in per.items():
                     if v:
@@ -1366,14 +1373,17 @@ def gather(pr, ca, dir_name, icons):
                 kind = {'relic': 'completion bonus', 'modifier': 'crafting bonus',
                         'component': 'component', 'augment': 'augment',
                         'transmute': 'transmuted'}[col.split('_')[0]]
+                # A component or augment is named on its own; the unnamed
+                # kinds (crafting/completion bonus, transmuted) keep the item.
+                att_src = label if kind in ('component', 'augment') else f'{name} · {label}'
                 for s in ca.execute(f'select field, {vc} v from {tbl}_stat where {idc}=?', (row['id'],)):
-                    C.add(s['field'], s['v'], f'{name} · {label}', kind=kind)
+                    C.add(s['field'], s['v'], att_src, kind=kind)
                 break
             # Channel 1, the attachment half: a component, augment or relic
             # bonus carrying petBonusName. Scalar, so index 0.
             tgt = pet_target(r[col])
             if tgt:
-                pet_stats_at(P, tgt, 0, f'{name} · {label}', kind=kind)
+                pet_stats_at(P, tgt, 0, att_src, kind=kind)
             if not got:
                 refused.append({'slot': r['slot'], 'name': name,
                                 'why': f'attachment not in catalogue: {r[col]}'})
@@ -1401,11 +1411,12 @@ def gather(pr, ca, dir_name, icons):
         for col, ckind in (('prefix_path', 'prefix'), ('suffix_path', 'suffix')):
             tgt = pet_target(r[col])
             if tgt:
-                pet_stats_at(P, tgt, 0, f'{name} · {ckind}', kind=ckind)
+                pet_stats_at(P, tgt, 0, aff_src.get(ckind) or name, kind=ckind)
 
         icon = item_icon(base)
         equipment.append({
             'slot': r['slot'], 'n': name, 'rarity': rarity, 'style': style,
+            'affixes': affixes, 'slotLabel': slot_label,
             'icon': icons.want(icon), 'lv': int(float((base.get('levelRequirement') or [0])[0])),
             'lines': stat_lines(rolled, {}), 'attached': attached,
             'set': None, 'path': r['base_path'], 'badge': badge,
