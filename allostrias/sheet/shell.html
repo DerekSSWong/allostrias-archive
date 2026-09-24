@@ -831,15 +831,19 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     ranked.forEach(ty => { shares[ty] = total ? out[ty] / total : 0; });
     /* MEMBERSHIP by corroboration, ORDER by output. */
     const srcCounts = damageSources(ch), drained = drainedTypes(ch);
-    const wanted = ranked.filter(ty => (srcCounts[ty] || {}).strong >= (T.corroboration || 1)
-                                    && drained.indexOf(ty) === -1)
+    const corroborated = ranked.filter(ty => (srcCounts[ty] || {}).strong >= (T.corroboration || 1)
+                                          && drained.indexOf(ty) === -1);
+    const wanted = corroborated
       .filter((ty, i) => i < T.damageTypes && shares[ty] >= T.damageFloor);
+    /* The Retaliation rows judge against a lower floor (GD Lens's targets.py). */
+    const wantedRetaliation = corroborated
+      .filter((ty, i) => i < T.damageTypes && shares[ty] >= T.retaliationDamageFloor);
     let hitSum = 0, retSum = 0;
     Object.keys(dph.direct).forEach(ty => { hitSum += dph.direct[ty] || 0; });
     Object.keys(dph.dot).forEach(d => { hitSum += dph.dot[d] || 0; });
     Object.keys(ret).forEach(ty => { retSum += ret[ty] || 0; });
     const mt = hitSum + retSum;
-    return {wanted: wanted, blind: total <= 0,
+    return {wanted: wanted, wantedRetaliation: wantedRetaliation, blind: total <= 0,
             mechanisms: {hit: mt ? hitSum / mt : 0, retaliation: mt ? retSum / mt : 0},
             dominantType: ranked.length ? ranked[0] : null};
   }
@@ -1007,7 +1011,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     /* Zero measurable damage is a STATED condition, not a silent empty. */
     if ((dtype || mech) && dmg.blind) return "ignore";
     if (dtype){
-      const wanted = dmg.wanted || [];
+      const wanted = (mech === "retaliation" ? dmg.wantedRetaliation : dmg.wanted) || [];
       /* ⚠️ `avoid`: not "real, but not one of your types" -- that is `ignore` --
          but "you have put nothing into this anywhere", which is a statement in
          the character's own numbers and the one worth acting on. Checked BEFORE
