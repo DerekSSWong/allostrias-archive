@@ -24,31 +24,8 @@ from allostrias.db import catalogue                # noqa: E402
 ORACLE_RELPATH = os.path.join('.gdlib', 'affix_data', 'affix_lines.csv')
 PREFIX = 'records/items/lootaffixes/'
 
-CLASS_TO_LABEL = {
-    'ArmorJewelry_Amulet': 'Amulet',
-    'ArmorJewelry_Medal': 'Medal',
-    'ArmorJewelry_Ring': 'Ring',
-    'ArmorProtective_Chest': 'Chest',
-    'ArmorProtective_Feet': 'Boots',
-    'ArmorProtective_Hands': 'Gloves',
-    'ArmorProtective_Head': 'Helm',
-    'ArmorProtective_Legs': 'Legs',
-    'ArmorProtective_Shoulders': 'Shoulders',
-    'ArmorProtective_Waist': 'Belt',
-    'WeaponArmor_Offhand': 'Off-Hand (Focus)',
-    'WeaponArmor_Shield': 'Shield',
-    'WeaponHunting_Ranged1h': 'Ranged',
-    'WeaponHunting_Ranged2h': 'Ranged (2H)',
-    'WeaponMelee_Axe': 'Axe',
-    'WeaponMelee_Axe2h': 'Axe (2H)',
-    'WeaponMelee_Dagger': 'Dagger',
-    'WeaponMelee_Mace': 'Mace',
-    'WeaponMelee_Mace2h': 'Mace (2H)',
-    'WeaponMelee_Scepter': 'Scepter',
-    'WeaponMelee_Spear2h': 'Spear (2H)',
-    'WeaponMelee_Sword': 'Sword',
-    'WeaponMelee_Sword2h': 'Sword (2H)',
-}
+# The label map is the Affixes view's; this gate holds it total.
+from allostrias.affixes.build import CLASS_TO_LABEL   # noqa: E402
 
 cfg = S.load()
 oracle_path = sibling(ORACLE_RELPATH)
