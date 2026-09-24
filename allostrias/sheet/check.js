@@ -1472,6 +1472,19 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
     want(p, `${solo.name}'s only mastery has no class number`);
   }
 }
+// ---- nested skills hang off a rail ------------------------------------------
+// One .kids wrapper per skill that has children, derived from the tree the
+// page draws, and the rail art behind it.
+{
+  const tr=opener.tree||[];
+  const parents=tr.filter((_,i)=>tr.some(t=>t.parent===i)).length;
+  const drawn=(get('skillpanels')._html.match(/class="kids" style="--rx:\d+px"/g)||[]).length;
+  want(drawn===parents, `${drawn} skill rails drawn for ${parents} skills with children`);
+  want(parents>0, `${opener.name} has no nested skill, so the rail is never drawn`);
+  want(/\.kids::before\{[^}]*url\("data:image\/png;base64,[^"]{40,}/.test(html),
+       'the nested-skill rail has no art');
+}
+
 // ---- the navigation bar switches the view ---------------------------------
 // Character is this view; any other button hides it. Both directions, so
 // "never hides" and "never comes back" each fail.

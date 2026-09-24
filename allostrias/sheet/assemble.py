@@ -73,6 +73,8 @@ def main(out_dir=None):
                          ('__NAVC_DISABLED__', ch['navChar']['disabled']),
                          ('__NAVC_CAP__', str(ch['navCharCap'])),
                          ('__NAV_MARK__', ch['navMark']),
+                         ('__SKILL_RAIL__', ch['skillRail']),
+                         ('__SKILL_RAIL_W__', str(ch['skillRailW'])),
                          ('__NAV_MARK_W__', str(ch['navMarkSize'][0])),
                          ('__NAV_MARK_H__', str(ch['navMarkSize'][1])),
                          ('__NAV_H__', str(ch['navSize'][1])),

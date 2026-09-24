@@ -2014,6 +2014,17 @@ def build_chrome(ui):
     # The six general buttons, and the Character button that leads the row.
     out['nav'], out['navSize'], out['navCap'] = nav_states('button_gameoptions')
     out['navChar'], _, out['navCharCap'] = nav_states('buttonlargeshort01')
+    # The rail down the left of a skill's nested children: mainmenu/slidercenter,
+    # a horizontal slider track, stood upright and cropped to its own ink.
+    rail = ui.get('mainmenu/slidercenter.tex')
+    if rail is None:
+        raise SystemExit('UI.arc has no mainmenu/slidercenter')
+    rail = rail.convert('RGBA').rotate(90, expand=True)
+    bb = rail.getbbox()
+    if bb is None:
+        raise SystemExit('mainmenu/slidercenter is fully transparent')
+    rail = rail.crop((bb[0], 0, bb[2], rail.height))
+    out['skillRail'], out['skillRailW'] = png_b64(rail), rail.width
     # The selected button's marker, hung under it.
     mark = ui.get('mainmenu/buttonscrolldowndown.tex')
     if mark is None:
