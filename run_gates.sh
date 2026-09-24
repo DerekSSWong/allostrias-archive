@@ -8,6 +8,8 @@
 cd "$(dirname "$0")" || exit 1
 failed=0
 for t in tests/*.py; do
+    # `_name.py` is a helper the gates import, not a gate.
+    case "$(basename "$t")" in _*) continue ;; esac
     printf '%-24s ' "$(basename "$t")"
     if timeout 900 python3 "$t" >/dev/null 2>&1; then
         echo PASS

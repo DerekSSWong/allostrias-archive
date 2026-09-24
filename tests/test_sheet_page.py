@@ -29,6 +29,7 @@ sys.path.insert(0, ROOT)
 from allostrias import settings as S                    # noqa: E402
 from allostrias.db import character, freeze             # noqa: E402
 from allostrias.sheet import assemble, build            # noqa: E402
+from allostrias.affixes import build as affix_build     # noqa: E402
 
 CHECK = os.path.join(ROOT, 'allostrias', 'sheet', 'check.js')
 OUT = os.path.join(S.ROOT, 'cache', 'sheet-frozen')
@@ -58,7 +59,8 @@ print(f"  read {counts['characters']} characters, {counts['skills']} skills, "
       f"{counts['items']} items")
 
 build.main(profile_db=PROFILE, out_dir=OUT)
-assemble.main(out_dir=OUT)
+affix_build.main(out_dir=OUT)
+assemble.main(out_dir=OUT, affixes_dir=OUT)
 
 page = os.path.join(OUT, 'character_sheet.html')
 r = subprocess.run(['node', CHECK, page], cwd=ROOT, capture_output=True, text=True)

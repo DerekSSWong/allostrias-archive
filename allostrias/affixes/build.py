@@ -37,6 +37,7 @@ from .. import settings as S
 from .. import item_stats as I
 from ..db import catalogue
 from ..sheet import build as SB
+from . import filter as F
 
 OUT = os.path.join(S.ROOT, 'cache', 'affixes')
 
@@ -294,6 +295,8 @@ def merge_band(lo_line, hi_line):
         if x == y:
             out.append(x)
         else:
+            # '+3–5%', not '+3–+5%': a sign both ends share is printed once.
+            y = y[1:] if x[0] == y[0] == '+' else y
             out.append(f'({x}–{y})' if moving > 1 else f'{x}–{y}')
         out.append(rest)
     return ''.join(out)
@@ -441,6 +444,7 @@ def build(conn):
         'f': fields, 'lk': [line_key(f) for f in fields],
         'fr': [fr[f] for f in fields],
         'coarse': COARSE_SLOT, 'slotOrder': SLOT_ORDER, 'slotGroups': SLOT_GROUPS,
+        'filter': F.build(conn),
     }, stats
 
 

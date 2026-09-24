@@ -549,6 +549,51 @@ footer{max-width:1660px; margin:0 auto; padding:var(--s5) var(--s4) var(--s6);
   display:flex; flex-direction:column; gap:var(--s2)}
 footer p{margin:0; max-width:82ch; font-size:13px; color:var(--dim); line-height:1.6}
 footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(--gold-dim)}
+
+/* ---------- the Affixes view ----------
+   Every prefix and suffix that can drop, graded for this character. One card
+   per (affix, slot family): its name in the tier colour the game gives it, the
+   slots it rolls on, its level range, how many of its lines this character
+   wants, and every line it prints with the band it rolls between. */
+.affixview .bd{display:flex; flex-direction:column; gap:var(--s3)}
+.aquery{display:flex; flex-direction:column; gap:var(--s1)}
+.aterm{display:flex; gap:var(--s2); align-items:center}
+.aterm input{flex:1; min-width:0; padding:6px 8px; background:var(--sunk); color:var(--ink);
+  border:1px solid var(--rule-hi); font:13px Jura,system-ui,sans-serif}
+.aterm input:focus{outline:1px solid var(--gold-dim); border-color:var(--gold-dim)}
+.aterm select, .abtn{padding:5px 8px; background:var(--panel-2); color:var(--gold);
+  border:1px solid var(--rule-hi); font:600 11px Cinzel,serif; letter-spacing:.06em; cursor:pointer}
+.abtn:hover{border-color:var(--gold-dim)}
+.abtn[disabled]{opacity:.55; cursor:progress}
+.aqbar{display:flex; gap:var(--s2); flex-wrap:wrap; align-items:center}
+.aqbar .n{margin-left:auto; font:11px Jura,system-ui,sans-serif; color:var(--faint)}
+.aslots{display:flex; gap:var(--s4); flex-wrap:wrap}
+.aslotcol{display:flex; flex-direction:column; gap:var(--s2)}
+.aslotlbl{font:600 11px Cinzel,serif; letter-spacing:.06em; color:var(--gold-dim); margin-bottom:2px}
+.aslotrow{display:flex; gap:4px; flex-wrap:wrap}
+.achip{padding:3px 7px; background:var(--sunk); color:var(--dim); border:1px solid var(--rule-hi);
+  font:11.5px Jura,system-ui,sans-serif; cursor:pointer}
+.achip:hover{color:var(--ink)}
+.achip[aria-pressed="true"]{background:var(--gold-deep); color:var(--band-ink); border-color:var(--gold-dim)}
+.agrade > summary.hd h2 .g{display:inline-block; min-width:1.2em; margin-right:6px}
+.agrade[data-g="S"] summary .g{color:var(--t-legendary-ink)}
+.agrade[data-g="A"] summary .g{color:var(--t-epic)}
+.agrade[data-g="B"] summary .g{color:var(--t-rare)}
+.agrade[data-g="C"] summary .g{color:var(--t-magical)}
+.agrade[data-g="F"] summary .g{color:var(--t-common)}
+.agrade[data-g="-"] summary .g{color:var(--dim)}
+.acards{display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:var(--s2)}
+.acard{padding:var(--s2) var(--s3); background:var(--sunk); border:1px solid var(--rule)}
+.acard .ah{display:flex; align-items:baseline; gap:var(--s2); flex-wrap:wrap}
+.acard .an{font:600 14px "Libertinus Serif",Georgia,serif}
+.acard .ak, .acard .al, .acard .au{font:11px Jura,system-ui,sans-serif; color:var(--faint)}
+.acard .au{margin-left:auto}
+.acard .as{font:11px Jura,system-ui,sans-serif; color:var(--dim); margin:2px 0 4px}
+.acard ul{list-style:none; margin:0; padding:0; font:12.5px Jura,system-ui,sans-serif; color:var(--stat)}
+.acard li{padding:1px 0}
+.acard li.pet{color:var(--dim)}
+.acard li .lv{font-size:10.5px; color:var(--faint)}
+.affixview mark{background:var(--gold-deep); color:var(--band-ink); padding:0 1px}
 </style>
 
 <div class="rail" id="rail" data-open="0">
@@ -608,6 +653,26 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
       </div>
     </section>
   </div>
+
+  <!-- The Affixes view. Hidden until its navigation button is chosen; built
+       the first time it is shown, and re-graded whenever the verdicts it reads
+       from the sheet change. -->
+  <section class="panel affixview" id="affixview" hidden>
+    <div class="hd"><h2>Affixes</h2><span class="n" id="affixn"></span></div>
+    <div class="bd">
+      <div class="aquery">
+        <div id="aterms"></div>
+        <div class="aqbar">
+          <button class="abtn" type="button" id="aadd">+ Term</button>
+          <button class="abtn" type="button" id="aclear">Clear</button>
+          <button class="abtn" type="button" id="afilter">Download loot filter</button>
+          <span class="n" id="afilternote"></span>
+        </div>
+      </div>
+      <div class="aslots" id="aslots"></div>
+      <div id="alist"></div>
+    </div>
+  </section>
 </div>
 
 <div class="tipfloat panel" id="tip" role="tooltip" hidden></div>
@@ -627,12 +692,19 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
      stat row, or a worn item, to see what adds up to it.</p>
   <p>These rows use formulas checked against a real character sheet:
      <strong id="solvedrows"></strong>. Every other row is what the records sum to and has
-     <em>not</em> been compared with what the game prints. Affix and gear recommendations are
-     deliberately absent.</p>
+     <em>not</em> been compared with what the game prints.</p>
+  <p><strong>Affixes</strong> grades every prefix and suffix that can drop against the verdicts on
+     this sheet, your marks included, with every skill in the skill window counted as wanted. A
+     grade says whether an affix's lines are what this build wants — not drop rates, and not the
+     item it lands on. The loot filter it downloads colours each affix by that grade and is
+     meaningful for this character only.</p>
 </footer>
 
 <script id="bundle" type="application/json">__BUNDLE__</script>
+<script id="affixes" type="application/json">__AFFIXES__</script>
 <script>
+__SEARCH_JS__
+__AFFIX_JS__
 (() => {
   "use strict";
   const B = JSON.parse(document.getElementById("bundle").textContent);
@@ -663,7 +735,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     return RESIST_TOP.has(label) ? p[0] : RESIST_BOTTOM.has(label) ? p[1] : 0;
   }
 
-  const state = {i: 0, on: new Set(), over: {}};
+  const state = {i: 0, on: new Set(), over: {}, view: "character"};
 
   /* One pass over the contribution list per render. A value is in when it is
      structural (no gate) or when its gate is switched on. */
@@ -1013,6 +1085,242 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   const VERDICT_LEGEND = [["priority", "Priority"], ["nice", "Nice"],
                           ["ignore", "Neutral"], ["avoid", "Avoid"]];
 
+
+  /* ---- the Affixes view ---------------------------------------------------
+     Every prefix and suffix that can drop, graded for this character by the
+     scorer spliced in above (allostrias/affixes/affixes.js). The grading reads
+     two things and nothing else:
+
+       verdicts  state.vmap -- what renderSheet painted, the reader's marks
+                 included. It is collected as the sheet paints, so a click, a
+                 buff toggle or a character switch re-grades with no second
+                 derivation of what the character wants.
+       skills    every skill in the character's skill window, as `priority`.
+                 The user's rule: nothing there needs a mark of its own.
+
+     Grading is the expensive half and is kept until what it read changes;
+     searching and slot chips only re-filter it. */
+  const AX = globalThis.GDAffixes, GS = globalThis.GDSearch;
+  const aview = {data: null, sig: null, rows: [{op: "AND", text: ""}],
+                 slots: new Set(), open: {}};
+  const GRADE_LABEL = {S: "S", A: "A", B: "B", C: "C", F: "F",
+                       "-": "Nothing this character wants"};
+  let AIDX = null;
+
+  function affixIndex(){
+    if (!AIDX) AIDX = AX.load(JSON.parse($("affixes").textContent), T);
+    return AIDX;
+  }
+  function wantedSkills(ch){
+    const out = {};
+    for (const s of ch.tree || []) out[s.path] = "priority";
+    return out;
+  }
+
+  function graded(){
+    const ch = CH[state.i];
+    affixIndex();
+    const skills = wantedSkills(ch);
+    const sig = ch.dir + "\n" + JSON.stringify(state.vmap || {}) + "\n"
+              + Object.keys(skills).sort().join("|");
+    if (aview.sig !== sig){
+      aview.data = AX.catalogue(state.vmap || {}, skills);
+      aview.sig = sig;
+    }
+    return aview.data;
+  }
+
+  /* A card's slots plus the coarse buckets they roll up into -- for MATCHING
+     only; the card prints the slots the records name. */
+  function slotsOf(c){
+    const out = c.slots.slice();
+    for (const sl of c.slots){
+      const k = AIDX.coarse[sl];
+      if (k && !out.includes(k)) out.push(k);
+    }
+    return out;
+  }
+
+  /* ⚠️ ONE CANDIDATE LINE PER LINE, never one merged blob: every word of a row
+     must land on the same line. The lines searched are exactly the lines the
+     card prints -- name, effects, slots -- so what matches is what is marked. */
+  function effectText(e){ return e.text; }
+  function searchLines(c){
+    if (!c._nl) c._nl = [c.name, ...c.effects.map(effectText), ...c.slots]
+      .map(l => GS.normalise(l));
+    return c._nl;
+  }
+  const liveRows = () => aview.rows.filter(r => r.text.trim() !== "");
+
+  function cardMatches(c){
+    if (aview.slots.size && !slotsOf(c).some(sl => aview.slots.has(sl))) return false;
+    return GS.rowsMatch(searchLines(c), liveRows(), true);
+  }
+
+  /* markRanges() answers over the APOSTROPHE-STRIPPED line, so its offsets are
+     mapped back onto the text as printed before anything is wrapped. */
+  function hl(text){
+    const rows = liveRows();
+    if (!rows.length) return esc(text);
+    const keep = [];
+    for (let i = 0; i < text.length; i++) if (!/['’]/.test(text[i])) keep.push(i);
+    const spans = GS.markRanges(text, rows);
+    if (!spans.length) return esc(text);
+    let out = "", at = 0;
+    for (const [a, b] of spans){
+      const s0 = keep[a], s1 = keep[b - 1] + 1;
+      out += esc(text.slice(at, s0)) + "<mark>" + esc(text.slice(s0, s1)) + "</mark>";
+      at = s1;
+    }
+    return out + esc(text.slice(at));
+  }
+
+  function card(c){
+    const lv = c.lmin === c.lmax ? `lvl ${c.lmin}` : `lvl ${c.lmin}–${c.lmax}`;
+    return `<div class="acard" data-tag="${esc(c.tag)}">
+      <div class="ah"><span class="an t-${c.tier}">${hl(c.name)}</span>
+        <span class="ak">${c.kind}</span><span class="al">${lv}</span>
+        <span class="au" title="lines this character wants, of the lines it carries">${
+          c.useful}/${c.lines}</span></div>
+      <div class="as">${c.slots.map(hl).join(" · ")}</div>
+      <ul>${c.effects.map(e => `<li${e.pet ? ' class="pet"' : ""}>${hl(e.text)}${
+        e.lvl !== null ? ` <span class="lv">(lvl ${e.lvl})</span>` : ""}</li>`).join("")}</ul>
+    </div>`;
+  }
+
+  function renderTerms(){
+    $("aterms").innerHTML = aview.rows.map((r, i) => `<div class="aterm">${
+      i ? `<select data-ti="${i}" aria-label="How this term combines">${
+        ["AND", "OR", "NOT"].map(o => `<option${r.op === o ? " selected" : ""}>${o}</option>`).join("")
+      }</select>` : ""}
+      <input type="search" data-ti="${i}" value="${esc(r.text)}" placeholder="${
+        i ? "and…" : "Search affixes — name, stat, slot"}" aria-label="Search term ${i + 1}">
+      ${i ? `<button class="abtn" type="button" data-rm="${i}" aria-label="Remove term">×</button>` : ""}
+    </div>`).join("");
+  }
+
+  function renderSlots(){
+    const have = new Set();
+    for (const g of Object.keys(aview.data)) for (const c of aview.data[g]) slotsOf(c).forEach(sl => have.add(sl));
+    const group = grp => {
+      const live = grp.values.filter(v => have.has(v));
+      return live.length ? `<div><div class="aslotlbl">${esc(grp.label)}</div><div class="aslotrow">${
+        live.map(v => `<button class="achip" type="button" data-slot="${esc(v)}" aria-pressed="${
+          aview.slots.has(v)}">${esc(v)}</button>`).join("")}</div></div>` : "";
+    };
+    $("aslots").innerHTML = AIDX.slotGroups.map(entry =>
+      `<div class="aslotcol">${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}</div>`).join("");
+  }
+
+  function renderList(){
+    const by = aview.data, filtering = liveRows().length || aview.slots.size;
+    let shown = 0, total = 0;
+    const order = [...AX.gradeOrder()].reverse().concat(["-"]);
+    $("alist").innerHTML = order.map(g => {
+      const all = by[g] || [], hits = all.filter(cardMatches);
+      total += all.length; shown += hits.length;
+      /* The reader's own open/closed choice wins; otherwise the wanted grades
+         open, and while a search is running any group with a hit opens. */
+      const open = g in aview.open ? aview.open[g]
+                 : filtering ? hits.length > 0 : !["F", "-"].includes(g);
+      return `<details class="panel agrade" data-g="${g}"${open ? " open" : ""}>
+        <summary class="hd"><h2><span class="g">${g === "-" ? "–" : g}</span>${
+          g === "-" ? GRADE_LABEL[g] : "Grade " + GRADE_LABEL[g]}</h2>
+          <span class="n">${filtering ? `${hits.length} of ${all.length}` : all.length}</span></summary>
+        <div class="bd">${open ? (hits.length ? `<div class="acards">${hits.map(card).join("")}</div>`
+                                               : `<p class="note">Nothing here matches.</p>`) : ""}</div>
+      </details>`;
+    }).join("");
+    $("affixn").textContent = filtering ? `${shown} of ${total} affixes` : `${total} affixes`;
+  }
+
+  function renderAffixes(){
+    graded();
+    if (!$("aterms").innerHTML) renderTerms();
+    renderSlots(); renderList();
+  }
+
+  /* ---- the loot filter download -------------------------------------------
+     The file the Affixes view grades, as the game reads it. Built from the
+     SAME grading on screen, so a mark changed on the sheet reaches the file
+     with nothing in between.
+
+     Two ways out, one file. The published artifact is sandboxed and may not
+     start a download itself: it asks the viewer through the `downloads`
+     capability, which confirms with them first. Served locally, the page is an
+     ordinary browser tab and a link with `download` saves it. */
+  async function downloadFilter(){
+    const btn = $("afilter"), note = $("afilternote");
+    const ch = CH[state.i], by = graded();
+    const f = AX.renderFilter(AX.gradesByTag(null, null, by), ch.name);
+    btn.disabled = true;
+    try {
+      const dl = window.claude && typeof window.claude.use === "function"
+        ? await window.claude.use("downloads") : null;
+      if (dl){
+        await dl.save({filename: f.filename, data: f.text});
+      } else {
+        const url = URL.createObjectURL(new Blob([f.text], {type: "text/plain"}));
+        const a = document.createElement("a");
+        a.href = url; a.download = f.filename; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      note.className = "n";
+      note.textContent = `${f.filename} · ${f.affix - (f.counts["-"] || 0)} of ${
+        f.affix} affixes graded for ${ch.name}`;
+    } catch (e) {
+      /* The viewer saying no is not a failure of the page. */
+      note.textContent = e && e.code === "declined" ? ""
+        : "Could not save: " + ((e && (e.code || e.message)) || e);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  /* true when the click was the view's own.
+
+     ⚠️ A GRADE GROUP OPENS BY ITS SUMMARY, HANDLED HERE, not by the browser's
+     own toggle: a <details> rendered already open fires `toggle` by itself, and
+     listening for that recorded every default as the reader's choice. */
+  function affixClick(e){
+    const t = e.target;
+    const sum = t.closest(".agrade > summary");
+    if (sum){
+      e.preventDefault();
+      const d = sum.parentElement;
+      aview.open[d.dataset.g] = !d.hasAttribute("open");
+      renderList(); return true;
+    }
+    const chip = t.closest(".achip");
+    if (chip){
+      const v = chip.dataset.slot;
+      aview.slots.has(v) ? aview.slots.delete(v) : aview.slots.add(v);
+      renderSlots(); renderList(); return true;
+    }
+    if (t.closest("#aadd")){ aview.rows.push({op: "AND", text: ""}); renderTerms(); return true; }
+    if (t.closest("#aclear")){
+      aview.rows = [{op: "AND", text: ""}]; aview.slots.clear(); aview.open = {};
+      renderTerms(); renderSlots(); renderList(); return true;
+    }
+    const rm = t.closest("[data-rm]");
+    if (rm){ aview.rows.splice(Number(rm.dataset.rm), 1); renderTerms(); renderList(); return true; }
+    if (t.closest("#afilter")){ downloadFilter(); return true; }
+    return false;
+  }
+
+  document.addEventListener("input", e => {
+    const i = e.target.dataset && e.target.dataset.ti;
+    if (i === undefined || e.target.tagName === "SELECT") return;
+    aview.rows[Number(i)].text = e.target.value;
+    renderList();
+  });
+  document.addEventListener("change", e => {
+    const i = e.target.dataset && e.target.dataset.ti;
+    if (i === undefined || e.target.tagName !== "SELECT") return;
+    aview.rows[Number(i)].op = e.target.value;
+    renderList();
+  });
+
   /* ---- hand-set verdicts --------------------------------------------------
      The marks are CONTROLS as well as readouts, the way GD Lens's are: click a
      stat row to step its mark up the scale, right-click to step it back. The
@@ -1210,8 +1518,16 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   function renderSheet(ch){
     const t = totals(ch), pt = totals(ch, "pet");
     const ctx = verdictContext(ch, t, pt);
-    const shown = (sec, r, computed) =>
-      computed ? (state.over[vkey(sec, r.label)] || computed) : null;
+    /* Every verdict painted is also KEPT, keyed as the overrides are: the
+       Affixes view grades against exactly what this sheet shows -- after the
+       reader's marks, the buff toggles and the engine -- and a second
+       derivation of it would be a copy that disagrees the moment one moves. */
+    const vmap = {};
+    const shown = (sec, r, computed) => {
+      const v = computed ? (state.over[vkey(sec, r.label)] || computed) : null;
+      if (v) vmap[vkey(sec, r.label)] = v;
+      return v;
+    };
     $("sheet").innerHTML = SHEET.map(([name, list, bucket]) => {
       /* A bucketed section reads its own contributions and is computed once
          per render, like the player's. */
@@ -1234,6 +1550,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
       }).join("");
       return body ? `<div class="grp"><span class="lbl">${esc(name)}</span>${body}</div>` : "";
     }).join("");
+    state.vmap = vmap;
   }
 
   /* No badges on the row: the row itself is a name and a number. What the
@@ -1528,6 +1845,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   function renderStats(){
     const ch = CH[state.i];
     renderToggles(ch); renderSheet(ch); hideTip();
+    if (state.view === "affixes") renderAffixes();
   }
 
   function render(){
@@ -1547,7 +1865,10 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
      has always been; any other button hides it, leaving the drawer, the
      character bar and the navigation bar. The marker follows aria-current. */
   function setView(view){
+    state.view = view;
     $("mainview").hidden = view !== "character";
+    $("affixview").hidden = view !== "affixes";
+    if (view === "affixes") renderAffixes();
     document.querySelectorAll(".navbtn").forEach(b => {
       if (b.dataset.view === view) b.setAttribute("aria-current", "page");
       else b.removeAttribute("aria-current");
@@ -1557,6 +1878,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   document.addEventListener("click", e => {
     const nb = e.target.closest(".navbtn");
     if (nb){ setView(nb.dataset.view); return; }
+    if (e.target.closest("#affixview") && affixClick(e)) return;
     if (e.target.closest(".railtab")){
       drawer($("rail").getAttribute("data-open") !== "1"); return;
     }

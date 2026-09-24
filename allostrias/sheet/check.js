@@ -7,6 +7,7 @@
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const bundle = html.match(/<script id="bundle" type="application\/json">([\s\S]*?)<\/script>/)[1];
+const affixJson = html.match(/<script id="affixes" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const code = html.match(/<script>\n([\s\S]*?)<\/script>/)[1];
 
 class El {
@@ -21,6 +22,12 @@ class El {
 }
 const els={}; const get=id=>(els[id]||=new El());
 els.bundle=new El(); els.bundle._html=bundle;
+els.affixes=new El(); els.affixes._html=affixJson;
+// The Affixes view's download, captured: a link the page clicks, and the blob
+// it points at.
+const saved=[];
+global.URL={ createObjectURL:b=>{ saved.push({blob:b}); return 'blob:'+saved.length; },
+             revokeObjectURL(){} };
 const handlers={};
 global.innerWidth=1600; global.innerHeight=900;
 // A WORKING localStorage, so the page's persistence path is EXERCISED rather
@@ -32,6 +39,7 @@ global.window = { localStorage: (() => { const m = new Map(); return {
   setItem: (k, v) => m.set(k, String(v)),
   removeItem: k => m.delete(k) }; })() };
 global.document={ getElementById:get, querySelectorAll:()=>[],
+  createElement:()=>({ click(){ saved[saved.length-1].name=this.download; } }),
   addEventListener:(ev,fn)=>{ (handlers[ev]||=[]).push(fn); } };
 new Function(code)();
 
@@ -1501,6 +1509,155 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
   want(mv.hidden===false, 'choosing Character did not bring the character view back');
 }
 
+// ---- the Affixes view -------------------------------------------------------
+// Driven through the page the way a reader drives it -- the nav button, a
+// search term, a slot chip, a verdict click -- and every answer it renders is
+// held to the scorer run independently on the SAME inputs, rebuilt here from
+// what the sheet itself painted. The page's grading state is private; what it
+// shows is not.
+const AXE=globalThis.GDAffixes, GSE=globalThis.GDSearch;
+// The search rules, run against the copy of the engine THIS PAGE SHIPPED --
+// "the library is right" and "this page has the library" are two claims.
+{
+  const conf=require(require('path').join(__dirname, '..', 'affixes', 'search_conformance.js'));
+  const r=conf(GSE, 'the page');
+  r.fails.forEach(f=>want(false, 'search: '+f));
+  want(r.count>=25, `only ${r.count} search conformance cases ran`);
+}
+const IDX=JSON.parse(affixJson);
+// The verdicts the sheet shows, off its own rendered rows.
+function paintedVerdicts(){
+  const v={};
+  for (const m of get('sheet')._html.matchAll(/data-sec="([^"]*)" data-ri="(\d+)" data-v="(\w+)"/g)){
+    const sec=m[1].replace(/&amp;/g,'&'), list=B.sheet.find(x=>x[0]===sec)[1];
+    v[`${sec} / ${list[Number(m[2])].label}`]=m[3];
+  }
+  return v;
+}
+const skillsOf=c=>Object.fromEntries((c.tree||[]).map(s=>[s.path,'priority']));
+// Cards the page rendered, by group, off its own markup.
+function renderedGroups(){
+  const out={};
+  for (const m of get('alist')._html.matchAll(/<details class="panel agrade" data-g="([^"]*)"[^>]*>[\s\S]*?<span class="n">([^<]*)<\/span>/g))
+    out[m[1]]=m[2];
+  return out;
+}
+const cardsIn=h=>h.split('<div class="acard"').slice(1);
+const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
+  el.closest=s=>(s===sel||s==='#affixview')?el:null; return el; };
+{
+  AXE.load(IDX, B.targets);
+  const nav=v=>{ const el={id:'', dataset:{view:v}};
+    el.closest=s=>s==='.navbtn'?el:null; return el; };
+  fire('click', nav('affixes'));
+  want(get('affixview').hidden===false && get('mainview').hidden===true,
+       'choosing Affixes did not show the Affixes view in place of the sheet');
+
+  // Every tag that can drop is on the page somewhere -- in a grade, or in the
+  // group for affixes this character wants nothing from.
+  const by=AXE.catalogue(paintedVerdicts(), skillsOf(opener));
+  const tags=new Set(Object.values(by).flat().map(c=>c.tag));
+  want(tags.size===IDX.t.length, `${tags.size} of ${IDX.t.length} affix tags are on the page`);
+  const total=Object.values(by).reduce((n,l)=>n+l.length,0);
+  want(get('affixn')._html===`${total} affixes`, `the view counts "${get('affixn')._html}", the scorer ${total}`);
+  const groups=renderedGroups();
+  for (const g of Object.keys(by))
+    want(groups[g]===String(by[g].length), `grade ${g}: the page shows ${groups[g]}, the scorer ${by[g].length}`);
+  want(['S','A','B','C'].some(g=>by[g].length), 'no affix grades above F for the opener');
+  want(by['-'].length>0, 'no affix is left ungraded -- the "nothing wanted" group is empty');
+  // Cards carry what the corpus says: a card's lines are the lines it prints.
+  const firstCard=cardsIn(get('alist')._html)[0]||'';
+  want(/<li[^>]*>[^<]*\d/.test(firstCard), 'a rendered card prints no stat line');
+
+  // The skill rule: a "+N to <skill>" line counts only for a skill in the
+  // skill window, and counts as priority.
+  const inTree=new Set((opener.tree||[]).map(s=>s.path));
+  const grant=IDX.r.find(r=>r[7].some(g=>inTree.has(IDX.k[g[0]])));
+  if (grant){
+    const g=grant[7].find(g=>inTree.has(IDX.k[g[0]]));
+    const got=AXE.match(grant, {}, skillsOf(opener));
+    want(got['s'+g[1]]==='priority', `${IDX.n[grant[1]]}: +${g[2]} to a skill in the window is not priority`);
+    want(!Object.keys(AXE.match(grant, {}, {})).length,
+         `${IDX.n[grant[1]]}: a granted skill counted with an empty skill window`);
+  } else uncovered.push(`${opener.name} has no skill any affix grants ranks in`);
+
+  // A verdict click re-grades. Step a row the engine calls `ignore` that some
+  // affix field is read by, up to priority, and the page's groups must follow
+  // the scorer on the NEW verdicts -- and differ from before.
+  const readBy=new Set(IDX.fr.flat());
+  const before=JSON.stringify(renderedGroups());
+  const pv=paintedVerdicts();
+  const key=Object.keys(pv).find(k=>pv[k]==='ignore' && readBy.has(k) && !k.startsWith('Pet Bonuses'));
+  if (key){
+    const [sec, label]=key.split(' / ');
+    const ri=B.sheet.find(x=>x[0]===sec)[1].findIndex(r=>r.label===label);
+    const row=stub('.row', {sec, ri:String(ri)});
+    fire('click', row); fire('click', row);          // ignore -> nice -> priority
+    const now=paintedVerdicts();
+    want(now[key]==='priority', `${key}: two clicks left it ${now[key]}`);
+    const by2=AXE.catalogue(now, skillsOf(opener)), groups2=renderedGroups();
+    for (const g of Object.keys(by2))
+      want(groups2[g]===String(by2[g].length), `after marking ${key}: grade ${g} shows ${groups2[g]}, the scorer ${by2[g].length}`);
+    want(JSON.stringify(groups2)!==before, `marking ${key} priority moved no affix`);
+    fire('click', row); fire('click', row);          // back round to ignore
+    want(paintedVerdicts()[key]==='ignore', `${key} did not cycle back`);
+    want(JSON.stringify(renderedGroups())===before, `${key} back to ignore did not restore the grades`);
+  } else uncovered.push('no ignore row that an affix field feeds');
+
+  // Search: what shows is exactly what matches, per line.
+  const typed=(i,v)=>fire('input', {dataset:{ti:String(i)}, value:v, tagName:'INPUT'});
+  const all=Object.values(AXE.catalogue(paintedVerdicts(), skillsOf(opener))).flat();
+  const lines=c=>[c.name, ...c.effects.map(e=>e.text), ...c.slots].map(GSE.normalise);
+  typed(0, 'fire resist');
+  const want1=all.filter(c=>GSE.rowsMatch(lines(c), [{text:'fire resist'}], true)).length;
+  want(want1>0 && want1<all.length, `"fire resist" should narrow the list, matched ${want1}`);
+  want(get('affixn')._html===`${want1} of ${all.length} affixes`,
+       `"fire resist": the view says "${get('affixn')._html}", the matcher ${want1}`);
+  const shown=cardsIn(get('alist')._html);
+  want(shown.length>0 && shown.every(h=>/<mark>/.test(h)), 'a card shown for "fire resist" marks nothing');
+
+  // A slot chip narrows it further, and every card left rolls on that slot.
+  const slotOk=c=>c.slots.includes('Ring');
+  fire('click', stub('.achip', {slot:'Ring'}));
+  const want2=all.filter(c=>slotOk(c) && GSE.rowsMatch(lines(c), [{text:'fire resist'}], true)).length;
+  want(get('affixn')._html===`${want2} of ${all.length} affixes`,
+       `"fire resist" on Ring: the view says "${get('affixn')._html}", expected ${want2}`);
+  want(want2>0 && want2<want1, `the Ring chip should narrow ${want1} further, left ${want2}`);
+  want(cardsIn(get('alist')._html).every(h=>/<div class="as">[^\n]*Ring/.test(h)),
+       'a card shown under the Ring chip does not roll on a ring');
+  // A coarse chip reaches every weapon it covers.
+  fire('click', stub('.achip', {slot:'Ring'}));
+  typed(0, '');
+  fire('click', stub('.achip', {slot:'1H Weapon'}));
+  const want3=all.filter(c=>c.slots.some(s=>IDX.coarse[s]==='1H Weapon')).length;
+  want(get('affixn')._html===`${want3} of ${all.length} affixes`,
+       `1H Weapon: the view says "${get('affixn')._html}", expected ${want3}`);
+  fire('click', stub('#aclear', {}));
+  want(get('affixn')._html===`${all.length} affixes`, 'Clear did not drop the chip and the terms');
+
+  // The loot filter, rendered off the same grades.
+  const best=AXE.gradesByTag(null, null, AXE.catalogue(paintedVerdicts(), skillsOf(opener)));
+  const F=AXE.renderFilter(best, opener.name);
+  const fl=F.text.split('\r\n');
+  want(fl.pop()==='' && !/[^\r]\n/.test(F.text), 'the filter is not CRLF throughout');
+  want(/^[\x00-\x7f]*$/.test(F.text), 'the filter is not ASCII');
+  const body=fl.filter(l=>l && !l.startsWith('#'));
+  want(fl.includes('# Character: '+opener.name), 'the filter header does not name the character');
+  want(body.length===Object.keys(IDX.filter.names).length+Object.keys(IDX.filter.bases).length,
+       `the filter has ${body.length} lines, not one per affix and base tag`);
+  want(body.every(l=>/^[Tt]ag[^=]*=\{\^[A-Z]\}[^{]+\{\^-\}$/.test(l)), 'a filter line is not tag={^X}name{^-}');
+  const tagsOut=body.map(l=>l.split('=')[0]);
+  want(tagsOut.every((t,i)=>!i||tagsOut[i-1]<t), 'the filter is not sorted by tag');
+  for (const [t,g] of Object.entries(best))
+    want(body.includes(`${t}={^${IDX.filter.gradeColour[g]}}${IDX.filter.names[t]}{^-}`),
+         `${t} graded ${g} is not painted ${IDX.filter.gradeColour[g]}`);
+
+  fire('click', nav('character'));
+  want(get('affixview').hidden===true && get('mainview').hidden===false,
+       'choosing Character did not put the sheet back');
+  globalThis.__filter=F;
+}
+
 // ---- the pet verdict, driven through the page -----------------------------
 // ⚠️ THE BRANCH THAT MATTERS BELONGS TO A CHARACTER THE PAGE DOES NOT OPEN ON.
 // The opener fields a summon that scales off the PLAYER and can use nothing on
@@ -1613,6 +1770,17 @@ want(/details\.panel:not\(\[open\]\) > summary\.hd::after\{transform:scaleY\(-1\
 want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.test(html),
      'the arrow has no hover state');
 
+(async () => {
+// The download button hands over EXACTLY the filter the scorer renders.
+{
+  const stubBtn={id:'afilter', dataset:{}}; stubBtn.closest=s=>(s==='#afilter'||s==='#affixview')?stubBtn:null;
+  fire('click', stubBtn);
+  await new Promise(r=>setTimeout(r, 0));
+  const got=saved[saved.length-1];
+  want(got && got.name==='tagsgdx3_uimain.txt', `the download is named ${got&&got.name}`);
+  const text=got ? await got.blob.text() : '';
+  want(text===globalThis.__filter.text, 'the downloaded file is not the filter the scorer rendered');
+}
 console.log(`characters ${B.characters.length}  sheet rows ${rows}  worn ${geo}  toggles ${tgs}`);
 console.log(`mastery tree: Nurgle ${nu.tree.length} skills, ${nu.tree.filter(s=>s.parent===null).length} roots, depths ${[...new Set(depths)].sort((a,b)=>a-b).join('/')}`);
 console.log(`Nurgle with his 3 buffs: OA ${oa} (1975)  DA ${da} (2399)`);
@@ -1624,3 +1792,4 @@ if(uncovered.length) console.log('\nUNCOVERED (no frozen character exercises the
                                  +uncovered.join('\n - '));
 if(fail.length){ console.error('\nFAIL\n - '+fail.join('\n - ')); process.exit(1); }
 console.log('\nOK');
+})();

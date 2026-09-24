@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from . import assemble
 from . import build
+from ..affixes import build as affix_build
 from .. import settings as S
 from ..db import character
 
@@ -94,6 +95,9 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
     print(f'building once before serving…')
+    # The affix corpus reads only the catalogue, so a save refresh never moves
+    # it: built once here, not on every Refresh.
+    affix_build.main()
     print(f"  {refresh()['seconds']}s")
     print(f'http://localhost:{port}')
     HTTPServer(('127.0.0.1', port), Handler).serve_forever()

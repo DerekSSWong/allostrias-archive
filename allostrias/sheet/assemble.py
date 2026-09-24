@@ -4,8 +4,9 @@ import json, os
 from .. import settings as S
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(S.ROOT, 'cache', 'sheet')
+AFFIXES = os.path.join(S.ROOT, 'cache', 'affixes')
 
-def main(out_dir=None):
+def main(out_dir=None, affixes_dir=None):
     out_dir = out_dir or OUT
     shell = open(os.path.join(HERE, 'shell.html')).read()
     b = json.load(open(os.path.join(out_dir, 'sheet.json')))
@@ -90,6 +91,18 @@ def main(out_dir=None):
                          ('__ARROW_OVER__', ch['panelArrowOver']),
                          ('__MASTERY_BARS__', bars), ('__QUALITY_SYMBOLS__', badges),
                          ('__CLASS_IMAGES__', portraits)]:
+        if token not in shell:
+            raise SystemExit(f'{token} missing from the shell')
+        shell = shell.replace(token, value)
+    # The Affixes view: its corpus, and the two engines it runs on, spliced in
+    # verbatim so a gate can cut each back out by its markers.
+    ax_dir = os.path.join(os.path.dirname(HERE), 'affixes')
+    corpus = os.path.join(affixes_dir or AFFIXES, 'affixes.json')
+    if not os.path.exists(corpus):
+        raise SystemExit(f'no affix corpus at {corpus}: run allostrias.affixes.build first')
+    for token, value in [('__SEARCH_JS__', open(os.path.join(ax_dir, 'search.js')).read()),
+                         ('__AFFIX_JS__', open(os.path.join(ax_dir, 'affixes.js')).read()),
+                         ('__AFFIXES__', open(corpus).read().replace('</', '<\\u002f'))]:
         if token not in shell:
             raise SystemExit(f'{token} missing from the shell')
         shell = shell.replace(token, value)
