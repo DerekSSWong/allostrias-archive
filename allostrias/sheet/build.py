@@ -576,6 +576,13 @@ TARGETS = {
     'levelFloor': 0.35,
     'diffScale': {'0': 0.55, '1': 0.78, '2': 1.0},
 }
+# Sheet-only verdict constants. GD Lens has no such rule, so they stay out of
+# TARGETS -- the copy the drift gate compares -- and are merged in at bundling.
+SHEET_TARGETS = {
+    # A damage type under this share of EITHER pool -- the Bonus Damage rows
+    # summed, or the Damage Modifiers rows summed -- is `avoid` on both rows.
+    'poolFloor': 0.10,
+}
 
 # The game's own type words, and the two it spells differently from the sheet.
 CONV_TYPE = {'Poison': 'Acid', 'Life': 'Vitality'}
@@ -939,6 +946,8 @@ SECTION_RULE = {
 # dead channel `avoid`. The aggregate rows carry none: "Total Retaliation
 # Damage" spans every type and judging it against one would be wrong in both
 # directions.
+# The two sections whose rows form the pools SHEET_TARGETS['poolFloor'] reads.
+POOL_SECTIONS = ('Bonus Damage', 'Damage Modifiers')
 TYPED_SECTIONS = ('Bonus Damage', 'Damage Modifiers',
                   'Damage over Time Modifiers', 'Retaliation')
 DOT_TYPE = {'Burn': 'Fire', 'Frostburn': 'Cold', 'Electrocute': 'Lightning',
@@ -1050,6 +1059,8 @@ def _apply_rules():
                 t = DOT_TYPE.get(r['label'], r['label'])
                 if t in DAMAGE_TYPE_NAMES:
                     r['dtype'] = t
+                    if sec in POOL_SECTIONS:
+                        r['dmgPool'] = True
                 if MECHANISM.get(sec):
                     r['mech'] = MECHANISM[sec]
 
@@ -2175,7 +2186,7 @@ def main(profile_db=None, out_dir=None):
     print(f'icon sheet {sheet.size}, {len(frames)} icons')
 
     chrome = build_chrome(ui_tx)
-    bundle = {'characters': out, 'sheet': SHEET, 'targets': TARGETS, 'frames': frames,
+    bundle = {'characters': out, 'sheet': SHEET, 'targets': {**TARGETS, **SHEET_TARGETS}, 'frames': frames,
               'sheetSize': list(sheet.size), 'atlas': png_b64(sheet, quantize=255),
               'chrome': chrome}
     p = os.path.join(out_dir, 'sheet.json')

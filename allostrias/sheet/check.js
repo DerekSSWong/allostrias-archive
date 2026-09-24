@@ -497,6 +497,13 @@ for (const c of B.characters)
   for (const v of ['priority','nice','ignore','avoid'])
     want(marks.indexOf(v)!==-1,
       `${opener.name} renders no "${v}" mark, so that branch is unexercised`);
+  // `avoid` is a statement about a damage TYPE, so only a typed row may carry
+  // it. A row flag that collided with an existing key once sent Health and
+  // Energy to avoid on every character with nothing here noticing.
+  const avoidUntyped=[...sheet.matchAll(/data-sec="([^"]*)" data-ri="(\d+)" data-v="avoid"/g)]
+    .map(m=>[m[1], (B.sheet.find(x=>x[0]===m[1])||[,[]])[1][+m[2]]])
+    .filter(([,r])=>!r||!r.dtype).map(([sec,r])=>`${sec}/${r&&r.label}`);
+  want(avoidUntyped.length===0, `avoid on rows with no damage type: ${avoidUntyped.join(', ')}`);
   // A withheld row shows an empty gutter, never the neutral mark. Nothing is
   // withheld today, so assert the mechanism on the rule rather than on a row.
   want(/\.vd\{[^}]*background:center\/contain no-repeat\}/.test(html)

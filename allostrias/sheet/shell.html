@@ -885,8 +885,26 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   const targetBand = (key, target) =>
     (T.pct || {})[key] !== undefined ? target + T.sigma : target * 1.25;
 
+  /* Each damage type's share of the Bonus Damage and of the Damage Modifiers
+     pool: the rows' own numbers, summed per section. A section summing to zero
+     has no shares to give and is null, not a pool of zeros. Sheet-only. */
+  function damagePools(ch, t){
+    const out = {};
+    SHEET.forEach(([sec, rows]) => {
+      const pr = rows.filter(r => r.dmgPool);
+      if (!pr.length) return;
+      const vals = {};
+      let total = 0;
+      pr.forEach(r => { const v = rowNumber(ch, t, r); vals[r.dtype] = v; total += v; });
+      out[sec] = total > 0 ? {} : null;
+      if (total > 0) Object.keys(vals).forEach(ty => { out[sec][ty] = vals[ty] / total; });
+    });
+    return out;
+  }
+
   function verdictContext(ch, t, pt){
     return {level: ch.level, difficulty: ch.difficulty,
+            pools: damagePools(ch, t),
             resist: resistances(ch, t),
             resistUnrolled: ch.vctx.resistUnrolled || {},
             canBlock: (t.defensiveBlockChance || 0) > 0,
@@ -1010,6 +1028,13 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     const dtype = row.dtype, mech = row.mech, dmg = ctx.damage || {};
     /* Zero measurable damage is a STATED condition, not a silent empty. */
     if ((dtype || mech) && dmg.blind) return "ignore";
+    /* Sheet-only: a type under poolFloor of EITHER pool is `avoid` on both its
+       flat and its % row, whatever the rest of the build says about it. */
+    if (row.dmgPool){
+      const pools = ctx.pools || {};
+      if (Object.keys(pools).some(sec => pools[sec] && (pools[sec][dtype] || 0) < T.poolFloor))
+        return "avoid";
+    }
     if (dtype){
       const wanted = (mech === "retaliation" ? dmg.wantedRetaliation : dmg.wanted) || [];
       /* ⚠️ `avoid`: not "real, but not one of your types" -- that is `ignore` --
