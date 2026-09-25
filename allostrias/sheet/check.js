@@ -1696,6 +1696,14 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   want(get('affixn')._html===`${want3} of ${all.length} affixes`,
        `1H Weapon: the view says "${get('affixn')._html}", expected ${want3}`);
   want(/placeholder="Search"/.test(get('aterms')._html), 'the first search box does not read "Search"');
+  // An added term's remove button is the game's window close art, all three
+  // states, and carries no text of its own.
+  want(/<button class="arm" type="button" data-rm="\d+" aria-label="Remove term"><\/button>/.test(
+         (fire('click', stub('#aadd', {})), get('aterms')._html)), 'the remove-term button is not the bare close art');
+  for (const st of ['', ':hover', ':active'])
+    want(new RegExp(`\\.arm${st}\\{[^}]*background(-image)?:url\\("data:image/png;base64,[^"]{100,}`).test(html),
+         `the remove-term button has no ${st||'resting'} art`);
+  fire('click', stub('#aclear', {}));
   // An added term box carries no placeholder; only the first one does.
   fire('click', stub('#aadd', {}));
   want(!/placeholder="and/.test(get('aterms')._html) && (get('aterms')._html.match(/placeholder=/g)||[]).length===1,

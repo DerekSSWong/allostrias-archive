@@ -584,6 +584,11 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   border:1px solid var(--rule-hi); font:600 11px Cinzel,serif; letter-spacing:.06em; cursor:pointer}
 .abtn:hover{border-color:var(--gold-dim)}
 .abtn[disabled]{opacity:.55; cursor:progress}
+/* Removing a search term: the game's window close button, up / over / down. */
+.arm{flex:none; width:__TERM_CLOSE_W__px; height:__TERM_CLOSE_H__px; padding:0; border:0;
+  cursor:pointer; background:url("__TERM_CLOSE_UP__") center / contain no-repeat}
+.arm:hover{background-image:url("__TERM_CLOSE_OVER__")}
+.arm:active{background-image:url("__TERM_CLOSE_DOWN__")}
 .aqbar{display:flex; gap:var(--s2); flex-wrap:wrap; align-items:center}
 .aqbar .n{margin-left:auto; font:11px Jura,system-ui,sans-serif; color:var(--faint)}
 .aslots{display:flex; gap:var(--s4); flex-wrap:wrap}
@@ -1261,7 +1266,7 @@ __AFFIX_JS__
       }</select>` : ""}
       <input type="search" data-ti="${i}" value="${esc(r.text)}"${
         i ? "" : ' placeholder="Search"'} aria-label="Search term ${i + 1}">
-      ${i ? `<button class="abtn" type="button" data-rm="${i}" aria-label="Remove term">×</button>` : ""}
+      ${i ? `<button class="arm" type="button" data-rm="${i}" aria-label="Remove term"></button>` : ""}
     </div>`).join("");
   }
 

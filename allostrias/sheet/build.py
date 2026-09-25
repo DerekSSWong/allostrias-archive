@@ -2207,6 +2207,17 @@ def build_chrome(ui):
             raise SystemExit(f'UI.arc has no faction_vendor_buttonitempanel{name}')
         out[key] = png_b64(im.convert('RGBA'))
 
+    # The Affixes view's remove-a-search-term button: the game's window close
+    # button, all three mouse states, drawn at native size.
+    for key, state in (('termCloseUp', 'up'), ('termCloseOver', 'over'),
+                       ('termCloseDown', 'down')):
+        im = ui.get(f'buttonwindowclose{state}.tex')
+        if im is None:
+            raise SystemExit(f'UI.arc has no buttonwindowclose{state}')
+        out[key], out[key + 'Size'] = png_b64(im.convert('RGBA')), im.size
+    if len({tuple(out[k + 'Size']) for k in ('termCloseUp', 'termCloseOver', 'termCloseDown')}) != 1:
+        raise SystemExit('the window close states differ in size; the button would jump')
+
     # The Affixes view's grade headings: no frame, just the devotion map's
     # unlit connector as the rule under each grade -- a short rope segment
     # that tiles -- and the menu's down-pointing gem as the collapse arrow,
