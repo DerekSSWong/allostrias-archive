@@ -591,6 +591,14 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 .agrade:not([open]) > summary::before{transform:rotate(-90deg)}
 .agrade > summary:hover h2{color:var(--band-ink)}
 .agbody{padding-top:var(--s3)}
+/* Prefixes on the left, suffixes on the right: the two halves of an item's
+   name, side by side. Stacked when there is no room for two. */
+.asplit{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:var(--s3); align-items:start}
+@media (max-width:760px){ .asplit{grid-template-columns:minmax(0, 1fr)} }
+.acolh{margin-bottom:var(--s2); font-family:Cinzel,serif; font-size:12px; font-weight:600;
+  letter-spacing:.06em; color:var(--gold-dim)}
+.acolh .n{margin-left:6px; font-family:Jura,system-ui,sans-serif; font-size:11px; font-weight:400;
+  letter-spacing:0; color:var(--faint)}
 .agrade > summary h2 .g{display:inline-block; min-width:1em}
 .agrade[data-g="S"] summary .g{color:var(--t-legendary-ink)}
 .agrade[data-g="A"] summary .g{color:var(--t-epic)}
@@ -1227,6 +1235,17 @@ __AFFIX_JS__
       `<div class="aslotcol">${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}</div>`).join("");
   }
 
+  /* A group's cards as two columns, prefixes then suffixes. Each column says
+     how many it holds, and says so when it holds none rather than collapsing. */
+  function split(hits){
+    return `<div class="asplit">${["Prefix", "Suffix"].map(kind => {
+      const col = hits.filter(c => c.kind === kind);
+      return `<div class="acol" data-kind="${kind}"><div class="acolh">${kind}es<span class="n">${
+        col.length}</span></div>${col.length ? `<div class="acards">${col.map(card).join("")}</div>`
+        : `<p class="note">No ${kind.toLowerCase()} here matches.</p>`}</div>`;
+    }).join("")}</div>`;
+  }
+
   function renderList(){
     const by = aview.data, filtering = liveRows().length || aview.slots.size;
     let shown = 0, total = 0;
@@ -1241,7 +1260,7 @@ __AFFIX_JS__
       return `<details class="agrade" data-g="${g}"${open ? " open" : ""}>
         <summary><h2><span class="g">${g}</span></h2>
           <span class="n">${filtering ? `${hits.length} of ${all.length}` : all.length}</span></summary>
-        <div class="agbody">${open ? (hits.length ? `<div class="acards">${hits.map(card).join("")}</div>`
+        <div class="agbody">${open ? (hits.length ? split(hits)
                                                : `<p class="note">Nothing here matches.</p>`) : ""}</div>
       </details>`;
     }).join("");

@@ -1585,6 +1585,16 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
     const none=by.F.filter(c=>c.useful===0).length;
     want(none>0, 'no affix wanting nothing landed in F');
   }
+  // Each open group splits prefixes left, suffixes right, and every card sits
+  // in the column of its own kind.
+  {
+    const cols=[...get('alist')._html.matchAll(/<div class="acol" data-kind="(\w+)">([\s\S]*?)(?=<div class="acol"|<\/div><\/div>\s*<\/details>)/g)];
+    want(cols.length>=2 && cols[0][1]==='Prefix' && cols[1][1]==='Suffix',
+         'an open grade group is not split Prefix | Suffix');
+    const stray=cols.filter(([,k,h])=>cardsIn(h).some(c=>!c.includes(`<span class="ak">${k}</span>`)));
+    want(!stray.length, `a card sits in the wrong column (${stray.map(c=>c[1]).join()})`);
+    want(cols.some(([,k,h])=>k==='Suffix' && cardsIn(h).length), 'no suffix card rendered in any open group');
+  }
   // Cards carry what the corpus says: a card's lines are the lines it prints.
   const firstCard=cardsIn(get('alist')._html)[0]||'';
   want(/<li[^>]*>[^<]*\d/.test(firstCard), 'a rendered card prints no stat line');
