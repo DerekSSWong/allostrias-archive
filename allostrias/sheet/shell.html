@@ -1153,6 +1153,13 @@ __AFFIX_JS__
             petBuild: (pt.offensiveTotalDamageModifier || 0)
                       >= (T.petBuildDamage || Infinity),
             damage: damageProfile(ch, t),
+            /* Sheet-only. A retaliation build needs BOTH a Total Retaliation
+               Damage modifier and at least one source feeding a retaliation
+               damage channel. Output share alone promoted builds whose only
+               retaliation was a stray item line. */
+            retaliationBuild: (t.retaliationTotalDamageModifier || 0) > 0
+              && Object.values(RETAL_FIELD).some(f =>
+                   ((ch.vctx.invested || {})[f.replace(/Min$/, "")] || 0) > 0),
             invested: ch.vctx.invested || {},
             masteries: ch.skills.filter(s => s.cls === "Skill_Mastery").map(s => s.n)};
   }
@@ -1549,6 +1556,10 @@ __AFFIX_JS__
 
     const v = value - (row.base || 0);
     const dtype = row.dtype, mech = row.mech, dmg = ctx.damage || {};
+    /* Sheet-only: not a retaliation build -> every Retaliation row is avoid,
+       the aggregate row included. Read off modifier and investment, not the
+       damage profile, so it stands even when the profile is blind. */
+    if (mech === "retaliation" && !ctx.retaliationBuild) return "avoid";
     /* Zero measurable damage is a STATED condition, not a silent empty. */
     if ((dtype || mech) && dmg.blind) return "ignore";
     /* Sheet-only: flat damage mostly converted into a main type is feeding

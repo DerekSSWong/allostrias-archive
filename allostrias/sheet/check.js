@@ -537,13 +537,14 @@ for (const c of B.characters)
   for (const v of ['priority','nice','ignore','avoid'])
     want(marks.indexOf(v)!==-1,
       `${opener.name} renders no "${v}" mark, so that branch is unexercised`);
-  // `avoid` is a statement about a damage TYPE, or about a pet bonus nothing
-  // can spend -- only a typed row or a pet row may carry it. A row flag that
+  // `avoid` is a statement about a damage TYPE, a pet bonus nothing can spend,
+  // or retaliation on a build that is not one -- only a typed, pet or
+  // retaliation row may carry it. A row flag that
   // collided with an existing key once sent Health and Energy to avoid on
   // every character with nothing here noticing.
   const avoidUntyped=[...sheet.matchAll(/data-sec="([^"]*)" data-ri="(\d+)" data-v="avoid"/g)]
     .map(m=>[m[1], (B.sheet.find(x=>x[0]===m[1])||[,[]])[1][+m[2]]])
-    .filter(([,r])=>!r||!(r.dtype||r.rule==='pet')).map(([sec,r])=>`${sec}/${r&&r.label}`);
+    .filter(([,r])=>!r||!(r.dtype||r.rule==='pet'||r.mech==='retaliation')).map(([sec,r])=>`${sec}/${r&&r.label}`);
   want(avoidUntyped.length===0, `avoid on rows with no damage type: ${avoidUntyped.join(', ')}`);
   // A withheld row shows an empty gutter, never the neutral mark. Nothing is
   // withheld today, so assert the mechanism on the rule rather than on a row.
@@ -1928,6 +1929,49 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
     want(on===dflt, `after picking a character ${on} toggles are on, `
       + `${opener.name} boots with ${dflt}`);
   }
+}
+
+// ---- not a retaliation build -> every Retaliation row avoid --------------
+// Derived from the contributions and the shipped investment, not from a list
+// of names: Total Retaliation Damage > 0 AND some retaliation damage channel
+// fed. Each character is picked and its rendered marks read; the opener goes
+// back at the end.
+{
+  const retRows=(B.sheet.find(x=>x[0]==='Retaliation')||[,[]])[1];
+  want(retRows.length>0 && retRows.every(r=>r.mech==='retaliation'),
+       'the Retaliation rows are not stamped with the retaliation mechanism');
+  const pick=i=>{ const el={id:'',dataset:{c:String(i)}};
+                  el.closest=sel=>sel==='.pick'?el:null; fire('click', el); };
+  const retMarks=()=>{
+    const grp=(get('sheet')._html.split('<div class="grp">')
+      .find(g=>g.includes('>Retaliation<')))||'';
+    return [...grp.matchAll(/<span class="vd"(?: data-v="(\w+)")?><\/span>/g)].map(m=>m[1]||null);
+  };
+  // Direct, DoT (`Slow`) and Elemental retaliation all count as damage.
+  const stems=retRows.flatMap(r=>r.f||[]).map(f=>/^retaliation(\w+)Min$/.exec(f)).filter(Boolean).map(m=>m[1]);
+  const RET_CHANS=stems.flatMap(x=>['retaliation'+x, 'retaliationSlow'+x]).concat('retaliationElemental');
+  let yes=0, no=0;
+  B.characters.forEach((c,i)=>{
+    const on=new Set(c.toggles.filter(t=>t.kind==='toggle'||t.kind==='granted').map(t=>t.id));
+    const total=(c.contrib.retaliationTotalDamageModifier||[])
+      .reduce((n,[v,,tid])=>n+(!tid||on.has(tid)?v:0), 0);
+    const fedChan=RET_CHANS.some(ch=>(c.vctx.invested[ch]||0)>0);
+    const build=total>0 && fedChan;
+    pick(i);
+    const m=retMarks();
+    want(m.length===retRows.length, `${c.name}: ${m.length} retaliation gutters for ${retRows.length} rows`);
+    if (build){ yes++;
+      want(!m.every(v=>v==='avoid'),
+           `${c.name} is a retaliation build (${total}% total, a channel fed) yet every row is avoid`);
+    } else { no++;
+      want(m.every(v=>v==='avoid'),
+           `${c.name} is not a retaliation build (${total}% total, channel fed: ${fedChan}) `
+           + `so every Retaliation row is avoid -- got ${[...new Set(m)]}`);
+    }
+  });
+  if (!yes) uncovered.push('no frozen character is a retaliation build, so only the avoid half of the retaliation rule runs');
+  console.log(`retaliation verdict: ${yes} build(s), ${no} not`);
+  pick(B.characters.indexOf(opener));
 }
 
 // ---- the collapse arrow is the game's own panel button --------------------
