@@ -100,6 +100,31 @@ SLOT_GROUPS = [
     ],
 ]
 
+# ---------------------------------------------------------- masteries --
+def skill_masteries():
+    """(masteries in the game's order, {skill record path: mastery}).
+
+    From each mastery's own records/ui/skills/classNN/classtable.dbr -- the
+    roster the game draws that skill tab from -- by the skill RECORD each button
+    names, so neither a folder nor a display name decides it: a name is shared
+    by unrelated skills (an item skill called Ring of Steel), and a folder is
+    only where a file happens to sit. Ten masteries; Berserker is class10.
+    """
+    names, out = [], {}
+    for i in range(1, 11):
+        mastery = I.MASTERY_NAMES.get(f'SkillClass{i:02d}')
+        table = I.read_rel(f'records/ui/skills/class{i:02d}/classtable.dbr')
+        row = re.search(r'^tabSkillButtons=(.*)$', table or '', re.M)
+        if not mastery or not row:
+            raise SystemExit(f'class{i:02d} has no name or no skill roster')
+        names.append(mastery)
+        for button in filter(None, (b.strip() for b in row.group(1).split(';'))):
+            m = re.search(r'^skillName=(\S+)', I.read_rel(button) or '', re.M)
+            if m and out.setdefault(m.group(1).lower(), mastery) != mastery:
+                raise SystemExit(f'{m.group(1)} is on two masteries\' rosters')
+    return names, out
+
+
 # ------------------------------------------------------ what a stat is ----
 # PORTED FROM GD Lens's stat_engine.SKIP_EXACT / SKIP_PREFIX: numeric fields
 # that are not a stat -- identifiers, art, costs, loot machinery. A line the
@@ -460,8 +485,16 @@ def build(conn):
         stats['records'] += 1
         stats['with a scored field' if scored else 'nothing the sheet reads'] += 1
 
+    # Every skill an affix grants ranks in belongs to a mastery's roster. One
+    # that did not would silently drop out of the Mastery filter, so it stops
+    # the build instead.
+    masteries, of = skill_masteries()
+    lost = [k for k in skills if k not in of]
+    if lost:
+        raise SystemExit(f'{len(lost)} granted skills are on no mastery roster: {lost[:3]}')
     return {
         'r': records, 't': tags, 'n': names, 'k': skills,
+        'masteries': masteries, 'km': [masteries.index(of[k]) for k in skills],
         's': [s.split('|') if s else [] for s in slotsets],
         'f': fields, 'lk': [line_key(f) for f in fields],
         'fr': [fr[f] for f in fields],

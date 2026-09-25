@@ -1711,6 +1711,33 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   fire('click', stub('#aclear', {}));
   want(get('affixn')._html===`${all.length} affixes`, 'Clear did not drop the chip and the terms');
 
+  // Mastery chips: all ten, and one narrows to exactly the cards granting
+  // ranks in that mastery's skills -- each of which prints a "+N to" line.
+  {
+    const chips=[...get('aslots')._html.matchAll(/data-mastery="([^"]+)"/g)].map(m=>m[1]);
+    want(chips.length===10 && chips.join()===IDX.masteries.join(), `mastery chips: ${chips}`);
+    // Independently of the card's own field, in the Atlas -- where (tag,
+    // slots) IS the card: some record of it grants a Nightblade roster skill.
+    const roster=new Set(IDX.k.filter((_, i)=>IDX.masteries[IDX.km[i]]==='Nightblade'));
+    const atl=AXE.catalogue({}, {}).F;
+    const said=atl.filter(c=>c.masteries.includes('Nightblade')).length;
+    const grant=atl.filter(c=>IDX.r.some(r=>IDX.t[r[0]]===c.tag && IDX.s[r[8]].join()===c.slots.join()
+                                           && r[7].some(g=>roster.has(IDX.k[g[0]])))).length;
+    want(said===grant && said>0, `Nightblade in the Atlas: ${said} cards say so, ${grant} grant its skills`);
+    const nb=all.filter(c=>c.masteries.includes('Nightblade'));
+    fire('click', stub('.achip', {mastery:'Nightblade'}));
+    want(get('affixn')._html===`${nb.length} of ${all.length} affixes`,
+         `Nightblade chip: the view says "${get('affixn')._html}", expected ${nb.length}`);
+    want(cardsIn(get('alist')._html).every(h=>/<li[^>]*>[\s\S]*?\+\d+(–\d+)? to /.test(h)),
+         'a card under a mastery chip prints no "+N to" line');
+    fire('click', stub('.achip', {slot:'Ring'}));
+    const nbRing=nb.filter(c=>c.slots.includes('Ring')).length;
+    want(get('affixn')._html===`${nbRing} of ${all.length} affixes`,
+         `Nightblade on Ring: the view says "${get('affixn')._html}", expected ${nbRing}`);
+    fire('click', stub('#aclear', {}));
+    want(!/data-mastery="[^"]+" aria-pressed="true"/.test(get('aslots')._html), 'Clear left a mastery chip pressed');
+  }
+
   // No panel title: the switch leads the header, its mode named above it.
   want(!/id="affixview"[^]*?<h2>Affixes<\/h2>/.test(html.slice(0, html.indexOf('<script'))),
        'the Affixes view still carries its own title');

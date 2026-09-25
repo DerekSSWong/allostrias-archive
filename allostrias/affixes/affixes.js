@@ -183,10 +183,16 @@
       });
       var top = recs.reduce(function (a, b) { return b[4] > a[4] ? b : a; });
       var lv = recs.map(function (r) { return r[4]; });
+      /* The masteries whose skills this affix grants ranks in -- a "+N to
+         <skill>" line on the card is the only route an affix has. */
+      var mastery = {};
+      recs.forEach(function (r) {
+        r[7].forEach(function (g) { mastery[IDX.masteries[IDX.km[g[0]]]] = 1; });
+      });
       var card = {
         tag: IDX.t[top[0]], name: IDX.n[top[1]],
         kind: top[2] ? 'Suffix' : 'Prefix', tier: top[3] ? 'Rare' : 'Magical',
-        slots: IDX.s[top[8]], lmin: Math.min.apply(null, lv), lmax: Math.max.apply(null, lv),
+        slots: IDX.s[top[8]], masteries: Object.keys(mastery), lmin: Math.min.apply(null, lv), lmax: Math.max.apply(null, lv),
         lines: Math.max.apply(null, recs.map(function (r) { return r[5]; })),
         useful: Object.keys(union).length,
         /* Each line carries the verdict the sheet holds on it -- the same

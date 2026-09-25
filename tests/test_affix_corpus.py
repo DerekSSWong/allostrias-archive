@@ -93,6 +93,13 @@ missing = sorted((carried & set(fr)) - set(corpus['f']))
 assert not missing, f'sheet fields affixes carry but the corpus does not score: {missing}'
 print(f'  {len(corpus["f"])} scored fields: every sheet field an affix carries')
 
+# -- 2b. masteries: every granted skill on exactly one roster ---------------
+assert len(corpus['masteries']) == 10, corpus['masteries']
+assert len(corpus['km']) == len(corpus['k']), 'a granted skill has no mastery'
+names, of = B.skill_masteries()
+print(f"  {len(of)} roster skills over {len(names)} masteries; all {len(corpus['k'])} "
+      f"granted skills on one")
+
 # -- 3. slots: total, in the published order --------------------------------
 for s in corpus['s']:
     assert s == sorted(s, key=B.SLOT_ORDER.index), s
@@ -166,6 +173,17 @@ else:
     assert set(AC.ENGINE_CLASS_MAP.values()) == set(B.CLASS_TO_LABEL.values()), \
         'slot labels drifted from gd-lib'
     print('  slot vocabulary identical to gd-lib')
+    # gd-lib's own skill -> mastery index is keyed by display NAME, found
+    # through its wrapper chain (a pet modifier's name is on what it grants);
+    # every granted skill must land in the same mastery through it.
+    import gamedata as GL
+    lib_index = GL.skill_mastery_index()
+    assert len(lib_index) == len(of), f'gd-lib has {len(lib_index)} roster skills, this {len(of)}'
+    wrong = [(k, corpus['masteries'][m], lib_index.get(GL._skill_name(k)))
+             for k, m in zip(corpus['k'], corpus['km'])
+             if lib_index.get(GL._skill_name(k)) != corpus['masteries'][m]]
+    assert not wrong, f'{len(wrong)} granted skills sit in a different mastery in gd-lib: {wrong[:3]}'
+    print(f"  all {len(corpus['k'])} granted skills in the same mastery as gd-lib's index")
 
 # -- 6. vs GD Lens's line count ---------------------------------------------
 lens = sibling('.gdlens')

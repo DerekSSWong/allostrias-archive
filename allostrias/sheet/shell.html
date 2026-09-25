@@ -1177,7 +1177,7 @@ __AFFIX_JS__
      searching and slot chips only re-filter it. */
   const AX = globalThis.GDAffixes, GS = globalThis.GDSearch;
   const aview = {data: null, sig: null, rows: [{op: "AND", text: ""}],
-                 slots: new Set(), open: {}, mode: "personal", atlas: null};
+                 slots: new Set(), masteries: new Set(), open: {}, mode: "personal", atlas: null};
 
   /* The Atlas: every magic and rare affix that can drop, with no character in
      it. Graded against nothing, so the units are keyed without anyone's
@@ -1240,6 +1240,9 @@ __AFFIX_JS__
 
   function cardMatches(c){
     if (aview.slots.size && !slotsOf(c).some(sl => aview.slots.has(sl))) return false;
+    /* Any pressed mastery, like the slots: a chip answers "does it add to a
+       skill of this mastery". */
+    if (aview.masteries.size && !c.masteries.some(m => aview.masteries.has(m))) return false;
     return GS.rowsMatch(searchLines(c), liveRows(), true);
   }
 
@@ -1298,7 +1301,12 @@ __AFFIX_JS__
           aview.slots.has(v)}">${esc(v)}</button>`).join("")}</div></div>` : "";
     };
     $("aslots").innerHTML = AIDX.slotGroups.map(entry =>
-      `<div class="aslotcol">${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}</div>`).join("");
+      `<div class="aslotcol">${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}</div>`).join("")
+      /* All ten masteries, always listed: a chip that selects nothing still
+         answers the question it asks. */
+      + `<div class="aslotcol"><div><div class="aslotlbl">Mastery</div><div class="aslotrow">${
+        AIDX.masteries.map(m => `<button class="achip" type="button" data-mastery="${esc(m)}" aria-pressed="${
+          aview.masteries.has(m)}">${esc(m)}</button>`).join("")}</div></div></div>`;
   }
 
   /* A group's cards as two columns, prefixes then suffixes. Each column says
@@ -1313,7 +1321,7 @@ __AFFIX_JS__
   }
 
   function renderList(){
-    const filtering = liveRows().length || aview.slots.size;
+    const filtering = liveRows().length || aview.slots.size || aview.masteries.size;
     if (aview.mode === "atlas"){
       const all = atlasCards(), hits = all.filter(cardMatches);
       $("alist").innerHTML = hits.length ? split(hits) : `<p class="note">Nothing matches.</p>`;
@@ -1405,13 +1413,14 @@ __AFFIX_JS__
     }
     const chip = t.closest(".achip");
     if (chip){
-      const v = chip.dataset.slot;
-      aview.slots.has(v) ? aview.slots.delete(v) : aview.slots.add(v);
+      const [set, v] = chip.dataset.mastery !== undefined
+        ? [aview.masteries, chip.dataset.mastery] : [aview.slots, chip.dataset.slot];
+      set.has(v) ? set.delete(v) : set.add(v);
       renderSlots(); renderList(); return true;
     }
     if (t.closest("#aadd")){ aview.rows.push({op: "AND", text: ""}); renderTerms(); return true; }
     if (t.closest("#aclear")){
-      aview.rows = [{op: "AND", text: ""}]; aview.slots.clear(); aview.open = {};
+      aview.rows = [{op: "AND", text: ""}]; aview.slots.clear(); aview.masteries.clear(); aview.open = {};
       renderTerms(); renderSlots(); renderList(); return true;
     }
     const rm = t.closest("[data-rm]");
