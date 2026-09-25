@@ -2219,6 +2219,15 @@ def build_chrome(ui):
             raise SystemExit(f'mapsymbol_{name} is fully transparent')
         out[key] = png_b64(im.crop(bb))
 
+    # The switch itself: the character panel's info-tab slot as the track,
+    # and its attribute button stood on end as the pip.
+    track = ui.get('character/character_buttoninfotab1.tex')
+    pip = ui.get('character/buttonattributeup.tex')
+    if track is None or pip is None:
+        raise SystemExit('UI.arc lacks character_buttoninfotab1 or buttonattributeup')
+    out['modeTrack'] = png_b64(track.convert('RGBA'))
+    out['modePip'] = png_b64(pip.convert('RGBA').transpose(Image.ROTATE_90))
+
     # The Affixes view's remove-a-search-term button: the game's window close
     # button, all three mouse states, drawn at native size.
     for key, state in (('termCloseUp', 'up'), ('termCloseOver', 'over'),

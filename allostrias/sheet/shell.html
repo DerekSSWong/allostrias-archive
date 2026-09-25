@@ -576,12 +576,17 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 .amode .ml[data-m="atlas"]{background-image:url("__MODE_ATLAS__")}
 .amode[aria-checked="false"] .ml[data-m="personal"],
 .amode[aria-checked="true"] .ml[data-m="atlas"]{filter:none; opacity:1}
-.amode .trk{position:relative; width:32px; height:14px; background:var(--sunk);
-  border:1px solid var(--gold-dim); border-radius:8px}
-.amode .knob{position:absolute; top:1px; left:1px; width:10px; height:10px; border-radius:50%;
-  background:var(--gold); transition:transform .15s}
-.amode[aria-checked="true"] .knob{transform:translateX(18px)}
-.amode:hover .trk{border-color:var(--gold)}
+/* The track is character_buttoninfotab1, nine-sliced on its 3px bronze frame
+   so the frame stays crisp at this size and its centre tick stays centred; the
+   pip is buttonattributeup stood on end, a touch taller than the slot it
+   runs in. */
+.amode .trk{position:relative; box-sizing:border-box; width:36px; height:18px;
+  border:3px solid transparent;
+  border-image:url("__MODE_TRACK__") 3 fill / 3px stretch}
+.amode .knob{position:absolute; top:-1px; left:1px; width:5px; height:14px;
+  background:url("__MODE_PIP__") center / 100% 100% no-repeat; transition:transform .15s}
+.amode[aria-checked="true"] .knob{transform:translateX(19px)}
+.amode:hover .knob{filter:brightness(1.2)}
 .amode:focus-visible{outline:1px solid var(--gold-dim); outline-offset:3px}
 .aquery{display:flex; flex-direction:column; gap:var(--s1)}
 .aterm{display:flex; gap:var(--s2); align-items:center}

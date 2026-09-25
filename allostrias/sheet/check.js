@@ -1715,6 +1715,12 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   want(!/id="affixview"[^]*?<h2>Affixes<\/h2>/.test(html.slice(0, html.indexOf('<script'))),
        'the Affixes view still carries its own title');
   want(get('amodelbl')._html==='Personal', `the mode label reads "${get('amodelbl')._html}" in Personal`);
+  // The switch is the game's art: the info-tab slot as its track, the
+  // attribute button on end as its pip, a touch bigger than the old 34x16.
+  want(/\.amode \.trk\{[^}]*width:36px; height:18px;[^}]*border-image:url\("data:image\/png;base64,[^"]{200,}"\) 3 fill/.test(html),
+       'the switch track is not the info-tab art at 36x18');
+  want(/\.amode \.knob\{[^}]*width:5px; height:14px;[^}]*background:url\("data:image\/png;base64,[^"]{200,}"\)/.test(html),
+       'the switch pip is not the attribute button art');
   // The switch's two sides are the map's vendor and witch symbols, not words,
   // and the lit one follows the mode.
   want(/<span class="ml" data-m="personal" title="Personal"><\/span>/.test(html)
