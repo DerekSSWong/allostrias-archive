@@ -620,7 +620,9 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 /* F is Silver, the loot filter's colour for it: everything below C, wanted
    or not. */
 .agrade[data-g="F"] summary .g{color:#9A9A9A}
-.acards{display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:var(--s2)}
+/* One card per row in each column: prefixes read down the left, suffixes
+   down the right. */
+.acards{display:grid; grid-template-columns:minmax(0, 1fr); gap:var(--s2)}
 .acard{padding:var(--s2) var(--s3); background:var(--sunk); border:1px solid var(--rule)}
 .acard .ah{display:flex; align-items:baseline; gap:var(--s2); flex-wrap:wrap}
 .acard .an{font:600 14px "Libertinus Serif",Georgia,serif}

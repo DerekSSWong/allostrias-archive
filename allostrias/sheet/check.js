@@ -1595,6 +1595,8 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
     want(!stray.length, `a card sits in the wrong column (${stray.map(c=>c[1]).join()})`);
     want(cols.some(([,k,h])=>k==='Suffix' && cardsIn(h).length), 'no suffix card rendered in any open group');
   }
+  want(/\.acards\{display:grid; grid-template-columns:minmax\(0, 1fr\);/.test(html),
+       'a Prefix or Suffix column holds more than one card per row');
   // Cards carry what the corpus says: a card's lines are the lines it prints.
   const firstCard=cardsIn(get('alist')._html)[0]||'';
   want(/<li[^>]*>[^<]*\d/.test(firstCard), 'a rendered card prints no stat line');
