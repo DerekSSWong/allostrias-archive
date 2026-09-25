@@ -120,16 +120,36 @@
      tier, and the top tier can lack a line a lower one carries. So each line is
      taken from whichever tier rolls it highest, and says which tier that is
      when it is not the top one. Lines the top tier prints come first, in its
-     order; lines only lower tiers carry follow. */
+     order; lines only lower tiers carry follow.
+
+     ⚠️ A SKILL LINE CAN HAVE ALTERNATIVES WITHIN ONE TIER. Soldier's,
+     Oathkeeper's and the other mastery-named prefixes are one record per skill
+     of that mastery, identical but for which skill the line names; taking the
+     best of them kept the first and hid the rest (207 grants). They become one
+     "+N to one of: A, B, ..." line. Anything else differing there raises. */
+  var SKILL_LINE = /^(\+\d+(?:–\d+)? to )(.+)$/;
   function linesOf(recs) {
     var top = recs.reduce(function (a, b) { return b[4] > a[4] ? b : a; });
     var best = {}, order = [];
     function consider(r, d, i) {
       var key = d[0] + '#' + i;
       var cur = best[key];
-      if (!cur) { best[key] = { d: d, lvl: r[4] }; order.push(key); return; }
+      if (!cur) { best[key] = { d: d, lvl: r[4], alts: [] }; order.push(key); return; }
+      if (d[1] !== cur.d[1] && r[7].some(function (s) { return s[1] === d[0]; })) {
+        var a = SKILL_LINE.exec(d[1]), b = SKILL_LINE.exec(cur.d[1]);
+        if (a && b && a[2] !== b[2]) {
+          if (r[4] !== cur.lvl || a[1] !== b[1])
+            throw new Error('skill alternatives differ beyond the skill: ' + cur.d[1] + ' / ' + d[1]);
+          if (!cur.alts.length) cur.alts.push(b[2]);
+          if (cur.alts.indexOf(a[2]) < 0) cur.alts.push(a[2]);
+          return;
+        }
+      }
       if (d[2] !== null && (cur.d[2] === null || d[2] > cur.d[2] ||
-          (d[2] === cur.d[2] && r[4] > cur.lvl))) best[key] = { d: d, lvl: r[4] };
+          (d[2] === cur.d[2] && r[4] > cur.lvl))) {
+        if (cur.alts.length) throw new Error('a better roll would drop skill alternatives: ' + d[1]);
+        best[key] = { d: d, lvl: r[4], alts: [] };
+      }
     }
     /* `#i` numbers the lines sharing one key within a record -- a granted
        skill prints several -- so they merge position by position. */
@@ -144,7 +164,8 @@
     recs.forEach(function (r) { if (r !== top) each(r); });
     return order.map(function (key) {
       var b = best[key];
-      return { key: b.d[0], text: b.d[1], pet: !!b.d[3], lvl: b.lvl === top[4] ? null : b.lvl };
+      var text = b.alts.length ? SKILL_LINE.exec(b.d[1])[1] + 'one of: ' + b.alts.join(', ') : b.d[1];
+      return { key: b.d[0], text: text, pet: !!b.d[3], lvl: b.lvl === top[4] ? null : b.lvl };
     });
   }
 

@@ -1788,6 +1788,9 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
     want(heads.length===2 && heads.reduce((t,m)=>t+Number(m[2]),0)===n,
          `the Atlas columns hold ${heads.map(m=>m[2]).join('+')}, not ${n}`);
     want(cardsIn(h).length===n, `the Atlas renders ${cardsIn(h).length} cards, not ${n}`);
+    const alts=atlas.F.filter(c=>c.effects.some(e=>/ to one of: /.test(e.text))).length;
+    want(alts>0 && cardsIn(h).filter(c=>/ to one of: /.test(c)).length===alts,
+         `the Atlas renders ${cardsIn(h).filter(c=>/ to one of: /.test(c)).length} "one of" cards, the corpus ${alts}`);
     want(!/class="au"/.test(h), 'an Atlas card carries a personal lines-wanted ratio');
     want(!/class="vd"/.test(h), 'an Atlas card carries a verdict mark');
     want(get('afilter').hidden===true, 'the loot filter button shows in the Atlas');
@@ -1799,6 +1802,30 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
     want(get('amode')._a['aria-checked']==='false' && get('afilter').hidden===false,
          'switching back did not restore Personal');
     want(get('alist')._html===personal, 'Personal did not come back as it was');
+  }
+
+  // Every skill any record grants is on a card of its (tag, slots), in both
+  // modes. Soldier's & co. are one record per skill of the mastery; the tier
+  // merge kept the first and hid the other 207.
+  {
+    const SK=/^\+\d+(?:–\d+)? to (.+)$/;
+    const hidden=cards=>{
+      const shown=new Set();
+      for (const c of cards) for (const e of c.effects){
+        const m=SK.exec(e.text);
+        if (m) for (const s of m[1].replace(/^one of: /, '').split(', ')) shown.add(`${c.tag}|${c.slots}|${s}`);
+      }
+      const out=[];
+      for (const r of IDX.r) for (const d of r[9]){
+        const m=r[7].some(s=>s[1]===d[0]) && SK.exec(d[1]);
+        if (m && !shown.has(`${IDX.t[r[0]]}|${IDX.s[r[8]]}|${m[1]}`)) out.push(`${IDX.n[r[1]]} ${d[1]}`);
+      }
+      return out;
+    };
+    const atl=hidden(AXE.catalogue({}, {}).F);
+    want(!atl.length, `the Atlas hides ${atl.length} skill grants, e.g. ${atl[0]}`);
+    const per=hidden(Object.values(AXE.catalogue(paintedVerdicts(), skillsOf(opener))).flat());
+    want(!per.length, `Personal hides ${per.length} skill grants, e.g. ${per[0]}`);
   }
 
   // The loot filter, rendered off the same grades.
