@@ -575,9 +575,9 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   font:11.5px Jura,system-ui,sans-serif; cursor:pointer}
 .achip:hover{color:var(--ink)}
 .achip[aria-pressed="true"]{background:var(--gold-deep); color:var(--band-ink); border-color:var(--gold-dim)}
-/* A grade group wears no frame: its heading, the devotion connector as the
-   rule beneath it, and the menu gem at the right end pointing down while the
-   group is open, turned while it is shut. */
+/* A grade group wears no frame: the menu gem first -- pointing down while
+   the group is open, turned while it is shut -- then the grade letter and its
+   count, with the devotion connector as the rule beneath. */
 .agrade{margin-top:var(--s3)}
 .agrade > summary{display:flex; align-items:center; gap:var(--s2); cursor:pointer;
   list-style:none; padding:0 0 calc(__GRADE_RULE_H__px + var(--s1));
@@ -585,13 +585,14 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 .agrade > summary::-webkit-details-marker{display:none}
 .agrade > summary h2{margin:0; font-family:Cinzel,serif; font-size:14px; font-weight:600;
   letter-spacing:.04em; color:#E2D2AC}
-.agrade > summary .n{margin-left:auto; font-family:Jura,system-ui,sans-serif; font-size:11px; color:var(--faint)}
-.agrade > summary::after{content:""; flex:none; width:__GRADE_ARROW_W__px; height:__GRADE_ARROW_H__px;
+.agrade > summary .n{font-family:Jura,system-ui,sans-serif; font-size:11px; color:var(--faint)}
+.agrade > summary::before{content:""; flex:none; width:__GRADE_ARROW_W__px; height:__GRADE_ARROW_H__px;
   background:url("__GRADE_ARROW__") center / contain no-repeat; transition:transform .15s}
-.agrade:not([open]) > summary::after{transform:rotate(-90deg)}
+.agrade:not([open]) > summary::before{transform:rotate(-90deg)}
 .agrade > summary:hover h2{color:var(--band-ink)}
 .agbody{padding-top:var(--s3)}
-.agrade > summary h2 .g{display:inline-block; min-width:1.2em; margin-right:6px}
+.agrade > summary h2 .g{display:inline-block; min-width:1em}
+.agrade > summary h2 .gl{margin-left:6px}
 .agrade[data-g="S"] summary .g{color:var(--t-legendary-ink)}
 .agrade[data-g="A"] summary .g{color:var(--t-epic)}
 .agrade[data-g="B"] summary .g{color:var(--t-rare)}
@@ -1241,7 +1242,7 @@ __AFFIX_JS__
                  : filtering ? hits.length > 0 : !["F", "-"].includes(g);
       return `<details class="agrade" data-g="${g}"${open ? " open" : ""}>
         <summary><h2><span class="g">${g === "-" ? "–" : g}</span>${
-          g === "-" ? GRADE_LABEL[g] : "Grade " + GRADE_LABEL[g]}</h2>
+          g === "-" ? `<span class="gl">${GRADE_LABEL[g]}</span>` : ""}</h2>
           <span class="n">${filtering ? `${hits.length} of ${all.length}` : all.length}</span></summary>
         <div class="agbody">${open ? (hits.length ? `<div class="acards">${hits.map(card).join("")}</div>`
                                                : `<p class="note">Nothing here matches.</p>`) : ""}</div>

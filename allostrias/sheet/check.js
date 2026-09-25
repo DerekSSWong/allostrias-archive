@@ -1558,9 +1558,13 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
        'a grade group is still framed as a panel');
   want(/\.agrade > summary\{[^}]*background:url\("data:image\/png;base64,[^"]{100,}"\)[^}]*repeat-x/.test(html),
        'the grade heading has no connector rule under it');
-  want(/\.agrade > summary::after\{[^}]*background:url\("data:image\/png;base64,[^"]{100,}"\)/.test(html)
-       && /\.agrade:not\(\[open\]\) > summary::after\{transform:rotate\(-90deg\)\}/.test(html),
-       'the grade heading has no gem arrow, or it does not turn when shut');
+  want(/\.agrade > summary::before\{[^}]*background:url\("data:image\/png;base64,[^"]{100,}"\)/.test(html)
+       && /\.agrade:not\(\[open\]\) > summary::before\{transform:rotate\(-90deg\)\}/.test(html),
+       'the grade heading does not lead with the gem arrow, or it does not turn when shut');
+  // The heading reads arrow, letter, count: no "Grade" word, and the count
+  // sits beside the letter rather than pushed to the far end.
+  want(!/Grade [SABCF]</.test(get('alist')._html), 'a grade heading still spells out "Grade"');
+  want(!/\.agrade > summary \.n\{[^}]*margin-left:auto/.test(html), 'the grade count is still pushed to the right end');
 
   // Every tag that can drop is on the page somewhere -- in a grade, or in the
   // group for affixes this character wants nothing from.
