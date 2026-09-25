@@ -2207,6 +2207,18 @@ def build_chrome(ui):
             raise SystemExit(f'UI.arc has no faction_vendor_buttonitempanel{name}')
         out[key] = png_b64(im.convert('RGBA'))
 
+    # The Personal / Atlas switch's two sides: the aerial map's vendor pouch
+    # for Personal, its witch's tome for the Atlas. Cropped to their ink.
+    for key, name in (('modePersonal', 'vendor'), ('modeAtlas', 'witch')):
+        im = ui.get(f'mapaerial/symbols/mapsymbol_{name}.tex')
+        if im is None:
+            raise SystemExit(f'UI.arc has no mapaerial/symbols/mapsymbol_{name}')
+        im = im.convert('RGBA')
+        bb = im.getbbox()
+        if bb is None:
+            raise SystemExit(f'mapsymbol_{name} is fully transparent')
+        out[key] = png_b64(im.crop(bb))
+
     # The Affixes view's remove-a-search-term button: the game's window close
     # button, all three mouse states, drawn at native size.
     for key, state in (('termCloseUp', 'up'), ('termCloseOver', 'over'),

@@ -89,6 +89,8 @@ def main(out_dir=None, affixes_dir=None):
                          ('__VD_AVOID__', ch['vdAvoid']),
                          ('__DIVIDER_RULE__', ch['dividerRule']),
                          ('__DIVIDER_RULE_H__', str(ch['dividerRuleH'])),
+                         ('__MODE_PERSONAL__', ch['modePersonal']),
+                         ('__MODE_ATLAS__', ch['modeAtlas']),
                          ('__TERM_CLOSE_UP__', ch['termCloseUp']),
                          ('__TERM_CLOSE_OVER__', ch['termCloseOver']),
                          ('__TERM_CLOSE_DOWN__', ch['termCloseDown']),

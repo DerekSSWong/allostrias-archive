@@ -1711,6 +1711,15 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   fire('click', stub('#aclear', {}));
   want(get('affixn')._html===`${all.length} affixes`, 'Clear did not drop the chip and the terms');
 
+  // The switch's two sides are the map's vendor and witch symbols, not words,
+  // and the lit one follows the mode.
+  want(/<span class="ml" data-m="personal" title="Personal"><\/span>/.test(html)
+       && /<span class="ml" data-m="atlas" title="Atlas"><\/span>/.test(html), 'the switch still labels its sides in words');
+  for (const m of ['personal', 'atlas'])
+    want(new RegExp(`\\.amode \\.ml\\[data-m="${m}"\\]\\{background-image:url\\("data:image/png;base64,[^"]{200,}`).test(html),
+         `the ${m} side of the switch has no icon`);
+  want(/\.amode\[aria-checked="false"\] \.ml\[data-m="personal"\],\s*\.amode\[aria-checked="true"\] \.ml\[data-m="atlas"\]\{filter:none/.test(html),
+       'the lit side of the switch does not follow the mode');
   // The Atlas: every affix, no grades, no character -- one Prefix | Suffix
   // list -- and the switch brings Personal back as it was.
   {
