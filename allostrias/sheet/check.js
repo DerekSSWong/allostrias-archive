@@ -1665,6 +1665,34 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   fire('click', stub('#aclear', {}));
   want(get('affixn')._html===`${all.length} affixes`, 'Clear did not drop the chip and the terms');
 
+  // The Atlas: every affix, no grades, no character -- one Prefix | Suffix
+  // list -- and the switch brings Personal back as it was.
+  {
+    const mode=stub('#amode', {});
+    const personal=get('alist')._html;
+    fire('click', mode);
+    const atlas=AXE.catalogue({}, {});
+    want(['S','A','B','C'].every(g=>!atlas[g].length), 'the Atlas grades something');
+    const n=atlas.F.length, h=get('alist')._html;
+    want(get('amode')._a['aria-checked']==='true', 'the switch does not read Atlas when on');
+    want(!/class="agrade"/.test(h) && /<div class="asplit">/.test(h), 'the Atlas still shows grade groups');
+    want(get('affixn')._html===`${n} affixes`, `the Atlas counts "${get('affixn')._html}", the corpus ${n}`);
+    const heads=[...h.matchAll(/data-kind="(\w+)"><div class="acolh">\w+<span class="n">(\d+)</g)];
+    want(heads.length===2 && heads.reduce((t,m)=>t+Number(m[2]),0)===n,
+         `the Atlas columns hold ${heads.map(m=>m[2]).join('+')}, not ${n}`);
+    want(cardsIn(h).length===n, `the Atlas renders ${cardsIn(h).length} cards, not ${n}`);
+    want(!/class="au"/.test(h), 'an Atlas card carries a personal lines-wanted ratio');
+    want(get('afilter').hidden===true, 'the loot filter button shows in the Atlas');
+    typed(0, 'fire resist');
+    const hit=atlas.F.filter(c=>GSE.rowsMatch(lines(c), [{text:'fire resist'}], true)).length;
+    want(get('affixn')._html===`${hit} of ${n} affixes`, `Atlas search: "${get('affixn')._html}", expected ${hit}`);
+    typed(0, '');
+    fire('click', mode);
+    want(get('amode')._a['aria-checked']==='false' && get('afilter').hidden===false,
+         'switching back did not restore Personal');
+    want(get('alist')._html===personal, 'Personal did not come back as it was');
+  }
+
   // The loot filter, rendered off the same grades.
   const best=AXE.gradesByTag(null, null, AXE.catalogue(paintedVerdicts(), skillsOf(opener)));
   const F=AXE.renderFilter(best, opener.name);
