@@ -1300,13 +1300,16 @@ __AFFIX_JS__
         live.map(v => `<button class="achip" type="button" data-slot="${esc(v)}" aria-pressed="${
           aview.slots.has(v)}">${esc(v)}</button>`).join("")}</div></div>` : "";
     };
-    $("aslots").innerHTML = AIDX.slotGroups.map(entry =>
-      `<div class="aslotcol">${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}</div>`).join("")
-      /* All ten masteries, always listed: a chip that selects nothing still
-         answers the question it asks. */
-      + `<div class="aslotcol"><div><div class="aslotlbl">Mastery</div><div class="aslotrow">${
-        AIDX.masteries.map(m => `<button class="achip" type="button" data-mastery="${esc(m)}" aria-pressed="${
-          aview.masteries.has(m)}">${esc(m)}</button>`).join("")}</div></div></div>`;
+    /* All ten masteries, always listed: a chip that selects nothing still
+       answers the question it asks. Stacked under the weapon types, in the
+       FIRST column: a column of its own wrapped below the tallest one and left
+       a gap the height of Armor and Jewelry. */
+    const mastery = `<div><div class="aslotlbl">Mastery</div><div class="aslotrow">${
+      AIDX.masteries.map(m => `<button class="achip" type="button" data-mastery="${esc(m)}" aria-pressed="${
+        aview.masteries.has(m)}">${esc(m)}</button>`).join("")}</div></div>`;
+    $("aslots").innerHTML = AIDX.slotGroups.map((entry, i) =>
+      `<div class="aslotcol">${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}${
+        i === 0 ? mastery : ""}</div>`).join("");
   }
 
   /* A group's cards as two columns, prefixes then suffixes. Each column says

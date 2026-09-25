@@ -1714,6 +1714,12 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   // Mastery chips: all ten, and one narrows to exactly the cards granting
   // ranks in that mastery's skills -- each of which prints a "+N to" line.
   {
+    // Mastery sits in the first column, under the weapon types, and that
+    // group is called Weapon Type.
+    const col1=get('aslots')._html.split('<div class="aslotcol">')[1]||'';
+    want(/<div class="aslotlbl">Weapon Type<\/div>/.test(col1) && /<div class="aslotlbl">Mastery<\/div>/.test(col1),
+         'Mastery is not stacked under Weapon Type in the first filter column');
+    want(!/<div class="aslotlbl">Hand<\/div>/.test(get('aslots')._html), 'a filter group is still called Hand');
     const chips=[...get('aslots')._html.matchAll(/data-mastery="([^"]+)"/g)].map(m=>m[1]);
     want(chips.length===10 && chips.join()===IDX.masteries.join(), `mastery chips: ${chips}`);
     // Independently of the card's own field, in the Atlas -- where (tag,

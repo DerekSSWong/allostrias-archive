@@ -125,6 +125,17 @@ def skill_masteries():
     return names, out
 
 
+# The page's names for gd-lib's slot groups, where they differ. SLOT_GROUPS
+# above stays a verbatim copy -- the corpus test holds it to gd-lib's -- and
+# only what ships is renamed. "Weapon Type" is the user's (2026-09-25).
+GROUP_LABELS = {'Hand': 'Weapon Type'}
+
+
+def shipped_slot_groups():
+    relabel = lambda g: dict(g, label=GROUP_LABELS.get(g['label'], g['label']))
+    return [[relabel(g) for g in e] if isinstance(e, list) else relabel(e) for e in SLOT_GROUPS]
+
+
 # ------------------------------------------------------ what a stat is ----
 # PORTED FROM GD Lens's stat_engine.SKIP_EXACT / SKIP_PREFIX: numeric fields
 # that are not a stat -- identifiers, art, costs, loot machinery. A line the
@@ -498,7 +509,7 @@ def build(conn):
         's': [s.split('|') if s else [] for s in slotsets],
         'f': fields, 'lk': [line_key(f) for f in fields],
         'fr': [fr[f] for f in fields],
-        'coarse': COARSE_SLOT, 'slotOrder': SLOT_ORDER, 'slotGroups': SLOT_GROUPS,
+        'coarse': COARSE_SLOT, 'slotOrder': SLOT_ORDER, 'slotGroups': shipped_slot_groups(),
         'filter': F.build(conn),
     }, stats
 
