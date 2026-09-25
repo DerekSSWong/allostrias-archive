@@ -437,7 +437,7 @@ for (const c of B.characters)
   const png=b64=>{ const h=Buffer.from(b64.slice(b64.indexOf(',')+1), 'base64');
     return {w:h.readUInt32BE(16), h:h.readUInt32BE(20)}; };
   const at=re=>html.match(re);
-  const open=at(/\.railtab\{flex:none; width:(\d+)px; height:(\d+)px;[\s\S]{0,120}?background:url\("(data:image\/png;base64,[^"]+)"\) center\/contain no-repeat\}/);
+  const open=at(/\.railtab\{position:relative; flex:none; width:(\d+)px; height:(\d+)px;[\s\S]{0,120}?background:url\("(data:image\/png;base64,[^"]+)"\) center\/contain no-repeat\}/);
   want(open, 'the open tab is not painted at a stated size');
   if (open){
     const a=png(open[3]);
@@ -457,6 +457,24 @@ for (const c of B.characters)
   // its own would still pass if someone swapped in a differently-cut texture.
   if (open && shut) want(Math.abs(png(shut[3]).h - 39) <= 3,
     `the close tab is ${png(shut[3]).h}px tall; the open tab's rune plate is 39px`);
+  // Only the lit plate is clickable: the button lets the pointer through and
+  // its .railhit takes it back, inside the tab and far smaller than the
+  // filigree around it.
+  want(/<button class="railtab"[^>]*><span class="railhit"><\/span><\/button>/.test(html),
+       'the drawer tab has no hit rectangle inside it');
+  want(/\.railtab\{[^}]*pointer-events:none/.test(html), 'the whole drawer tab still catches the pointer');
+  const hit=at(/\.railhit\{position:absolute; left:(\d+)px; top:(\d+)px; width:(\d+)px; height:(\d+)px; pointer-events:auto/);
+  const hitShut=at(/\.rail\[data-open="1"\] \.railhit\{left:(\d+)px; top:(\d+)px; width:(\d+)px; height:(\d+)px\}/);
+  want(hit && hitShut, 'the drawer tab hit rectangles are not stated');
+  if (hit && open){
+    const [x,y,w,h]=hit.slice(1).map(Number);
+    want(x+w<=+open[1] && y+h<=+open[2] && w*h < 0.15*open[1]*open[2],
+         `the open tab's hit rectangle ${w}x${h}@${x},${y} is not a small part of its ${open[1]}x${open[2]}`);
+  }
+  if (hitShut && shut){
+    const [x,y,w,h]=hitShut.slice(1).map(Number);
+    want(x+w<=+shut[1] && y+h<=+shut[2], 'the close tab\'s hit rectangle leaves the tab');
+  }
   for (const [name, re] of [['open hover', /\.railtab:hover\{background-image:url\("(data:image\/png;base64,[^"]+)"\)\}/],
                             ['close hover', /\.rail\[data-open="1"\] \.railtab:hover\{background-image:url\("(data:image\/png;base64,[^"]+)"\)\}/]]){
     const m=at(re); want(m, `the ${name} state is missing`);

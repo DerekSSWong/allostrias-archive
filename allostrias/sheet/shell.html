@@ -220,9 +220,15 @@ __CLASS_IMAGES__
    to the open tab's BOX instead was measured and rejected -- it is a 3x/6.1x
    upscale of a 20x40 texture, or the same rune at three times the other
    one's. */
-.railtab{flex:none; width:__TAB_OPEN_W__px; height:__TAB_OPEN_H__px;
-  padding:0; border:0; cursor:pointer;
+/* The tab draws whole but only its lit plate is clickable: the button lets
+   the pointer through, and .railhit -- the rectangle that lights up on hover,
+   measured off the art -- takes it back. Hovering the plate is hovering the
+   button, so the art still swaps. */
+.railtab{position:relative; flex:none; width:__TAB_OPEN_W__px; height:__TAB_OPEN_H__px;
+  padding:0; border:0; pointer-events:none;
   background:url("__TAB_OPEN__") center/contain no-repeat}
+.railhit{position:absolute; __TAB_OPEN_HIT__; pointer-events:auto; cursor:pointer}
+.rail[data-open="1"] .railhit{__TAB_CLOSE_HIT__}
 .railtab:hover{background-image:url("__TAB_OPEN_OVER__")}
 .rail[data-open="1"] .railtab{width:__TAB_CLOSE_W__px; height:__TAB_CLOSE_H__px;
   background-image:url("__TAB_CLOSE__")}
@@ -642,7 +648,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     <div class="picker" id="picker"></div>
   </div>
   <button class="railtab" id="railtab" type="button" aria-expanded="false"
-          aria-controls="railbody" aria-label="Characters"></button>
+          aria-controls="railbody" aria-label="Characters"><span class="railhit"></span></button>
 </div>
 
 <div class="classbg left" id="bgL" aria-hidden="true"></div>

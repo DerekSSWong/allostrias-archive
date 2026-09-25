@@ -2162,6 +2162,21 @@ def build_chrome(ui):
     for a, b in (('tabOpen', 'tabOpenOver'), ('tabClose', 'tabCloseOver')):
         if out[a + 'Size'] != out[b + 'Size']:
             raise SystemExit(f'{a} and {b} are different sizes; one would jump on hover')
+    # The CLICKABLE part of each tab: the rectangle that lights up on hover,
+    # measured as where `up` and `over` differ. The rest of the 60x244 open tab
+    # is filigree and must not catch the pointer.
+    #
+    # ⚠️ COMPARED ON COLOUR, NOT ALPHA. Pillow's getbbox() on an RGBA image
+    # reads the alpha band alone, and the tabs change colour, not
+    # transparency -- so the plain difference reports "identical".
+    for a, b, key in (('tabopenup', 'tabopenover', 'tabOpenHit'),
+                      ('tabcloseup', 'tabcloseover', 'tabCloseHit')):
+        up = ui.get(f'skills/devotion/devotionbuttons_{a}.tex').convert('RGBA')
+        over = ui.get(f'skills/devotion/devotionbuttons_{b}.tex').convert('RGBA')
+        bb = ImageChops.difference(up, over).convert('RGB').getbbox()
+        if bb is None:
+            raise SystemExit(f'devotionbuttons_{a} and _{b} are identical: nothing lights up')
+        out[key] = [bb[0], bb[1], bb[2] - bb[0], bb[3] - bb[1]]
 
     # The four verdict marks, by the paths the request named. All four are the
     # game's own: a quest's main-objective star for a priority, the tracked and

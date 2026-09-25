@@ -54,6 +54,8 @@ def main(out_dir=None, affixes_dir=None):
                          ('__TAB_OPEN_H__', str(ch['tabOpenSize'][1])),
                          ('__TAB_CLOSE_W__', str(ch['tabCloseSize'][0])),
                          ('__TAB_CLOSE_H__', str(ch['tabCloseSize'][1])),
+                         ('__TAB_OPEN_HIT__', 'left:{}px; top:{}px; width:{}px; height:{}px'.format(*ch['tabOpenHit'])),
+                         ('__TAB_CLOSE_HIT__', 'left:{}px; top:{}px; width:{}px; height:{}px'.format(*ch['tabCloseHit'])),
                          ('__TAB_OPEN__', ch['tabOpen']),
                          ('__TAB_OPEN_OVER__', ch['tabOpenOver']),
                          ('__TAB_CLOSE__', ch['tabClose']),
