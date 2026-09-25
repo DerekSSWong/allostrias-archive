@@ -2192,6 +2192,22 @@ def build_chrome(ui):
             raise SystemExit(f'UI.arc has no faction_vendor_buttonitempanel{name}')
         out[key] = png_b64(im.convert('RGBA'))
 
+    # The Affixes view's grade headings: no frame, just the devotion map's
+    # unlit connector as the rule under each grade -- a short rope segment
+    # that tiles -- and the menu's down-pointing gem as the collapse arrow,
+    # turned when the group is shut. Both cropped to their own ink.
+    for key, path in (('gradeRule', 'skills/devotion/devotion_connectoroff.tex'),
+                      ('gradeArrow', 'mainmenu/buttongemdownover.tex')):
+        im = ui.get(path)
+        if im is None:
+            raise SystemExit(f'UI.arc has no {path}')
+        im = im.convert('RGBA')
+        bb = im.getbbox()
+        if bb is None:
+            raise SystemExit(f'{path} is fully transparent')
+        im = im.crop(bb)
+        out[key], out[key + 'Size'] = png_b64(im), im.size
+
     # The nameplate badges, by the paths gameiteminfo.dbr itself names -- the
     # same record the tier colours come from. Reading the field rather than
     # typing the texture path keeps the two in step.

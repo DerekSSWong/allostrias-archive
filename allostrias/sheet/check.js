@@ -1538,7 +1538,7 @@ const skillsOf=c=>Object.fromEntries((c.tree||[]).map(s=>[s.path,'priority']));
 // Cards the page rendered, by group, off its own markup.
 function renderedGroups(){
   const out={};
-  for (const m of get('alist')._html.matchAll(/<details class="panel agrade" data-g="([^"]*)"[^>]*>[\s\S]*?<span class="n">([^<]*)<\/span>/g))
+  for (const m of get('alist')._html.matchAll(/<details class="agrade" data-g="([^"]*)"[^>]*>[\s\S]*?<span class="n">([^<]*)<\/span>/g))
     out[m[1]]=m[2];
   return out;
 }
@@ -1552,6 +1552,15 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   fire('click', nav('affixes'));
   want(get('affixview').hidden===false && get('mainview').hidden===true,
        'choosing Affixes did not show the Affixes view in place of the sheet');
+  // A grade group wears no panel frame: the connector rule under its heading
+  // and the gem arrow, turned when shut.
+  want(!/class="panel agrade"/.test(get('alist')._html) && /<details class="agrade"/.test(get('alist')._html),
+       'a grade group is still framed as a panel');
+  want(/\.agrade > summary\{[^}]*background:url\("data:image\/png;base64,[^"]{100,}"\)[^}]*repeat-x/.test(html),
+       'the grade heading has no connector rule under it');
+  want(/\.agrade > summary::after\{[^}]*background:url\("data:image\/png;base64,[^"]{100,}"\)/.test(html)
+       && /\.agrade:not\(\[open\]\) > summary::after\{transform:rotate\(-90deg\)\}/.test(html),
+       'the grade heading has no gem arrow, or it does not turn when shut');
 
   // Every tag that can drop is on the page somewhere -- in a grade, or in the
   // group for affixes this character wants nothing from.
