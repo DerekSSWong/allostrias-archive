@@ -1721,6 +1721,13 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
        'the switch track is not the info-tab art at 36x18');
   want(/\.amode \.knob\{[^}]*width:5px; height:14px;[^}]*background:url\("data:image\/png;base64,[^"]{200,}"\)/.test(html),
        'the switch pip is not the attribute button art');
+  // Symmetric: the pip sits as far from the right end when on as from the
+  // left end when off, and that follows from the slot, not a typed distance.
+  {
+    const off=html.match(/\.amode \.knob\{[^}]*?left:(\d+)px; width:(\d+)px/);
+    const on=html.match(/\.amode\[aria-checked="true"\] \.knob\{left:calc\(100% - (\d+)px - (\d+)px\)\}/);
+    want(off && on && on[1]===off[2] && on[2]===off[1], 'the switch pip is not placed symmetrically at its two ends');
+  }
   // The switch's two sides are the map's vendor and witch symbols, not words,
   // and the lit one follows the mode.
   want(/<span class="ml" data-m="personal" title="Personal"><\/span>/.test(html)

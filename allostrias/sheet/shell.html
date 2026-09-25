@@ -584,8 +584,10 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   border:3px solid transparent;
   border-image:url("__MODE_TRACK__") 3 fill / 3px stretch}
 .amode .knob{position:absolute; top:-1px; left:1px; width:5px; height:14px;
-  background:url("__MODE_PIP__") center / 100% 100% no-repeat; transition:transform .15s}
-.amode[aria-checked="true"] .knob{transform:translateX(19px)}
+  background:url("__MODE_PIP__") center / 100% 100% no-repeat; transition:left .15s}
+/* The same 1px gap at the right end as at the left, taken off the slot's own
+   width -- a typed distance left the pip 5px short. */
+.amode[aria-checked="true"] .knob{left:calc(100% - 5px - 1px)}
 .amode:hover .knob{filter:brightness(1.2)}
 .amode:focus-visible{outline:1px solid var(--gold-dim); outline-offset:3px}
 .aquery{display:flex; flex-direction:column; gap:var(--s1)}
