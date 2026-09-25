@@ -1695,6 +1695,7 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   const want3=all.filter(c=>c.slots.some(s=>IDX.coarse[s]==='1H Weapon')).length;
   want(get('affixn')._html===`${want3} of ${all.length} affixes`,
        `1H Weapon: the view says "${get('affixn')._html}", expected ${want3}`);
+  want(/placeholder="Search"/.test(get('aterms')._html), 'the first search box does not read "Search"');
   // An added term box carries no placeholder; only the first one does.
   fire('click', stub('#aadd', {}));
   want(!/placeholder="and/.test(get('aterms')._html) && (get('aterms')._html.match(/placeholder=/g)||[]).length===1,
