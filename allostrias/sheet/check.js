@@ -1711,6 +1711,10 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   fire('click', stub('#aclear', {}));
   want(get('affixn')._html===`${all.length} affixes`, 'Clear did not drop the chip and the terms');
 
+  // No panel title: the switch leads the header, its mode named above it.
+  want(!/id="affixview"[^]*?<h2>Affixes<\/h2>/.test(html.slice(0, html.indexOf('<script'))),
+       'the Affixes view still carries its own title');
+  want(get('amodelbl')._html==='Personal', `the mode label reads "${get('amodelbl')._html}" in Personal`);
   // The switch's two sides are the map's vendor and witch symbols, not words,
   // and the lit one follows the mode.
   want(/<span class="ml" data-m="personal" title="Personal"><\/span>/.test(html)
@@ -1730,6 +1734,7 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
     want(['S','A','B','C'].every(g=>!atlas[g].length), 'the Atlas grades something');
     const n=atlas.F.length, h=get('alist')._html;
     want(get('amode')._a['aria-checked']==='true', 'the switch does not read Atlas when on');
+    want(get('amodelbl')._html==='Atlas', `the mode label reads "${get('amodelbl')._html}" in the Atlas`);
     want(!/class="agrade"/.test(h) && /<div class="asplit">/.test(h), 'the Atlas still shows grade groups');
     want(get('affixn')._html===`${n} affixes`, `the Atlas counts "${get('affixn')._html}", the corpus ${n}`);
     const heads=[...h.matchAll(/data-kind="(\w+)"><div class="acolh">\w+<span class="n">(\d+)</g)];

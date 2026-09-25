@@ -564,6 +564,10 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 .affixview .bd{display:flex; flex-direction:column; gap:var(--s3)}
 /* Personal | Atlas, as the aerial map's vendor pouch and witch's tome. The
    side that is on is in full colour; the other is greyed, as an off buff is. */
+.affixview .ahd{align-items:center}
+.amodebox{display:flex; flex-direction:column; align-items:center; gap:3px}
+.amodelbl{font-family:Cinzel,serif; font-size:11px; font-weight:600; letter-spacing:.08em;
+  color:var(--band-ink)}
 .amode{display:inline-flex; align-items:center; gap:var(--s2); padding:0; background:none; border:0;
   cursor:pointer; font-family:Cinzel,serif; font-size:11px; font-weight:600; letter-spacing:.06em}
 .amode .ml{flex:none; width:22px; height:22px; background:center / contain no-repeat;
@@ -713,12 +717,15 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
        the first time it is shown, and re-graded whenever the verdicts it reads
        from the sheet change. -->
   <section class="panel affixview" id="affixview" hidden>
-    <div class="hd"><h2>Affixes</h2>
+    <div class="hd ahd">
       <!-- Personal: graded for the character on screen, with the loot filter.
-           Atlas: every affix, ungraded, the same for everyone. -->
+           Atlas: every affix, ungraded, the same for everyone. The mode's
+           name sits above the switch; the navigation button already says
+           Affixes, so the panel carries no title of its own. -->
+      <div class="amodebox"><span class="amodelbl" id="amodelbl" aria-hidden="true">Personal</span>
       <button class="amode" id="amode" type="button" role="switch" aria-checked="false"
               aria-label="Atlas view" title="Personal / Atlas"><span class="ml" data-m="personal" title="Personal"></span><span
-              class="trk"><span class="knob"></span></span><span class="ml" data-m="atlas" title="Atlas"></span></button>
+              class="trk"><span class="knob"></span></span><span class="ml" data-m="atlas" title="Atlas"></span></button></div>
       <span class="n" id="affixn"></span></div>
     <div class="bd">
       <div class="aquery">
@@ -1330,6 +1337,7 @@ __AFFIX_JS__
     graded();
     const atlas = aview.mode === "atlas";
     $("amode").setAttribute("aria-checked", String(atlas));
+    $("amodelbl").textContent = atlas ? "Atlas" : "Personal";
     /* The loot filter is a grading, and the Atlas grades nothing. */
     $("afilter").hidden = atlas;
     $("afilternote").hidden = atlas;
