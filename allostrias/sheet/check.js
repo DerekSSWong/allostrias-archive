@@ -1695,6 +1695,10 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   const want3=all.filter(c=>c.slots.some(s=>IDX.coarse[s]==='1H Weapon')).length;
   want(get('affixn')._html===`${want3} of ${all.length} affixes`,
        `1H Weapon: the view says "${get('affixn')._html}", expected ${want3}`);
+  // An added term box carries no placeholder; only the first one does.
+  fire('click', stub('#aadd', {}));
+  want(!/placeholder="and/.test(get('aterms')._html) && (get('aterms')._html.match(/placeholder=/g)||[]).length===1,
+       'an added search term still carries a placeholder');
   fire('click', stub('#aclear', {}));
   want(get('affixn')._html===`${all.length} affixes`, 'Clear did not drop the chip and the terms');
 

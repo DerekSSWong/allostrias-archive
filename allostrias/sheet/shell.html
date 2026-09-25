@@ -1259,8 +1259,8 @@ __AFFIX_JS__
       i ? `<select data-ti="${i}" aria-label="How this term combines">${
         ["AND", "OR", "NOT"].map(o => `<option${r.op === o ? " selected" : ""}>${o}</option>`).join("")
       }</select>` : ""}
-      <input type="search" data-ti="${i}" value="${esc(r.text)}" placeholder="${
-        i ? "and…" : "Search affixes — name, stat, slot"}" aria-label="Search term ${i + 1}">
+      <input type="search" data-ti="${i}" value="${esc(r.text)}"${
+        i ? "" : ' placeholder="Search affixes — name, stat, slot"'} aria-label="Search term ${i + 1}">
       ${i ? `<button class="abtn" type="button" data-rm="${i}" aria-label="Remove term">×</button>` : ""}
     </div>`).join("");
   }
