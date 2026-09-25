@@ -626,11 +626,11 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 .acard{padding:var(--s2) var(--s3); background:var(--sunk); border:1px solid var(--rule)}
 .acard .ah{display:flex; align-items:baseline; gap:var(--s2); flex-wrap:wrap}
 .acard .an{font:600 14px "Libertinus Serif",Georgia,serif}
-.acard .ak, .acard .al, .acard .au{font:11px Jura,system-ui,sans-serif; color:var(--faint)}
-.acard .au{margin-left:auto}
+.acard .ak, .acard .al{font:11px Jura,system-ui,sans-serif; color:var(--faint)}
 .acard .as{font:11px Jura,system-ui,sans-serif; color:var(--dim); margin:2px 0 4px}
 .acard ul{list-style:none; margin:0; padding:0; font:12.5px Jura,system-ui,sans-serif; color:var(--stat)}
-.acard li{padding:1px 0}
+.acard li{display:flex; gap:6px; align-items:baseline; padding:1px 0}
+.acard li .vd{align-self:flex-start; margin-top:2px}
 .acard li.pet{color:var(--dim)}
 .acard li .lv{font-size:10.5px; color:var(--faint)}
 .affixview mark{background:var(--gold-deep); color:var(--band-ink); padding:0 1px}
@@ -1237,11 +1237,14 @@ __AFFIX_JS__
     return `<div class="acard" data-tag="${esc(c.tag)}">
       <div class="ah"><span class="an t-${c.tier}">${hl(c.name)}</span>
         <span class="ak">${c.kind}</span><span class="al">${lv}</span>
-        ${aview.mode === "atlas" ? "" : `<span class="au" title="lines this character wants, of the lines it carries">${
-          c.useful}/${c.lines}</span>`}</div>
+</div>
       <div class="as">${c.slots.map(hl).join(" · ")}</div>
-      <ul>${c.effects.map(e => `<li${e.pet ? ' class="pet"' : ""}>${hl(e.text)}${
-        e.lvl !== null ? ` <span class="lv">(lvl ${e.lvl})</span>` : ""}</li>`).join("")}</ul>
+      <ul>${c.effects.map(e => `<li${e.pet ? ' class="pet"' : ""}>${
+        /* Personal: the sheet's verdict mark on every line it has one for --
+           the gutter always, the image only where there is a verdict. */
+        aview.mode === "atlas" ? "" : `<span class="vd"${e.v ? ` data-v="${e.v}"` : ""}></span>`
+      }<span>${hl(e.text)}${
+        e.lvl !== null ? ` <span class="lv">(lvl ${e.lvl})</span>` : ""}</span></li>`).join("")}</ul>
     </div>`;
   }
 

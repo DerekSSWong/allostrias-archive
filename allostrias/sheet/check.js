@@ -1597,9 +1597,22 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   }
   want(/\.acards\{display:grid; grid-template-columns:minmax\(0, 1fr\);/.test(html),
        'a Prefix or Suffix column holds more than one card per row');
+  // Personal cards carry no line ratio, and every line the sheet has a
+  // verdict on wears that verdict's mark: the lines marked positive are
+  // exactly the card's useful lines, one mark-bearing key per useful line.
+  want(!/class="au"/.test(get('alist')._html), 'a Personal card still shows the lines-wanted ratio');
+  {
+    const bad=Object.values(by).flat().filter(c=>
+      new Set(c.effects.filter(e=>e.v==='priority'||e.v==='nice').map(e=>e.key)).size!==c.useful);
+    want(!bad.length, `${bad.length} cards mark a different number of lines than they want, e.g. ${bad[0]&&bad[0].name}`);
+    const marks=[...get('alist')._html.matchAll(/<li[^>]*><span class="vd"( data-v="(\w+)")?><\/span>/g)];
+    want(marks.length && marks.every(m=>!m[2] || ['priority','nice','avoid'].includes(m[2])),
+         'a card line has no verdict gutter, or wears a mark that is not a verdict');
+    want(marks.some(m=>m[2]==='priority'), 'no card line wears the priority mark');
+  }
   // Cards carry what the corpus says: a card's lines are the lines it prints.
   const firstCard=cardsIn(get('alist')._html)[0]||'';
-  want(/<li[^>]*>[^<]*\d/.test(firstCard), 'a rendered card prints no stat line');
+  want(/<li[^>]*>(<span class="vd"[^>]*><\/span>)?<span>[^<]*\d/.test(firstCard), 'a rendered card prints no stat line');
 
   // The skill rule: a "+N to <skill>" line counts only for a skill in the
   // skill window, and counts as priority.
@@ -1684,6 +1697,7 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
          `the Atlas columns hold ${heads.map(m=>m[2]).join('+')}, not ${n}`);
     want(cardsIn(h).length===n, `the Atlas renders ${cardsIn(h).length} cards, not ${n}`);
     want(!/class="au"/.test(h), 'an Atlas card carries a personal lines-wanted ratio');
+    want(!/class="vd"/.test(h), 'an Atlas card carries a verdict mark');
     want(get('afilter').hidden===true, 'the loot filter button shows in the Atlas');
     typed(0, 'fire resist');
     const hit=atlas.F.filter(c=>GSE.rowsMatch(lines(c), [{text:'fire resist'}], true)).length;

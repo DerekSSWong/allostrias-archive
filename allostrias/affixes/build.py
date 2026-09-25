@@ -295,8 +295,9 @@ def merge_band(lo_line, hi_line):
         if x == y:
             out.append(x)
         else:
-            # '+3–5%', not '+3–+5%': a sign both ends share is printed once.
-            y = y[1:] if x[0] == y[0] == '+' else y
+            # '+3–5%', not '+3–+5%': a sign both ends share is printed once,
+            # as the game's own range strings do ('-{lo}-{hi}% Skill Energy Cost').
+            y = y[1:] if x[0] == y[0] and x[0] in '+-' else y
             out.append(f'({x}–{y})' if moving > 1 else f'{x}–{y}')
         out.append(rest)
     return ''.join(out)
@@ -318,6 +319,18 @@ def _only(txt, pattern):
                      if keep.match(l.partition('=')[0]) or l.startswith('Class=')) + '\n'
 
 
+# Stat fields the ported tooltip renderer does not print, with the game's own
+# text for each (a tags_ui string). gd-lib's renderer has the same gap; the user
+# chose on 2026-09-25 to close it here only, so item_stats.py stays a verbatim
+# copy. 13 affix records carry Energy Cost Reduction, and the sheet reads it.
+SUPPLEMENT = {'skillManaCostReduction': 'SkillManaCostReduction'}
+
+
+def _supplement(field, value):
+    fmt = I.UI_TAGS[SUPPLEMENT[field]]
+    return re.sub(r'\{\^.\}', '', fmt.replace('{%.0f0}', _fmt(round(value))))
+
+
 def display(txt, stats, pet_txt, pet_stats):
     """[(line key, text, hi, is_pet)] in the order the game prints them.
 
@@ -329,8 +342,17 @@ def display(txt, stats, pet_txt, pet_stats):
     hi = {f: s[2] for f, s in stats.items() if s[2] is not None}
     out = []
 
-    for f, line in zip(*_fields_and_lines(txt, lo, hi)):
+    printed = _fields_and_lines(txt, lo, hi)
+    for f, line in zip(*printed):
         out.append((line_key(f), line, hi.get(f), False))
+    for f in SUPPLEMENT:
+        if f not in stats:
+            continue
+        if f in printed[0]:
+            # The renderer prints it now: a second line would be a duplicate.
+            raise ValueError(f'the renderer prints {f} itself now; drop it from SUPPLEMENT')
+        out.append((line_key(f), merge_band(_supplement(f, lo[f]), _supplement(f, hi[f])),
+                    hi[f], False))
 
     conv = _banded_lines(lambda t: I.extract_conversions(t, ''), txt, lo, hi)
     out += [('conversion', line, hi.get('conversionPercentage'), False) for line in conv]

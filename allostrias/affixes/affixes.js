@@ -144,7 +144,7 @@
     recs.forEach(function (r) { if (r !== top) each(r); });
     return order.map(function (key) {
       var b = best[key];
-      return { text: b.d[1], pet: !!b.d[3], lvl: b.lvl === top[4] ? null : b.lvl };
+      return { key: b.d[0], text: b.d[1], pet: !!b.d[3], lvl: b.lvl === top[4] ? null : b.lvl };
     });
   }
 
@@ -171,9 +171,12 @@
     var order = gradeOrder(), by = {};
     order.forEach(function (g) { by[g] = []; });
     Object.keys(units).forEach(function (key) {
-      var recs = units[key], g = 'F', union = {};
+      var recs = units[key], g = 'F', union = {}, seen = {};
       recs.forEach(function (r) {
         var got = match(r, want, skills);
+        Object.keys(got).forEach(function (k) {
+          if (!seen[k] || RANK[got[k]] > RANK[seen[k]]) seen[k] = got[k];
+        });
         var gg = score(r, want, skills)[1];
         if (order.indexOf(gg) > order.indexOf(g)) g = gg;
         Object.keys(usefulOf(got)).forEach(function (k) { union[k] = 1; });
@@ -186,7 +189,15 @@
         slots: IDX.s[top[8]], lmin: Math.min.apply(null, lv), lmax: Math.max.apply(null, lv),
         lines: Math.max.apply(null, recs.map(function (r) { return r[5]; })),
         useful: Object.keys(union).length,
-        effects: linesOf(recs), grade: g
+        /* Each line carries the verdict the sheet holds on it -- the same
+           match() the score was taken from, keyed the same way: a stat line by
+           its line key, a "+N to <skill>" line by its skill slot. A line the
+           sheet has no opinion on carries none. */
+        effects: linesOf(recs).map(function (e) {
+          e.v = seen['f' + e.key] || seen['s' + e.key] || null;
+          return e;
+        }),
+        grade: g
       };
       by[card.grade].push(card);
     });

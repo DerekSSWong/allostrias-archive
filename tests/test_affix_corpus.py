@@ -60,6 +60,8 @@ bad = []
 for a in recs:
     txt = I.read_rel(a['path'])
     want = collections.Counter(skel(l) for l in I.effects_of(txt) if l)
+    # ...plus the lines the renderer lacks, which the build supplies.
+    want.update(skel(B._supplement(f, a['stats'][f][0])) for f in B.SUPPLEMENT if f in a['stats'])
     pet = a['stats'].get('petBonusName', (None,) * 4)[3]
     got = collections.Counter(
         skel(t) for _, t, _, _ in
@@ -70,6 +72,18 @@ for line in bad[:5]:
     print(line)
 assert not bad, f'{len(bad)} cards disagree with the tooltip renderer'
 print(f'  all {len(recs)} cards carry exactly the lines the renderer prints')
+
+# -- 1b. every line the sheet can score is on the card -----------------------
+# A scored line with nothing printed for it would be graded unseen, and its
+# verdict mark would have no line to sit on.
+unprinted = collections.Counter()
+for r in corpus['r']:
+    shown = {d[0] for d in r[9]}
+    for fi, _, _ in r[6]:
+        if corpus['lk'][fi] not in shown:
+            unprinted[corpus['f'][fi]] += 1
+assert not unprinted, f'scored lines no card prints: {dict(unprinted)}'
+print('  every scored line is printed on its card')
 
 # -- 2. every field the sheet reads is scored where an affix carries it ------
 fr = B.field_to_rows(B.SB.SHEET)
