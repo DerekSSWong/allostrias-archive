@@ -52,15 +52,18 @@ TIER_COLOUR = dict(zip(TIER_ORDER, CONFIRMED))
 # The game's own rarity ramp, so an S lights up the way a legendary does.
 # ⚠️ Keys are GRADE letters, values PALETTE codes: 'B' and 'S' are on both
 # sides meaning different things, and every one is correct.
-GRADE_COLOUR = {'F': 'W', 'C': 'Y', 'B': 'G', 'A': 'B', 'S': 'I'}
-# An affix carrying nothing this character wants. Not F's White: F means
-# "carries something you want, barely", and one colour cannot say both.
-UNGRADED_COLOUR = 'S'
+#
+# ⚠️ F IS SILVER, NOT GD Lens's WHITE. GD Lens paints F White and keeps a
+# separate Silver for affixes carrying nothing the character wants. The user
+# merged the two on 2026-09-25: F is everything below C, wanted or not, and
+# takes the Silver the ungraded had -- which is also off the rarity ramp, so an
+# F never reads as a white item.
+GRADE_COLOUR = {'F': 'S', 'C': 'Y', 'B': 'G', 'A': 'B', 'S': 'I'}
 
 
 def affix_names(conn):
     """tag -> display name for every named prefix and suffix, droppable or not:
-    one that helps nobody still belongs in the file, coloured as ungraded."""
+    one that helps nobody still belongs in the file, coloured F."""
     out = {}
     for tag, name in conn.execute(
             "SELECT DISTINCT name_tag, name FROM affix "
@@ -112,9 +115,8 @@ def header():
     """The comment block, with CHARACTER_MARK for the page to fill in."""
     order = ['F', 'C', 'B', 'A', 'S']
     legend = ['#   {^%s} %-16s %s' % (GRADE_COLOUR[g], PALETTE[GRADE_COLOUR[g]][0],
-                                      'grade ' + g) for g in reversed(order)]
-    legend.append('#   {^%s} %-16s %s' % (UNGRADED_COLOUR, PALETTE[UNGRADED_COLOUR][0],
-                                          'nothing this character wants'))
+                                      'grade ' + g + (', little or nothing wanted' if g == 'F' else ''))
+              for g in reversed(order)]
     return ['# ##############################',
             "# ### Allostria's Archive loot filter",
             '# ##############################',
@@ -150,4 +152,4 @@ def build(conn):
     return {'filename': FILENAME, 'eol': EOL, 'reset': RESET, 'mark': CHARACTER_MARK,
             'header': header(), 'names': names,
             'bases': {t: list(v) for t, v in bases.items()},
-            'gradeColour': GRADE_COLOUR, 'ungraded': UNGRADED_COLOUR}
+            'gradeColour': GRADE_COLOUR}

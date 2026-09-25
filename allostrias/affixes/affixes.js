@@ -10,9 +10,9 @@
  * Two departures from GD Lens, both the user's (2026-09-24):
  *   - A "+N to <skill>" line is wanted when the skill is in the character's
  *     skill window, and wanted as `priority`. No per-skill verdict.
- *   - Every affix that can drop is listed, not only the ones that match: the
- *     ones carrying nothing this character wants go in a group of their own,
- *     the same fact the loot filter paints Silver.
+ *   - Every affix that can drop is listed, not only the ones that match, and
+ *     the ones carrying nothing this character wants are F with the rest --
+ *     F is Silver, in the view and in the loot filter (2026-09-25).
  *
  * A record is
  *   [tag, name, suffix?, green?, level, lines, [[field, lo, hi]],
@@ -153,8 +153,12 @@
      character has), as GD Lens keys it: `Glacial` is four affixes, one tag can
      be armour in one record and jewellery in another, and two `Oathkeeper's`
      at one level grant different skills. A unit's grade is the best any of its
-     records reaches; LEVEL IS NOT A TERM. '-' holds the units that match
-     nothing this character wants or avoids. */
+     records reaches; LEVEL IS NOT A TERM.
+
+     ⚠️ F INCLUDES THE UNITS THAT MATCH NOTHING. GD Lens kept those apart as
+     "ungraded"; the user merged them into F on 2026-09-25, in the view and in
+     the loot filter alike, so F reads "little or nothing this character
+     wants". */
   function catalogue(verdicts, skills) {
     var want = wantedFields(verdicts), units = {}, i;
     for (i = 0; i < IDX.r.length; i++) {
@@ -164,13 +168,12 @@
       var key = rec[0] + '|' + rec[8] + '|' + mine;
       (units[key] = units[key] || []).push(rec);
     }
-    var order = gradeOrder(), by = { '-': [] };
+    var order = gradeOrder(), by = {};
     order.forEach(function (g) { by[g] = []; });
     Object.keys(units).forEach(function (key) {
-      var recs = units[key], matched = false, g = 'F', union = {};
+      var recs = units[key], g = 'F', union = {};
       recs.forEach(function (r) {
         var got = match(r, want, skills);
-        if (Object.keys(got).length) matched = true;
         var gg = score(r, want, skills)[1];
         if (order.indexOf(gg) > order.indexOf(g)) g = gg;
         Object.keys(usefulOf(got)).forEach(function (k) { union[k] = 1; });
@@ -183,7 +186,7 @@
         slots: IDX.s[top[8]], lmin: Math.min.apply(null, lv), lmax: Math.max.apply(null, lv),
         lines: Math.max.apply(null, recs.map(function (r) { return r[5]; })),
         useful: Object.keys(union).length,
-        effects: linesOf(recs), grade: matched ? g : '-'
+        effects: linesOf(recs), grade: g
       };
       by[card.grade].push(card);
     });
@@ -221,8 +224,11 @@
     var F = IDX.filter, lines = {}, t, counts = {};
     for (t in F.names) {
       var g = best[t];
-      counts[g || '-'] = (counts[g || '-'] || 0) + 1;
-      lines[t] = [F.names[t], g === undefined ? F.ungraded : F.gradeColour[g]];
+      /* A tag no card holds -- an affix that cannot drop -- is F like any
+         other affix this character has no use for. */
+      g = g || 'F';
+      counts[g] = (counts[g] || 0) + 1;
+      lines[t] = [F.names[t], F.gradeColour[g]];
     }
     for (t in F.bases) lines[t] = F.bases[t];
     var out = F.header.map(function (l) { return l.split(F.mark).join(character); });

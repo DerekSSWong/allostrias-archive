@@ -5,13 +5,16 @@ allostrias/affixes/filter.py ports raynbow.py's character-independent half and
 the page renders the rest (affixes.js renderFilter). Against GD Lens, when it is
 checked out beside this repo:
 
-  - the palette, the grade colours and the ungraded colour are the same;
+  - the palette is the same, and the grade colours are GD Lens's except
+    that F takes the Silver GD Lens gives ungraded affixes (merged by the
+    user 2026-09-25);
   - the 481 affix names are the same;
   - the base, style and quality lines are the same, save for tags whose records
     the game added or patched after GD Lens's `.extracted` snapshot -- excused
     per tag by comparing the records themselves, never by a count;
-  - and the WHOLE FILE is byte-identical to what raynbow.render() writes for the
-    same grades, except the one title line that names the tool.
+  - and every tag line is byte-identical to what raynbow.render() writes for
+    the same colours. The header differs by design: its title and its legend,
+    which has no separate ungraded line.
 
 SKIPS the GD Lens half loudly when it is absent. The format itself -- CRLF,
 ASCII, sorted, one reset per line -- is asserted by allostrias/sheet/check.js
@@ -48,8 +51,8 @@ import raynbow as R                                      # noqa: E402
 import palette as P                                      # noqa: E402
 
 assert F.PALETTE == P.PALETTE and F.CONFIRMED == P.CONFIRMED, 'the palette drifted from gd-lib'
-assert F.GRADE_COLOUR == R.GRADE_COLOUR, 'the grade colours drifted from GD Lens'
-assert F.UNGRADED_COLOUR == R.UNGRADED_COLOUR, 'the ungraded colour drifted from GD Lens'
+assert F.GRADE_COLOUR == {**R.GRADE_COLOUR, 'F': R.UNGRADED_COLOUR}, \
+    'the grade colours drifted from GD Lens (bar F, which takes its ungraded Silver)'
 assert (F.FILENAME, F.EOL.encode(), F.RESET) == (R.FILENAME, R.EOL, R.RESET), \
     'the file name, line ending or reset drifted from GD Lens'
 print('  palette, grade colours, file name, line ending and reset identical')
@@ -85,13 +88,12 @@ assert not unexplained, (f'{len(unexplained)} base lines differ from GD Lens on 
 print(f'  {len(bases) - len(differ)} base lines identical; {len(differ)} differ, '
       f'each carried only by records added or patched since the snapshot')
 
-# The whole file, both engines, same grades. The grades are arbitrary but
-# cover every colour, including ungraded.
+# Both engines, same colours. The grades are arbitrary but cover every one,
+# and a tag with no grade at all, which is F.
 cycle = ['S', 'A', 'B', 'C', 'F', None]
 grades = {t: cycle[i % len(cycle)] for i, t in enumerate(sorted(names))}
 best = {t: g for t, g in grades.items() if g}
-theirs, _ = R.render(lambda t: R.UNGRADED_COLOUR if grades[t] is None
-                     else R.GRADE_COLOUR[grades[t]], 'Test Character',
+theirs, _ = R.render(lambda t: F.GRADE_COLOUR[grades[t] or 'F'], 'Test Character',
                      names=names, bases=bases)
 if shutil.which('node') is None:
     print('SKIPPED PART -- no node: the page renderer is UNCOMPARED')
@@ -106,11 +108,11 @@ r = subprocess.run(['node', '-e', script, os.path.join(ROOT, 'allostrias', 'affi
                    input=json.dumps([corpus, best]).encode(), capture_output=True)
 assert r.returncode == 0, r.stderr.decode()
 mine = r.stdout
-ours_lines, their_lines = mine.split(b'\r\n'), theirs.split(b'\r\n')
-assert len(ours_lines) == len(their_lines), f'{len(ours_lines)} lines vs {len(their_lines)}'
-diff = [(a, b) for a, b in zip(ours_lines, their_lines) if a != b]
-assert diff == [(b"# ### Allostria's Archive loot filter", b'# ### GD Lens loot filter')], \
-    f'{len(diff)} lines differ from raynbow.render(), e.g. {diff[:3]}'
-print(f'  the page\'s file is byte-identical to raynbow.render() for the same grades, '
-      f'{len(ours_lines)} lines, bar the title')
+body = lambda text: [l for l in text.split(b'\r\n') if l and not l.startswith(b'#')]
+ours_lines, their_lines = body(mine), body(theirs)
+assert ours_lines == their_lines, (
+    f'{sum(a != b for a, b in zip(ours_lines, their_lines))} tag lines differ from '
+    f'raynbow.render(), of {len(ours_lines)} vs {len(their_lines)}')
+print(f'  every one of the page\'s {len(ours_lines)} tag lines is byte-identical to '
+      f'raynbow.render() for the same colours')
 print('\nAFFIX FILTER OK')

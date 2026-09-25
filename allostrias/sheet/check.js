@@ -1577,7 +1577,14 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   for (const g of Object.keys(by))
     want(groups[g]===String(by[g].length), `grade ${g}: the page shows ${groups[g]}, the scorer ${by[g].length}`);
   want(['S','A','B','C'].some(g=>by[g].length), 'no affix grades above F for the opener');
-  want(by['-'].length>0, 'no affix is left ungraded -- the "nothing wanted" group is empty');
+  // F holds everything below C, the affixes this character wants nothing
+  // from included: there is no separate ungraded group.
+  want(Object.keys(by).sort().join()==='A,B,C,F,S', `grade groups ${Object.keys(by)}, not S A B C F`);
+  want(!/data-g="-"/.test(get('alist')._html), 'an ungraded group is still rendered');
+  {
+    const none=by.F.filter(c=>c.useful===0).length;
+    want(none>0, 'no affix wanting nothing landed in F');
+  }
   // Cards carry what the corpus says: a card's lines are the lines it prints.
   const firstCard=cardsIn(get('alist')._html)[0]||'';
   want(/<li[^>]*>[^<]*\d/.test(firstCard), 'a rendered card prints no stat line');
@@ -1661,9 +1668,12 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   want(body.every(l=>/^[Tt]ag[^=]*=\{\^[A-Z]\}[^{]+\{\^-\}$/.test(l)), 'a filter line is not tag={^X}name{^-}');
   const tagsOut=body.map(l=>l.split('=')[0]);
   want(tagsOut.every((t,i)=>!i||tagsOut[i-1]<t), 'the filter is not sorted by tag');
-  for (const [t,g] of Object.entries(best))
+  for (const t of Object.keys(IDX.filter.names)){
+    const g=best[t]||'F';
     want(body.includes(`${t}={^${IDX.filter.gradeColour[g]}}${IDX.filter.names[t]}{^-}`),
          `${t} graded ${g} is not painted ${IDX.filter.gradeColour[g]}`);
+  }
+  want(IDX.filter.gradeColour.F==='S', 'F is not painted Silver');
 
   fire('click', nav('character'));
   want(get('affixview').hidden===true && get('mainview').hidden===false,

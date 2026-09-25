@@ -592,13 +592,13 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 .agrade > summary:hover h2{color:var(--band-ink)}
 .agbody{padding-top:var(--s3)}
 .agrade > summary h2 .g{display:inline-block; min-width:1em}
-.agrade > summary h2 .gl{margin-left:6px}
 .agrade[data-g="S"] summary .g{color:var(--t-legendary-ink)}
 .agrade[data-g="A"] summary .g{color:var(--t-epic)}
 .agrade[data-g="B"] summary .g{color:var(--t-rare)}
 .agrade[data-g="C"] summary .g{color:var(--t-magical)}
-.agrade[data-g="F"] summary .g{color:var(--t-common)}
-.agrade[data-g="-"] summary .g{color:var(--dim)}
+/* F is Silver, the loot filter's colour for it: everything below C, wanted
+   or not. */
+.agrade[data-g="F"] summary .g{color:#9A9A9A}
 .acards{display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:var(--s2)}
 .acard{padding:var(--s2) var(--s3); background:var(--sunk); border:1px solid var(--rule)}
 .acard .ah{display:flex; align-items:baseline; gap:var(--s2); flex-wrap:wrap}
@@ -1120,8 +1120,6 @@ __AFFIX_JS__
   const AX = globalThis.GDAffixes, GS = globalThis.GDSearch;
   const aview = {data: null, sig: null, rows: [{op: "AND", text: ""}],
                  slots: new Set(), open: {}};
-  const GRADE_LABEL = {S: "S", A: "A", B: "B", C: "C", F: "F",
-                       "-": "Nothing this character wants"};
   let AIDX = null;
 
   function affixIndex(){
@@ -1232,17 +1230,16 @@ __AFFIX_JS__
   function renderList(){
     const by = aview.data, filtering = liveRows().length || aview.slots.size;
     let shown = 0, total = 0;
-    const order = [...AX.gradeOrder()].reverse().concat(["-"]);
+    const order = [...AX.gradeOrder()].reverse();
     $("alist").innerHTML = order.map(g => {
       const all = by[g] || [], hits = all.filter(cardMatches);
       total += all.length; shown += hits.length;
       /* The reader's own open/closed choice wins; otherwise the wanted grades
          open, and while a search is running any group with a hit opens. */
       const open = g in aview.open ? aview.open[g]
-                 : filtering ? hits.length > 0 : !["F", "-"].includes(g);
+                 : filtering ? hits.length > 0 : g !== "F";
       return `<details class="agrade" data-g="${g}"${open ? " open" : ""}>
-        <summary><h2><span class="g">${g === "-" ? "–" : g}</span>${
-          g === "-" ? `<span class="gl">${GRADE_LABEL[g]}</span>` : ""}</h2>
+        <summary><h2><span class="g">${g}</span></h2>
           <span class="n">${filtering ? `${hits.length} of ${all.length}` : all.length}</span></summary>
         <div class="agbody">${open ? (hits.length ? `<div class="acards">${hits.map(card).join("")}</div>`
                                                : `<p class="note">Nothing here matches.</p>`) : ""}</div>
@@ -1283,8 +1280,8 @@ __AFFIX_JS__
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
       note.className = "n";
-      note.textContent = `${f.filename} · ${f.affix - (f.counts["-"] || 0)} of ${
-        f.affix} affixes graded for ${ch.name}`;
+      note.textContent = `${f.filename} · ${f.affix - (f.counts.F || 0)} of ${
+        f.affix} affixes graded above F for ${ch.name}`;
     } catch (e) {
       /* The viewer saying no is not a failure of the page. */
       note.textContent = e && e.code === "declined" ? ""
