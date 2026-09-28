@@ -9,8 +9,9 @@ in Item Assistant's collection, with its stats AS ROLLED.
 
 The user's rules (2026-09-28): the component and the augment are LEFT OFF -- the
 card is the item, not what was socketed into it. The crafting bonus is part of a
-crafted item and is shown, as its own block, at its record value: whether it
-jitters is NOT verified, and the block says so.
+crafted item: it rolls with it (seedroll.MODIFIER_KINDS) and its value is merged
+into the item's lines, as the game prints it. A relic's is not applied by the game
+and is left off like a component.
 
 An item seedroll refuses is shown with its stats withheld and the reason, never
 with its unrolled record values: a desynced roll and a record centre both look
@@ -113,17 +114,13 @@ def grant_key(key):
     return 'mastery:' + name
 
 
-def grading(ix, recs, roll, modifier, shown):
+def grading(ix, recs, roll, shown):
     """[lines, scored, grants] -- the three things affixes.js's score() reads,
     in its record positions 5, 6 and 7."""
     rows = []
     for which, d in recs.items():
         vals = {f: per[which] for f, per in roll.parts.items() if which in per}
         rows += AB.line_rows(_stats_of(vals, d), _pet_stats(d))
-    if modifier:
-        mvals = {f: float(v[0]) for f, v in modifier.items()
-                 if v and not _TEXT_OWNED.match(f) and SB._num(v[0])}
-        rows += AB.line_rows(_stats_of(mvals, modifier), _pet_stats(modifier))
     scored, seen = [], set()
     for r in rows:
         k = AB.row_key(r)
@@ -175,7 +172,10 @@ def card(ca, ix, icons, source, where, r):
     pfx = SB.affix_of(ca, r['prefix_path'], 'prefix')
     sfx = SB.affix_of(ca, r['suffix_path'], 'suffix')
     name, rarity, _style, _base_name, badge = SB.item_display(base, r['base_path'], pfx, sfx)
-    roll = seedroll.compute(base, r['seed'], recs.get('prefix'), recs.get('suffix'))
+    if r['modifier_path'] and cls['class'] != 'ItemRelic':
+        recs['modifier'] = SB.rec(r['modifier_path'])
+    roll = seedroll.compute(base, r['seed'], recs.get('prefix'), recs.get('suffix'),
+                            modifier=recs.get('modifier'))
 
     out = {
         'n': name, 'r': rarity, 'b': badge,
@@ -186,15 +186,12 @@ def card(ca, ix, icons, source, where, r):
     set_path = (base.get('itemSetName') or [None])[0]
     if set_path:
         out['set'] = SB.tag(((SB.rec(set_path) or {}).get('setName') or [None])[0])
-    modifier = SB.rec(r['modifier_path']) if r['modifier_path'] else None
-    if modifier:
-        out['cb'] = I.effects_of(I.read_rel(r['modifier_path']) or '')
     if roll.unmodeled:
         out['why'] = 'not replayed: ' + ', '.join(roll.unmodeled)
         return out
     shown = item_lines.rolled(r['base_path'], paths, roll)
     out['l'] = [[text, _verdict_key(ix, key)] for key, text in shown]
-    out['g'] = grading(ix, recs, roll, modifier, shown)
+    out['g'] = grading(ix, recs, roll, shown)
     return out
 
 

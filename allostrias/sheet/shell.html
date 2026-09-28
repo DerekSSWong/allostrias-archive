@@ -672,8 +672,6 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   align-items:center; margin-bottom:6px}
 .scard .sn{display:block; font:600 14px "Libertinus Serif",Georgia,serif; line-height:1.25}
 .scard .sm{display:block; font:11px Jura,system-ui,sans-serif; color:var(--faint)}
-.scard .cbh{margin-top:6px; font:700 9.5px Jura,system-ui,sans-serif; letter-spacing:.14em;
-  text-transform:uppercase; color:var(--gold-dim)}
 .scard[data-r="Legendary"] .tile{border-color:#3E1063; box-shadow:inset 0 0 12px rgba(90,3,154,.55)}
 .scard[data-r="Epic"] .tile{border-color:#1E5C74; box-shadow:inset 0 0 12px rgba(57,171,207,.3)}
 .scard[data-r="Rare"] .tile{border-color:#1E5E24}
@@ -819,7 +817,8 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   <p><strong>Gear Stash</strong> lists every piece of equipment in the transfer stash and in Item
      Assistant's collection, each line at the value the item actually rolled — replayed from its
      seed, and held to the game's own tooltips, which Item Assistant keeps. The component and the
-     augment are left off; a crafting bonus is shown at its record value. An item the replay cannot
+     augment are left off; a crafting bonus rolls with the item and is counted in its lines, as the
+     game prints it (a relic's is not applied by the game and is left off). An item the replay cannot
      roll yet shows no numbers rather than unrolled ones. Personal grades each item as Affixes grades
      an affix, by its lines and not by how high they rolled.</p>
 </footer>
@@ -1567,7 +1566,7 @@ __AFFIX_JS__
     return k ? [it.sl, k] : [it.sl];
   }
   function stashLines(it){
-    if (!it._nl) it._nl = [it.n, ...(it.l || []).map(l => l[0]), ...(it.cb || []),
+    if (!it._nl) it._nl = [it.n, ...(it.l || []).map(l => l[0]),
                            it.sl, it.src + (it.at ? " " + it.at : ""), it.set || ""]
       .map(l => GS.normalise(l));
     return it._nl;
@@ -1586,16 +1585,13 @@ __AFFIX_JS__
       ? `<ul>${it.l.map(([t, k]) => `<li>${gutter(k)}<span>${h(t)}</span></li>`).join("")}</ul>`
       : `<p class="note">Stats withheld: the seed replay does not model this item yet (${
           esc(it.why)}).</p>`;
-    const cb = it.cb && it.cb.length
-      ? `<div class="cbh">Crafting bonus · record value</div><ul>${
-          it.cb.map(t => `<li>${gutter(0)}<span>${h(t)}</span></li>`).join("")}</ul>` : "";
     return `<div class="acard scard" data-i="${idx}" data-r="${esc(it.r || "Common")}">
       <div class="sh"><span class="tile">${sicon(it.i, 46)}</span><span>
         <span class="sn t-${esc(it.r || "Common")}">${badge({badge: it.b})}${h(it.n)}</span>
         <span class="sm">${h(it.sl)}${it.lv ? " · lvl " + it.lv : ""} · ${
           h(it.src + (it.at ? " " + it.at : ""))}</span>
         ${it.set ? `<span class="sm">${h(it.set)}</span>` : ""}</span></div>
-      ${lines}${cb}</div>`;
+      ${lines}</div>`;
   }
 
   function renderStashSlots(){

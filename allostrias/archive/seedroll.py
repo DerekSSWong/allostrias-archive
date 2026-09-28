@@ -311,6 +311,19 @@ ADDITIONS = {
 }
 BASE_ONLY = {'offensivePercentCurrentLifeMin'}
 
+# The crafting bonus ROLLS (settled against the game 2026-09-28). It jitters with its
+# own lootRandomizerJitter and draws from the item's one stream, so leaving it out
+# shifts every later draw: a medal's +8% Health Regeneration reads 9% in game, and its
+# Bleeding Resist 23 where the unmodified replay said 20. It draws as one more source
+# inside the Char store, BEFORE the base: all 11 crafted items IAGD holds match the
+# game with it at any of slots 0-2 of prefix -> suffix -> base, and 2 of 11 fail
+# after the base. Slots 0-2 differ only when a prefix or suffix carries the same
+# field as the bonus, which none of the 11 does -- so that case is REFUSED rather
+# than guessed. The 11 carry Char bonuses only, so only the Char store is pinned;
+# a bonus with a damage, defence or retaliation field is REFUSED too.
+MODIFIER_KINDS = {'Char'}
+MODIFIER_SLOT = 2
+
 
 def _build_order():
     o = []
@@ -444,8 +457,9 @@ class Roll:
         self.unmodeled, self.proc_lines = unmodeled, proc_lines
 
 
-def compute(base, seed, prefix=None, suffix=None, scale_override=None):
-    """Roll one item. `base`/`prefix`/`suffix` are raw DBRs as `rec()` returns them.
+def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=None):
+    """Roll one item. `base`/`prefix`/`suffix`/`modifier` are raw DBRs as `rec()`
+    returns them; `modifier` is the crafting bonus (see MODIFIER_KINDS).
 
     Draw order across sources is per-store and NOT uniform: Char, Skill and the
     retaliation modifiers draw prefix -> suffix -> base (the base LAST), while the
@@ -462,6 +476,9 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None):
     has_p, has_s = prefix is not None, suffix is not None
     p_values, p_text = parse_stats(prefix) if has_p else ({}, {})
     s_values, s_text = parse_stats(suffix) if has_s else ({}, {})
+    has_m = modifier is not None
+    m_values, _ = parse_stats(modifier) if has_m else ({}, {})
+    mod_pct = m_values.get('lootRandomizerJitter', 0.0)
 
     pfx_pct = p_values.get('lootRandomizerJitter', 0.0)
     sfx_pct = s_values.get('lootRandomizerJitter', 0.0)
@@ -480,7 +497,7 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None):
             parts.setdefault(field, {})[which] = parts.setdefault(field, {}).get(which, 0.0) + value
 
     def present(f):
-        return f in values or f in p_values or f in s_values
+        return f in values or f in p_values or f in s_values or f in m_values
 
     # An affix's skillCooldownReduction/skillManaCostReduction draws at the START of
     # the damage store, not at the deferred Skill position where the base record's
@@ -663,9 +680,19 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None):
                 pj = jitter_char(pv, pfx_pct, rng) if has_p else 0.0
                 sj = jitter_char(sv, sfx_pct, rng) if has_s else 0.0
             else:                                  # Char: the base draws LAST
-                pj = jitter_char(pv, pfx_pct, rng) if has_p else 0.0
-                sj = jitter_char(sv, sfx_pct, rng) if has_s else 0.0
-                bj = jitter_char(bv, BASE_JITTER, rng)
+                order = [('prefix', pv, pfx_pct, has_p), ('suffix', sv, sfx_pct, has_s),
+                         ('base', bv, BASE_JITTER, True)]
+                if has_m:
+                    order.insert(MODIFIER_SLOT, ('modifier', m_values.get(field, 0.0), mod_pct, True))
+                drawn = {w: jitter_char(v, pct, rng) if on else 0.0 for w, v, pct, on in order}
+                pj, sj, bj = drawn['prefix'], drawn['suffix'], drawn['base']
+                mj = drawn.get('modifier', 0.0)
+                part(field, 'modifier', mj)
+                total = pj + sj + bj + mj
+                for which, j in (('base', bj), ('prefix', pj), ('suffix', sj)):
+                    part(field, which, j)
+                result[field] = apply_scale(total, sp) if scales else total
+                continue
 
             if field in MODIFIER_CHANCE_SPLIT and (has_p or has_s):
                 ch_f = field + 'Chance'
@@ -706,6 +733,17 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None):
     unmodeled += [f + ' [affix pair]' for f in affix_pair_fields]
     unmodeled += [f + ' [on an affix: placement unpinned]' for f in BASE_ONLY
                   if f in p_values or f in s_values]
+    # A crafting bonus is modelled for the stores its draws were pinned in and
+    # nowhere else: a field of any other kind refuses the whole roll.
+    kinds = {f: k for k, f, _ in ORDER}
+    unmodeled += [f + ' [crafting bonus and an affix share it: draw order unpinned]'
+                  for f in m_values if kinds.get(f) in MODIFIER_KINDS
+                  and (f in p_values or f in s_values)]
+    for f in m_values:
+        if f in result and kinds.get(f) in MODIFIER_KINDS:
+            continue
+        if is_concerning(f) or (f in MODELED and kinds.get(f) not in MODIFIER_KINDS):
+            unmodeled.append(f + ' [crafting bonus: draw order unpinned]')
 
     # The parts are per-source draws; the total had one scale-and-truncate applied to
     # their sum. Hand the difference to the largest part so the two agree exactly.

@@ -144,8 +144,7 @@ def wanted(field):
 # deliberately -- and the unrolled gear kinds are the ones fed in at their
 # stored centre rather than replayed from the item's seed, which is what the
 # resistance rule needs a margin for.
-GEAR_UNROLLED = ('component', 'augment', 'crafting bonus', 'completion bonus',
-                 'transmuted')
+GEAR_UNROLLED = ('component', 'augment', 'completion bonus', 'transmuted')
 
 
 class Contrib:
@@ -830,7 +829,7 @@ def damage_context(worn, skills, C):
 
     # ---- how much of each resistance is still a GUESS ----------------------
     # A seed-rolled contribution is the real value and needs no margin. What is
-    # left is components, augments, crafting bonuses and completion bonuses --
+    # left is components, augments and completion bonuses --
     # the gear kinds fed in at their stored centre.
     unrolled = {}
     for t, fields in RESIST_FIELDS.items():
@@ -1322,7 +1321,14 @@ def gather(pr, ca, dir_name, icons):
             continue
         pfx = rec(r['prefix_path']) if r['prefix_path'] else None
         sfx = rec(r['suffix_path']) if r['suffix_path'] else None
-        roll = seedroll.compute(base, r['seed'], pfx, sfx)
+        # The crafting bonus ROLLS with the item (seedroll.MODIFIER_KINDS). A
+        # RELIC's is the exception: the game stores it and does not apply it --
+        # _Nurgle's relic carries defensiveLife=4 and his Vitality Resist reads
+        # 69, not 73; _cruunmch's characterLife=59 and Health reads 4451, not
+        # 4518 (settled in GD Lens against the in-game sheet). It stays listed
+        # as attached and feeds nothing.
+        mod = rec(r['modifier_path']) if r['modifier_path'] and r['slot'] != 'relic' else None
+        roll = seedroll.compute(base, r['seed'], pfx, sfx, modifier=mod)
         pfx_a = affix_of(ca, r['prefix_path'], 'prefix')
         sfx_a = affix_of(ca, r['suffix_path'], 'suffix')
         pfx_name, sfx_name = pfx_a[0], sfx_a[0]
@@ -1348,11 +1354,12 @@ def gather(pr, ca, dir_name, icons):
             # `Impervious (Shoulders)`: the slot keeps two items rolling the
             # same affix apart in one tooltip.
             src = {'base': name, 'prefix': aff_src.get('prefix'),
-                   'suffix': aff_src.get('suffix')}
+                   'suffix': aff_src.get('suffix'), 'modifier': f'{name} · crafting bonus'}
             for f, per in roll.parts.items():
                 for where, v in per.items():
                     if v:
-                        C.add(f, v, src.get(where) or name, kind=where)
+                        C.add(f, v, src.get(where) or name,
+                              kind='crafting bonus' if where == 'modifier' else where)
 
         # Attachments are separate records and are fed in unrolled.
         attached = []
@@ -1383,8 +1390,10 @@ def gather(pr, ca, dir_name, icons):
                 # A component or augment is named on its own; the unnamed
                 # kinds (crafting/completion bonus, transmuted) keep the item.
                 att_src = label if kind in ('component', 'augment') else f'{name} · {label}'
-                for s in ca.execute(f'select field, {vc} v from {tbl}_stat where {idc}=?', (row['id'],)):
-                    C.add(s['field'], s['v'], att_src, kind=kind)
+                # The crafting bonus is in the roll above, or not applied at all.
+                if col != 'modifier_path':
+                    for s in ca.execute(f'select field, {vc} v from {tbl}_stat where {idc}=?', (row['id'],)):
+                        C.add(s['field'], s['v'], att_src, kind=kind)
                 break
             # Channel 1, the attachment half: a component, augment or relic
             # bonus carrying petBonusName. Scalar, so index 0.

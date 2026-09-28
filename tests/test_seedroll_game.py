@@ -15,9 +15,9 @@ seedroll.CORRECTIONS / ADDITIONS and item_lines.py. Three checks:
      numbers over a spread of seeds; a record that could tell them apart fails
      here instead of rolling on a guess.
 
-Items with a component, augment or crafting bonus are left out of 2: their
-tooltips merge that record's numbers into the item's lines, and those records
-are not what this checks.
+Items with a component or augment are left out of 2: their tooltips merge that
+record's numbers into the item's lines, and those records are not rolled. A
+crafting bonus IS rolled (seedroll.MODIFIER_KINDS), so crafted items are in.
 
 ⚠️ SKIPS LOUDLY WHEN IAGD IS NOT CONFIGURED, exit 0, like every oracle gate here:
 check 3 still runs, 1 and 2 print UNCHECKED.
@@ -55,8 +55,10 @@ def sources(r):
 
 
 def roll_of(r):
-    return seedroll.compute(rec(r['base_path']), r['seed'],
-                            rec(r['prefix_path']), rec(r['suffix_path']))
+    base = rec(r['base_path'])
+    crafted = r['modifier_path'] and base.get('Class', [''])[0] != 'ItemRelic'
+    return seedroll.compute(base, r['seed'], rec(r['prefix_path']), rec(r['suffix_path']),
+                            modifier=rec(r['modifier_path']) if crafted else None)
 
 
 def game_numbers(conn):
@@ -88,19 +90,20 @@ def against_the_game():
     items = st.execute('SELECT * FROM iagd_item').fetchall()
     assert items, 'no IAGD items -- the gate would pass on nothing'
 
-    bad, compared, attached, lines = [], 0, 0, 0
+    bad, compared, attached, lines, crafted = [], 0, 0, 0, 0
     for r in items:
         roll = roll_of(r)
         if roll.unmodeled:
             bad.append(f"#{r['id']} {r['base_path']}: refused ({', '.join(roll.unmodeled)})")
             continue
-        if r['component_path'] or r['augment_path'] or r['modifier_path']:
+        if r['component_path'] or r['augment_path']:
             attached += 1
             continue
         if r['id'] not in game:
             bad.append(f"#{r['id']}: IAGD holds no game tooltip for it")
             continue
         compared += 1
+        crafted += bool(r['modifier_path'])
         have = game[r['id']].copy()
         for key, line in item_lines.rolled(r['base_path'], sources(r), roll):
             if key is None:
@@ -113,7 +116,9 @@ def against_the_game():
                     bad.append(f"#{r['id']} {r['base_path']}: {line!r} -- {v:g} is not on "
                                f"the game's tooltip")
     print(f'{len(items)} IAGD items: {compared} compared on {lines} rolled lines, '
-          f'{attached} left out for an attached record')
+          f'{attached} left out for an attached record, {crafted} crafted')
+    if not crafted:
+        print('UNCOVERED -- no crafted item in IAGD, so seedroll.MODIFIER_SLOT is held to nothing')
     return bad
 
 

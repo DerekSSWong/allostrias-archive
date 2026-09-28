@@ -10,8 +10,8 @@ socketed into it.
   3. A card's lines ARE item_lines.rolled() -- the composition
      tests/test_seedroll_game.py holds to the game's own tooltips -- so that
      evidence is evidence about what the view prints.
-  4. A refused roll shows no numbers and says why; a crafting bonus shows as
-     its own block.
+  4. A refused roll shows no numbers and says why. A crafting bonus rolls with
+     the item (seedroll.MODIFIER_KINDS), so its card is the roll WITH it.
 
 Reads the live stash databases, which every launch refills; nothing here is a
 count typed in.
@@ -82,11 +82,13 @@ def main():
         print('UNCOVERED -- no held item carries a component or augment')
 
     # 3. lines are the game-checked composition; 4. refusals and crafting bonus
-    refused = crafted = 0
+    refused = n_crafted = 0
     for r, c in cards:
         base = SB.rec(r['base_path'])
         paths = {k: r[f'{k}_path'] for k in ('prefix', 'suffix') if r[f'{k}_path']}
-        roll = seedroll.compute(base, r['seed'], *(SB.rec(paths.get(k)) for k in ('prefix', 'suffix')))
+        crafted = bool(r['modifier_path']) and base.get('Class', [''])[0] != 'ItemRelic'
+        roll = seedroll.compute(base, r['seed'], *(SB.rec(paths.get(k)) for k in ('prefix', 'suffix')),
+                                modifier=SB.rec(r['modifier_path']) if crafted else None)
         if roll.unmodeled:
             refused += 1
             if 'l' in c or 'g' in c or not c.get('why'):
@@ -96,12 +98,9 @@ def main():
                                                 {'base': r['base_path'], **paths}, roll)]
         if [t for t, _ in c['l']] != want:
             bad.append(f"{c['n']}: its lines are not item_lines.rolled()")
-        if r['modifier_path']:
-            crafted += 1
-            if not c.get('cb'):
-                bad.append(f"{c['n']}: a crafting bonus with no block")
+        n_crafted += crafted
     print(f'{len(cards)} cards ({equip} equipment rows), {socketed} with a component or '
-          f'augment, {crafted} with a crafting bonus, {refused} not replayed')
+          f'augment, {n_crafted} rolled with a crafting bonus, {refused} not replayed')
     if refused:
         print(f'UNPROVEN -- {refused} item(s) the seed replay does not model yet show no '
               f'stats. Lifting them is pinned in the backlog (the user moves one of each '

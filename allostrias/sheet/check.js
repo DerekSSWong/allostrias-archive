@@ -2013,6 +2013,30 @@ want(/details\.panel:not\(\[open\]\) > summary\.hd::after\{transform:scaleY\(-1\
 want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.test(html),
      'the arrow has no hover state');
 
+// ---- the crafting bonus ------------------------------------------------------
+// A relic's crafting bonus is stored but NOT applied by the game, so nothing on
+// the sheet may come from one; any other crafting bonus rolls with its item and
+// is credited as that item's crafting bonus. Derived from each character's worn
+// gear, not from a list of names.
+{
+  let rolled=0, relics=0;
+  for (const c of B.characters){
+    for (const e of c.equipment){
+      if (!(e.attached||[]).some(a=>a.kind==='modifier')) continue;
+      const label=`${e.n} · crafting bonus`;
+      const fed=Object.values(c.contrib).flat().filter(([,src])=>src===label);
+      if (e.slot==='relic'){ relics++;
+        want(!fed.length, `${c.name}: the relic ${e.n}'s crafting bonus feeds ${fed.length} row(s); the game does not apply it`);
+      } else { rolled++;
+        want(fed.length>0, `${c.name}: ${e.n}'s crafting bonus feeds nothing`);
+      }
+    }
+  }
+  if (!relics) uncovered.push('no frozen character wears a relic with a crafting bonus');
+  if (!rolled) uncovered.push('no frozen character wears a non-relic crafted item, so the rolled crafting bonus is not exercised here');
+  console.log(`crafting bonus: ${rolled} rolled with their item, ${relics} on a relic and not applied`);
+}
+
 // ---- the Gear Stash view ----------------------------------------------------
 // Driven the way a reader drives it -- the nav button, the mode switch, a
 // search term, a slot chip, a source chip, a verdict click -- and every grade
@@ -2066,7 +2090,7 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
 
   // Search, per line, through the view's own term box.
   const typed=(i,v)=>fire('input', {dataset:{si:String(i)}, value:v, tagName:'INPUT'});
-  const lines=it=>[it.n, ...(it.l||[]).map(l=>l[0]), ...(it.cb||[]), it.sl, it.src+(it.at?' '+it.at:''), it.set||''].map(GSE.normalise);
+  const lines=it=>[it.n, ...(it.l||[]).map(l=>l[0]), it.sl, it.src+(it.at?' '+it.at:''), it.set||''].map(GSE.normalise);
   typed(0, 'fire resist');
   const hits=G.items.filter(it=>GSE.rowsMatch(lines(it), [{text:'fire resist'}], true));
   want(hits.length>0 && hits.length<G.items.length, `"fire resist" should narrow the stash, matched ${hits.length}`);
