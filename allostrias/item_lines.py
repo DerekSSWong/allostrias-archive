@@ -87,16 +87,13 @@ def rolled(base_path, sources, roll):
                 txt += f"{f}DurationMin={p['duration']:g}\n"
         out += I.process_stats_fields(txt)
 
-    # The conversion: the TYPES come from the source whose pair was rolled
-    # (seedroll credits only the first valid pair's source), the percentage is
-    # the rolled float, printed as the game prints it -- 16.57 reads "17%".
-    for sfx in ('', '2'):
-        pf = 'conversionPercentage' + sfx
-        if pf not in nums:
-            continue
-        src = next(s for s in ('base', 'prefix', 'suffix') if s in roll.parts.get(pf, {}))
-        types = _only(texts[src], rf'^conversion(In|Out)Type{sfx}$')
-        conv = types.replace(f'Type{sfx}=', 'Type=') + f'conversionPercentage={nums[pf]:.0f}\n'
+    # Every conversion pair the roll made -- a base and an affix converting
+    # different types are two lines -- at the rolled float, printed as the game
+    # prints it: 16.57 reads "17%".
+    for c in roll.conversions:
+        sfx = c['field'][len('conversionPercentage'):]
+        conv = (f"conversionInType={c['in']}\nconversionOutType={c['out']}\n"
+                f"conversionPercentage={c['value']:.0f}\n")
         out += [('conversion' + sfx, l) for l in I.extract_conversions(conv, '')]
 
     # Everything the renderer reads off the RECORD rather than off a number:

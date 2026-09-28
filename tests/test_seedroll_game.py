@@ -155,17 +155,34 @@ def additions_are_unpinned():
                 'WHERE s.field IN (?, ?)', names).fetchall()
             paths = [p for (p,) in ca.execute(
                 'SELECT DISTINCT i.path FROM item_stat s JOIN item i ON i.id = s.item_id '
-                'WHERE s.field IN (?, ?)', names)]
-            assert paths, f'{field}: no record carries it -- drop it from ADDITIONS'
-            # Only the base's own draw is proven. An affix carrying the field
-            # must be refused, which is what BASE_ONLY promises.
+                'WHERE s.field IN (?, ?) AND i.is_equipment = 1', names)]
+            # Equipment only: an augment or component carrying the field is an
+            # attachment, and attachments are never rolled from the item's seed.
+            assert paths or affixes, f'{field}: no record carries it -- drop it from ADDITIONS'
+            # An affix rolls onto hundreds of bases, so the catalogue cannot be
+            # walked pair by pair. What stands in for it is compute()'s own span
+            # guard, checked both ways: a base that draws INSIDE the span is
+            # refused, a base that does not rolls.
+            inside = next(e for e in seedroll.ORDER[seedroll.ORDER.index(
+                next(o for o in seedroll.ORDER if o[1] == span[0])) + 1:]
+                if e[1] not in seedroll.ADDITIONS and e[0] in ('Def', 'Dmg', 'Char'))
             for (apath,) in affixes:
-                if field not in seedroll.BASE_ONLY:
-                    bad.append(f'{field}: carried by affix {apath} -- base x affix pairs '
-                               f'are not proven here; add it to BASE_ONLY or prove them')
-                elif not seedroll.compute(rec(paths[0]), 1, rec(apath)).unmodeled:
-                    bad.append(f'{field}: {apath} rolls although BASE_ONLY says refuse')
+                slot = {'prefix': rec(apath)} if '/prefix/' in apath else {'suffix': rec(apath)}
+                bare = {'Class': ['WeaponMelee_Mace2h']}
+                if field in seedroll.BASE_ONLY:
+                    if not seedroll.compute(bare, 1, **slot).unmodeled:
+                        bad.append(f'{field}: {apath} rolls although BASE_ONLY says refuse')
+                    continue
+                clash = dict(bare, **{inside[1]: ['10']})
+                if not any('placement unpinned' in u for u in seedroll.compute(clash, 1, **slot).unmodeled):
+                    bad.append(f'{field}: {apath} on a base drawing {inside[1]} inside the span '
+                               f'is not refused')
+                if seedroll.compute(bare, 1, **slot).unmodeled:
+                    bad.append(f'{field}: {apath} on a bare base is refused -- the guard is too wide')
             alts = placements(field, span)
+            if not paths:
+                print(f'{field}: carried by {len(affixes)} affix(es) only; span guard checked')
+                continue
             for path in paths:
                 base = rec(path)
                 for seed in range(1, 2 ** 31, 2 ** 31 // 40):

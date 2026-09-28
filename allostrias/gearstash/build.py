@@ -52,6 +52,11 @@ def _stats_of(values, record):
             out[f] = (None, None, None, v)
         elif f.startswith(('augmentSkillLevel', 'racialBonusPercent')) and v:
             out[f] = (float(v),) * 3 + (None,)
+        elif f.startswith('conversionPercentage') and v and f not in out:
+            # seedroll credits a conversion's parts to the FIRST pair only; a
+            # second pair's source still carries a line, which is all the
+            # grading reads (it counts lines, not how high they rolled).
+            out[f] = (float(v),) * 3 + (None,)
     return out
 
 

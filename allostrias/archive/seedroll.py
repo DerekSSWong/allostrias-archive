@@ -168,7 +168,10 @@ SLOW_FLAT = [
     'offensiveSlowLifeLeach', 'offensiveSlowManaLeach',
 ]
 
-OFF_REFLEX = ['offensiveStun', 'offensiveKnockdown', 'offensiveSleep', 'offensiveFreeze', 'offensivePetrify']
+OFF_REFLEX = ['offensiveStun', 'offensiveKnockdown', 'offensiveSleep', 'offensiveFreeze', 'offensivePetrify',
+              'offensiveConfusion']            # NOT IAGD's -- see ADDITIONS
+# Confusion's Max draws on its own, straight after (its Min is the OffReflex draw).
+REFLEX_MAX = ['offensiveConfusionMax']
 
 # (field, scales): speed slows take the item scale, ability reductions do not.
 OFF_SLOW = [
@@ -284,13 +287,13 @@ CORRECTIONS = {'offensiveTotalDamageModifier': 'scales with attributeScalePercen
 
 # Fields IAGD (and so gd-lib) refuses, modelled here from the game's own
 # tooltips, 2026-09-28. Each is PLACED BUT NOT PINNED: the in-game values bound
-# where it draws, and inside that span every placement gives the same numbers
-# for every record that carries the field. tests/test_seedroll_game.py proves
-# that from the catalogue, so a record that WOULD tell the placements apart
-# fails the gate instead of rolling on a guess. Value: the span, as (the ORDER
-# field it draws after, the ORDER field it draws before -- None for the end of
-# the order). A field in FIXED is modelled as no draw, which the gate also
-# holds equal to every draw inside the span.
+# where it draws to a span, as (the ORDER field it draws after, the ORDER field
+# it draws before -- None for the end of the order). Inside the span every
+# placement gives the same numbers UNLESS some source also carries a field that
+# draws inside it -- so compute() REFUSES exactly that item, and every other item
+# rolls exactly whichever placement is true. tests/test_seedroll_game.py also
+# proves it from the catalogue for the item records carrying one. A field in
+# FIXED is modelled as no draw, equally consistent with every placement.
 #   offensiveFumble      4 items (Maleficus x2, Madness x2) exact. After the
 #                        damage modifiers up to Chaos, before the conversion.
 #   defensiveElementalResistanceChance  1 item (Defender of Devil's Crossing).
@@ -304,7 +307,16 @@ CORRECTIONS = {'offensiveTotalDamageModifier': 'scales with attributeScalePercen
 #                        affix's draw falls against the base's is not settled
 #                        by one base-only item -- so an affix carrying it is
 #                        still REFUSED (BASE_ONLY).
+#   offensiveConfusion   1 item (Magestorm Preserver Warmaul of Insanity), "5%
+#                        Chance of Confuse target for 3 - 7 Seconds", from the
+#                        suffix "of Insanity". Min and Max are TWO draws -- the
+#                        game's detail view rolls both, (2-5)-(4-9) -- and with
+#                        one draw the conversion after it reads 33% for the
+#                        game's 35%. After the damage modifiers, before the
+#                        conversion.
 ADDITIONS = {
+    'offensiveConfusion': ('offensiveSlowLifeModifier', 'conversionPercentage'),
+    'offensiveConfusionMax': ('offensiveSlowLifeModifier', 'conversionPercentage'),
     'offensivePercentCurrentLifeMin': ('characterSpellCastSpeedModifier', 'offensiveLifeModifier'),
     'offensiveFumble': ('offensiveChaosModifier', 'conversionPercentage'),
     'defensiveElementalResistanceChance': ('defensiveProtectionModifier', None),
@@ -333,6 +345,7 @@ def _build_order():
     o += [('Dmg', f, f not in NON_SCALING) for f in DMG]
     o += [('Leech', f, False) for f in LEECH]
     o += [('OffReflex', f, False) for f in OFF_REFLEX]
+    o += [('ReflexMax', f, False) for f in REFLEX_MAX]
     o += [('OffSlow', f, sc) for f, sc in OFF_SLOW]
     o += [('OffReduc', f, False) for f in OFF_REDUC]
     o += [('RetalFlat', f, False) for f in RETAL_FLAT]
@@ -450,11 +463,49 @@ class Roll:
     parts: field -> {'base'|'prefix'|'suffix': value}, summing EXACTLY to stats[field].
     unmodeled: rollable fields this engine does not know. NON-EMPTY MEANS DISCARD THE
     WHOLE ROLL -- a missed draw makes every later value wrong while leaving it
-    perfectly plausible."""
+    perfectly plausible.
+    conversions: every damage conversion the item carries, as {field, in, out,
+    value}, in draw order. stats[<field>] holds only the FIRST pair's value; an
+    item whose base and affix convert different types has two, and the game
+    prints both (four items in IAGD, 8 of 8 values exact, 2026-09-28)."""
 
-    def __init__(self, stats, parts, unmodeled, proc_lines):
+    def __init__(self, stats, parts, unmodeled, proc_lines, conversions=()):
         self.stats, self.parts = stats, parts
         self.unmodeled, self.proc_lines = unmodeled, proc_lines
+        self.conversions = list(conversions)
+
+
+def _drawn_fields(entry):
+    """The record fields an ORDER entry draws for -- companions it only echoes
+    (a Chance, a DurationMin) excluded."""
+    kind, field, _ = entry
+    if kind in _PAIR:
+        return {field + s for s in _PAIR[kind]}
+    if kind in _COMP:
+        return {field + 'Min'}
+    return {field}
+
+
+def _span_conflicts(sources):
+    """An ADDITION present on the item, and a field some source draws strictly
+    inside its span: the one case where the placement changes the numbers."""
+    present = {f for src in sources for f, v in src.items() if v}
+    pos = {}
+    for i, entry in enumerate(ORDER):
+        for f in _drawn_fields(entry):
+            pos.setdefault(f, i)
+    names = {e[1]: i for i, e in enumerate(ORDER)}
+    out = []
+    for add, (after, before) in ADDITIONS.items():
+        mine = [e for e in ORDER if e[1] == add]
+        if not mine or not (_drawn_fields(mine[0]) & present):
+            continue
+        lo, hi = names[after], names[before] if before else len(ORDER)
+        inside = sorted(f for f in present if f in pos and lo < pos[f] < hi
+                        and ORDER[pos[f]][1] not in ADDITIONS)
+        if inside:
+            out.append(f'{add} [placement unpinned: {inside[0]} draws inside its span]')
+    return out
 
 
 def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=None):
@@ -487,7 +538,8 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
           + p_values.get('lootRandomizerScale', 0.0) + s_values.get('lootRandomizerScale', 0.0))
 
     rng = Minstd(seed)
-    result, parts, proc_lines, affix_pair_fields, handled_dur = {}, {}, [], [], set()
+    result, parts, proc_lines, handled_dur = {}, {}, [], set()
+    conversions = []
     is_offhand = text.get('Class') == 'WeaponArmor_Offhand'
 
     SRC = ('base', 'prefix', 'suffix')
@@ -630,8 +682,8 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
             if not acc_order:
                 continue
             result[field] = acc[acc_order[0]]
-            if len(acc_order) > 1:
-                affix_pair_fields.append(field + ' (multiple conversion type pairs)')
+            conversions += [{'field': field, 'in': i, 'out': o, 'value': acc[(i, o)]}
+                            for i, o in acc_order]
 
         else:                                      # Char / Dmg / Def / RetalMod / Skill scalars
             if not present(field):
@@ -675,7 +727,7 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
                 pj = jitter_skill(pv, pfx_pct, rng) if has_p else 0.0
                 sj = jitter_skill(sv, sfx_pct, rng) if has_s else 0.0
                 bj = jitter_skill(bv, BASE_JITTER, rng)
-            elif kind in ('Dmg', 'Def', 'RetalMod'):
+            elif kind in ('Dmg', 'Def', 'RetalMod', 'ReflexMax'):
                 bj = jitter_char(bv, BASE_JITTER, rng)
                 pj = jitter_char(pv, pfx_pct, rng) if has_p else 0.0
                 sj = jitter_char(sv, sfx_pct, rng) if has_s else 0.0
@@ -730,9 +782,9 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
                     break
         elif is_concerning(f):
             unmodeled.append(f)
-    unmodeled += [f + ' [affix pair]' for f in affix_pair_fields]
     unmodeled += [f + ' [on an affix: placement unpinned]' for f in BASE_ONLY
                   if f in p_values or f in s_values]
+    unmodeled += _span_conflicts([values, p_values, s_values, m_values])
     # A crafting bonus is modelled for the stores its draws were pinned in and
     # nowhere else: a field of any other kind refuses the whole roll.
     kinds = {f: k for k, f, _ in ORDER}
@@ -756,7 +808,7 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
             biggest = max(got, key=lambda k: abs(got[k]))
             got[biggest] += residue
 
-    return Roll(result, parts, sorted(unmodeled), proc_lines)
+    return Roll(result, parts, sorted(unmodeled), proc_lines, conversions)
 
 
 # The roll engine's inputs that are NOT player stats, so `is_stat` drops them and the
