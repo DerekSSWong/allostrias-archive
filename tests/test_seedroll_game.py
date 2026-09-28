@@ -9,7 +9,9 @@ seedroll.CORRECTIONS / ADDITIONS and item_lines.py. Three checks:
   1. Every item IAGD holds ROLLS -- a refusal is a gap to close, not a result.
   2. Every number on its rolled lines (item_lines.rolled, the lines the Gear
      Stash view prints) is on the game's tooltip, as a multiset: a number used
-     by one line is not available to the next.
+     by one line is not available to the next. And the REVERSE: every line of
+     the game's tooltip has its numbers on ours, so a line the renderer does not
+     print fails here too (399 did, on 333 items, before 2026-09-28).
   3. Each ADDITION is placed but not pinned. For every record in the catalogue
      that carries the field, every placement inside its span must roll the same
      numbers over a spread of seeds; a record that could tell them apart fails
@@ -61,22 +63,17 @@ def roll_of(r):
                             modifier=rec(r['modifier_path']) if crafted else None)
 
 
-def game_numbers(conn):
+def game_rows(conn):
+    """{item id: [(row type, text)]}, the tooltip's own lines up to STOP."""
     out = collections.defaultdict(list)
     for pid, typ, text in conn.execute(
             'SELECT i.playeritemid, r.Type, r.Text FROM ReplicaItemRow r '
             'JOIN ReplicaItem2 i ON i.Id = r.replicaitemid ORDER BY r.Id'):
         out[pid].append((typ, re.sub(r'\^.', '', text)))
-    nums = {}
     for pid, rows in out.items():
-        c = collections.Counter()
-        for typ, text in rows:
-            if typ == STOP:
-                break
-            if typ in ROWS:
-                c.update(float(v) for v in NUM.findall(text))
-        nums[pid] = c
-    return nums
+        cut = next((i for i, (t, _) in enumerate(rows) if t == STOP), len(rows))
+        out[pid] = [(t, x) for t, x in rows[:cut] if t in ROWS]
+    return out
 
 
 def against_the_game():
@@ -86,7 +83,7 @@ def against_the_game():
     db = os.path.join(S.ROOT, 'cache', 'stash_iagd.sqlite')
     st = sqlite3.connect(db)
     st.row_factory = sqlite3.Row
-    game = game_numbers(iagd._connect(cfg.iagd))
+    game = game_rows(iagd._connect(cfg.iagd))
     items = st.execute('SELECT * FROM iagd_item').fetchall()
     assert items, 'no IAGD items -- the gate would pass on nothing'
 
@@ -104,8 +101,9 @@ def against_the_game():
             continue
         compared += 1
         crafted += bool(r['modifier_path'])
-        have = game[r['id']].copy()
-        for key, line in item_lines.rolled(r['base_path'], sources(r), roll):
+        shown = item_lines.rolled(r['base_path'], sources(r), roll)
+        have = collections.Counter(float(v) for _, x in game[r['id']] for v in NUM.findall(x))
+        for key, line in shown:
             if key is None:
                 continue                    # read off the record, not rolled
             lines += 1
@@ -115,6 +113,14 @@ def against_the_game():
                 else:
                     bad.append(f"#{r['id']} {r['base_path']}: {line!r} -- {v:g} is not on "
                                f"the game's tooltip")
+        # The reverse: each game line's numbers, all of them, on some line of ours.
+        ours = collections.Counter(float(v) for _, l in shown for v in NUM.findall(l))
+        for _, text in game[r['id']]:
+            vals = [float(v) for v in NUM.findall(text)]
+            if all(ours[v] > 0 for v in vals):
+                ours.subtract(vals)
+            else:
+                bad.append(f"#{r['id']} {r['base_path']}: the game prints {text!r}; we do not")
     print(f'{len(items)} IAGD items: {compared} compared on {lines} rolled lines, '
           f'{attached} left out for an attached record, {crafted} crafted')
     if not crafted:
@@ -202,7 +208,7 @@ def main():
         for b in bad[:30]:
             print('  ', b)
         raise SystemExit(1)
-    print('OK -- every rolled number is on the game\'s own tooltip')
+    print('OK -- every rolled number is on the game\'s own tooltip, and every line of it on ours')
 
 
 if __name__ == '__main__':

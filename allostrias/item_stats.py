@@ -124,7 +124,52 @@ RESIST_LABEL_OVERRIDE = {
 RANGE_FIELD_MAP = {
     'offensiveBonusPhysical': ('Physical Damage', False),
     'offensivePercentCurrentLife': ("Reduction to Enemy's Health", True),
+    # ARCHIVE-ONLY: DamageBasePierceRatio = {%.0f0}% Armor Piercing
+    'offensivePierceRatio': ('Armor Piercing', True),
 }
+
+
+# ---------------------------------------------------------------------------
+# Where this renderer departs from gd-lib's. Since 2026-09-28 gd-lib is legacy
+# reference and the GAME is the oracle: every departure below was found missing
+# or wrong against the game's own tooltips (IAGD's ReplicaItemRow, read by
+# tests/test_seedroll_game.py). tests/test_item_stats.py still holds this file
+# to gd-lib's on every record that carries none of these fields, and names the
+# count it leaves to the game gate. A field regex -> why.
+DIVERGED = {
+    r'^defensive\w+MaxResist$': 'Max Resist had no line',
+    r'^offensivePierceRatio(Min|Max)$': 'Armor Piercing had no line',
+    r'^character\w+MaxModifier$': 'Max Movement/Attack/Casting Speed had no line',
+    r'^character\w+ReqReduction$': 'attribute requirement reductions had no line',
+    r'^skill(ProjectileSpeedModifier|ComboChargeSpendReduction)$': 'no line',
+    r'^defensive[A-Za-z]+Duration$': '"Reduction in X Duration" had no line',
+    r'^(offensive|retaliation)(Stun|Knockdown|Freeze|Petrify|Sleep|Trap|Confusion|Fear)(Min|Max|Chance)$':
+        'crowd-control procs had no line',
+    r'^offensive(Slow)?(Fumble|TotalSpeed|AttackSpeed|PhysicalReductionPercent)(Min|DurationMin|Chance)$':
+        'debuffs had no line',
+    r'^retaliationSlowAttackSpeed(Min|DurationMin)$': 'retaliation slow had no line',
+    r'^offensiveSlowManaLeach(Min|DurationMin)$': 'printed per second; the game prints the total',
+    r'^(offensive|retaliation)[A-Za-z]+Chance$': 'a chance-gated line lost its chance; a Global group lost its header',
+    r'^offensivePierceRatio(Min|Max)$': 'Armor Piercing had no line (shown on Physical weapons only)',
+    r'^augment(Skill|Mastery)(Name|Level)[5-8]$': 'grants past the fourth were dropped',
+    r'^racialBonusRace$': 'a second race was cut off; the game prints one line per race',
+}
+_DIVERGED_RE = [re.compile(k) for k in DIVERGED]
+
+
+def diverges(field):
+    return any(r.search(field) for r in _DIVERGED_RE)
+
+
+def _game_tag(tag, value):
+    """A tags_ui format string with colour codes stripped and {%.0f0} filled."""
+    fmt = re.sub(r'\{\^.\}', '', UI_TAGS[tag])
+    return re.sub(r'\{%[^}]*0\}', _fmt_num(value), fmt).strip()
+
+
+def _seconds(v):
+    v = _fmt_num(v)
+    return f"{v} Second{'' if v == '1' else 's'}"
 
 
 MISC_FIELD_MAP = {
@@ -302,6 +347,14 @@ MISC_FIELD_MAP = {
     # shorten it to "Dodge Chance", which is the CHARACTER-SHEET label
     # (`tagCharStatsDodgeChance`) for the same stat, not the item-line one.
     'characterDodgePercent': ('Chance to Avoid Melee Attacks', True),
+    # ARCHIVE-ONLY (see DIVERGED). Labels are the game's own tags_ui strings:
+    # tagChar{RunSpeed,AttackSpeed,SpellCastSpeed}MaxModifier, SkillProjectile-
+    # SpeedModifier, SkillComboChargeSpendReduction.
+    'characterRunSpeedMaxModifier': ('Max Movement Speed', True),
+    'characterAttackSpeedMaxModifier': ('Max Attack Speed', True),
+    'characterSpellCastSpeedMaxModifier': ('Max Casting Speed', True),
+    'skillProjectileSpeedModifier': ('Increase in Projectile Speed', True),
+    'skillComboChargeSpendReduction': ('Chance to not consume Onslaught Stacks', True),
 }
 
 
@@ -402,6 +455,11 @@ def process_stats_fields(txt):
             if stem in emitted_ranges:
                 continue
             emitted_ranges.add(stem)
+            # ARCHIVE-ONLY: the game shows Armor Piercing only on a weapon that
+            # deals Physical damage -- 72 of 72 IAGD items with it, and the one
+            # without (Veilgorger, Aether) shows none.
+            if stem == 'offensivePierceRatio' and not re.search(r'^offensivePhysicalMin=', txt, re.M):
+                continue
             label, is_pct = RANGE_FIELD_MAP[stem]
             minv = re.search(rf'^{stem}Min=(-?[\d.]+)', txt, re.M)
             maxv = re.search(rf'^{stem}Max=(-?[\d.]+)', txt, re.M)
@@ -411,6 +469,22 @@ def process_stats_fields(txt):
             if maxv and maxv.group(1) != minv.group(1):
                 num = f"{num}\u2013{_fmt_num(maxv.group(1))}"
             seen_lines.append((f'{stem}Min', f"{num}{'%' if is_pct else ''} {label}"))
+        elif re.fullmatch(r'defensive[A-Za-z]+MaxResist', field):
+            # DefenseColdMaxResist = {%+.0f0}% Max Cold Resistance
+            kind = field[len('defensive'):-len('MaxResist')]
+            sign = '' if val.startswith('-') else '+'
+            seen_lines.append((field, f"{sign}{_fmt_num(val)}% Max {_resist_label(kind)}"))
+        elif (re.fullmatch(r'character[A-Za-z0-9]+ReqReduction', field)
+              and field != 'characterWeaponStrengthReqReduction'
+              and f'tagChar{field[9:]}' in UI_TAGS):
+            # tagCharHuntingDexterityReqReduction = -{%.0f0}% Cunning Requirement
+            # for Ranged Weapons -- the game's string, sign and all.
+            seen_lines.append((field, _game_tag(f'tagChar{field[9:]}', val)))
+        elif (re.fullmatch(r'defensive[A-Za-z]+Duration', field)
+              and field[len('defensive'):-len('Duration')] in DAMAGE_TYPES):
+            # "8% Reduction in Frostburn Duration" -- defensiveColdDuration.
+            kind = field[len('defensive'):-len('Duration')]
+            seen_lines.append((field, f"{_fmt_num(val)}% Reduction in {_dot_duration_label(kind)}"))
         elif field in MISC_FIELD_MAP:
             label, is_pct = MISC_FIELD_MAP[field]
             sign = '' if val.startswith('-') else '+'
@@ -514,12 +588,15 @@ def process_stats_fields(txt):
     # racialBonusRace can be a `;`-separated list, and a few records use a
     # literal race name ("Aetherial") instead of a RaceNNN token, so fall
     # back to the raw value when the tag lookup misses.
-    race_m = re.search(r'^racialBonusRace=(\S+)', txt, re.M)
+    race_m = re.search(r'^racialBonusRace=(.+)$', txt, re.M)
     if race_m:
-        races = [r for r in race_m.group(1).split(';') if r.strip()]
-        race_label = ', '.join(
-            CREATURE_TAGS.get(f'tag{r.strip()}P') or CREATURE_TAGS.get(f'tag{r.strip()}') or r.strip()
-            for r in races)
+        # ARCHIVE-ONLY: the list is `Race003; Race005` (a space after the `;`),
+        # which `\S+` cut at the first race, and the game prints ONE LINE PER
+        # RACE -- "+10% Damage to Aetherials" and "+10% Damage to Aether
+        # Corruptions" -- not one joined line.
+        races = [r.strip() for r in race_m.group(1).split(';') if r.strip()]
+        race_labels = [CREATURE_TAGS.get(f'tag{r}P') or CREATURE_TAGS.get(f'tag{r}') or r
+                       for r in races]
         for rfield, tmpl, pct in [
             ('racialBonusPercentDamage', '+{v}{p} Damage to {r}', True),
             ('racialBonusAbsoluteDamage', '+{v}{p} Damage to {r}', False),
@@ -528,8 +605,29 @@ def process_stats_fields(txt):
         ]:
             rv_m = re.search(rf'^{rfield}=([\d.]+)', txt, re.M)
             if rv_m:
-                seen_lines.append((rfield, tmpl.format(
-                    v=_fmt_num(rv_m.group(1)), p='%' if pct else '', r=race_label)))
+                for race_label in race_labels:
+                    seen_lines.append((rfield, tmpl.format(
+                        v=_fmt_num(rv_m.group(1)), p='%' if pct else '', r=race_label)))
+
+    # ARCHIVE-ONLY: crowd-control procs, off the game's own strings --
+    #   DamageStun = Stun target{%t0}          RetaliationConfusion = {%t0} of Confuse Retaliation
+    # The Min is the duration in seconds (Max makes it a range), the Chance the
+    # proc chance: "3% Chance of Stun target for 1 Second",
+    # "12% Chance of 2 Seconds of Confuse Retaliation".
+    for kind in ('Stun', 'Knockdown', 'Freeze', 'Petrify', 'Sleep', 'Trap', 'Confusion', 'Fear'):
+        for pfx, tag in (('offensive', 'tagDamageSleep' if kind == 'Sleep' else f'Damage{kind}'),
+                         ('retaliation', f'Retaliation{kind}')):
+            mn = re.search(rf'^{pfx}{kind}Min=([\d.]+)', txt, re.M)
+            if not mn or tag not in UI_TAGS:
+                continue
+            mx = re.search(rf'^{pfx}{kind}Max=([\d.]+)', txt, re.M)
+            dur = _fmt_num(mn.group(1))
+            if mx and mx.group(1) != mn.group(1):
+                dur = f"{dur}\u2013{_fmt_num(mx.group(1))}"
+            secs = f"{dur} Second{'' if dur == '1' else 's'}"
+            fmt = re.sub(r'\{\^.\}', '', UI_TAGS[tag])
+            body = fmt.replace('{%t0}', f' for {secs}' if pfx == 'offensive' else secs).strip()
+            seen_lines.append((f'{pfx}{kind}Min', _chance_of(txt, f'{pfx}{kind}') + body))
 
     # offensiveSlow{X}Min + DurationMin combine into ONE debuff sentence.
     # These appear on plain Augment/Component records too, not just inside
@@ -552,6 +650,11 @@ def process_stats_fields(txt):
         # e.g. a permanent RR debuff with no duration field at all.
         ('TotalResistanceReductionAbsolute', "Reduced target's Resistances", False),
         ('TotalResistanceReductionPercent', "Reduced target's Resistances", True),
+        # ARCHIVE-ONLY, worded as the game's tooltips print them.
+        ('Fumble', 'Chance for target to Fumble attacks', True),
+        ('TotalSpeed', 'Slow target', True),
+        ('AttackSpeed', 'Slower Enemy Attack', True),
+        ('PhysicalReductionPercent', "Reduced target's Physical Damage", True),
     ]:
         for prefix in ('offensiveSlow', 'offensive'):
             val_m = re.search(rf'^{prefix}{field_stub}Min=([\d.]+)', txt, re.M)
@@ -560,10 +663,25 @@ def process_stats_fields(txt):
         else:
             continue
         dur_m = re.search(rf'^{prefix}{field_stub}DurationMin=([\d.]+)', txt, re.M)
-        line = f"{_fmt_num(val_m.group(1))}{'%' if is_pct else ''} {label_tpl}"
-        if dur_m:
-            line += f' for {_fmt_num(dur_m.group(1))} Seconds'
-        seen_lines.append((f'{prefix}{field_stub}Min', line))
+        if field_stub == 'ManaLeach' and dur_m:
+            # ARCHIVE-ONLY: the game prints the TOTAL over the duration, as it
+            # does for damage DoTs -- "120 Energy Leech over 3 Seconds" for 40 x 3.
+            total = _fmt_num(str(float(val_m.group(1)) * float(dur_m.group(1))))
+            line = f"{total} {label_tpl} over {_seconds(dur_m.group(1))}"
+        else:
+            line = f"{_fmt_num(val_m.group(1))}{'%' if is_pct else ''} {label_tpl}"
+            if dur_m:
+                line += f' for {_fmt_num(dur_m.group(1))} Seconds'
+        seen_lines.append((f'{prefix}{field_stub}Min', _chance_of(txt, f'{prefix}{field_stub}') + line))
+
+    # ARCHIVE-ONLY: "19% Reduced Attack Speed Retaliation for 2 Seconds".
+    rs_m = re.search(r'^retaliationSlowAttackSpeedMin=([\d.]+)', txt, re.M)
+    if rs_m:
+        rd_m = re.search(r'^retaliationSlowAttackSpeedDurationMin=([\d.]+)', txt, re.M)
+        line = f"{_fmt_num(rs_m.group(1))}% Reduced Attack Speed Retaliation"
+        if rd_m:
+            line += f' for {_seconds(rd_m.group(1))}'
+        seen_lines.append(('retaliationSlowAttackSpeedMin', _chance_of(txt, 'retaliationSlowAttackSpeed') + line))
 
     # DoT "value" + "duration" fields combine into ONE "{total} {label} over
     # {duration} Seconds" line in the real tooltip (total = value * duration),
@@ -596,6 +714,14 @@ def process_stats_fields(txt):
             f"{sign}{total} {_type_dot_label(c_kind)} over {dur_str} "
             f"Second{'' if dur_str == '1' else 's'}")
 
+    # ARCHIVE-ONLY: procs flagged `<field>Global=1` fire together off one roll of
+    # `<prefix>GlobalChance`, and the game prints ONE header over them --
+    # "30% Chance of:" (GlobalPercentChanceOfAllTag) -- with no chance on each.
+    for g_prefix in ('offensive', 'retaliation'):
+        g_m = re.search(rf'^{g_prefix}GlobalChance=([\d.]+)', txt, re.M)
+        if g_m and re.search(rf'^{g_prefix}[A-Za-z]+Global=[1-9]', txt, re.M):
+            seen_lines.append((f'{g_prefix}GlobalChance', f"{_fmt_num(g_m.group(1))}% Chance of:"))
+
     # Pass 2: {offensive,defensive,retaliation}[Slow]{Type}[Min|Max|Modifier|
     # DurationMin|DurationModifier] fields for the standard damage/resist types.
     handled_minmax = set()
@@ -610,7 +736,7 @@ def process_stats_fields(txt):
             if combo_key in combo_emitted:
                 continue
             combo_emitted.add(combo_key)
-            seen_lines.append((field, dot_combo_line[combo_key]))
+            seen_lines.append((field, _chance_of(txt, f'{prefix}Slow{kind}') + dot_combo_line[combo_key]))
             continue
         if suffix in ('Min', 'Max'):
             group_key = (prefix, slow, kind, suffix and 'MinMax')
@@ -652,9 +778,21 @@ def process_stats_fields(txt):
             if prefix == 'retaliation':
                 label = label.replace(' dmg', ' Retaliation')
 
-        seen_lines.append((field, f"{sign}{num}{'%' if pct else ''} {label}"))
+        # ARCHIVE-ONLY: a chance-gated line says so -- "30% Chance of +488%
+        # Physical Damage", "25% Chance of 81-150 Chaos Damage".
+        stem = f"{prefix}{'Slow' if slow else ''}{kind}{'Modifier' if suffix == 'Modifier' else ''}"
+        chance = _chance_of(txt, stem) if suffix in ('Min', 'Max', 'Modifier') else ''
+        seen_lines.append((field, f"{chance}{sign}{num}{'%' if pct else ''} {label}"))
 
     return seen_lines
+
+
+def _chance_of(txt, stem):
+    """'N% Chance of ' when `<stem>Chance` is set on the record, else ''."""
+    if re.search(rf'^{stem}Global=[1-9]', txt, re.M):
+        return ''                        # under its group's "N% Chance of:" header
+    m = re.search(rf'^{stem}Chance=([\d.]+)', txt, re.M)
+    return f"{_fmt_num(m.group(1))}% Chance of " if m and float(m.group(1)) > 0 else ''
 
 
 # ------------------------------------------------------------------- pets ---
@@ -928,7 +1066,9 @@ def resolve_augment_skills(txt):
     Previously assumed to be a non-displayed internal field and skipped
     entirely -- it's a real, commonly-shown effect on MI weapons/jewelry."""
     lines = []
-    for i in range(1, 5):
+    # ARCHIVE-ONLY: slots 1-8. gd-lib read 1-4 and dropped the fifth grant on 76
+    # IAGD items ("+2 to Wereraven", "+2 to Leap", ...), which the game prints.
+    for i in range(1, 9):
         name_m = re.search(rf'^augmentSkillName{i}=(\S+)', txt, re.M)
         lvl_m = re.search(rf'^augmentSkillLevel{i}=(\d+)', txt, re.M)
         if not name_m or not lvl_m:
@@ -948,7 +1088,7 @@ def resolve_augment_mastery(txt):
     SkillClass09, which resolve_augment_skills() never looked for at all, so
     "+1 to all skills in Oathkeeper" was silently absent)."""
     lines = []
-    for i in range(1, 5):
+    for i in range(1, 9):
         name_m = re.search(rf'^augmentMasteryName{i}=(\S+)', txt, re.M)
         lvl_m = re.search(rf'^augmentMasteryLevel{i}=(\d+)', txt, re.M)
         if not name_m or not lvl_m:

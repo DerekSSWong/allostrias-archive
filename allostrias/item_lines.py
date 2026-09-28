@@ -1,10 +1,8 @@
 """An item's tooltip lines AS ROLLED: the ported renderer plus the gaps it leaves.
 
-`item_stats.py` stays a verbatim copy of gd-lib's (tests/test_item_stats.py
-diffs them), so what it gets wrong is corrected HERE, beside the evidence, and
-nowhere in the copy. Each correction checks that it is still needed and raises
-the day the renderer starts doing the job itself, so a fix upstream cannot turn
-into a line printed twice.
+Line-level fixes live in the renderer, `item_stats.py` (its DIVERGED table);
+this module composes one item's lines from the ROLL: merged values, the
+conversion as the game rounds it, split-off procs, and the record-only lines.
 
 The evidence is the game's own tooltip text, which Item Assistant stores for
 every item it holds; tests/test_seedroll_game.py holds every number these lines
@@ -20,22 +18,6 @@ from . import item_stats as I
 # Stat fields the renderer never prints, with the game's own string for each (a
 # tags_ui entry). Moved here from affixes/build.py, which reads it from here.
 SUPPLEMENT = {'skillManaCostReduction': 'SkillManaCostReduction'}
-
-# Fields the renderer prints PER SECOND where the game prints the total over the
-# duration: "120 Energy Leech over 3 Seconds" for 40 x 3, on 6 of 6 items that
-# carry it. The same correction the renderer already makes for damage DoTs.
-PER_SECOND = {'offensiveSlowManaLeach': 'DamageDurationManaLeach'}
-
-# Settled against the game 2026-09-28 (seedroll.ADDITIONS): Fumble is rolled,
-# the renderer has no line for it, and the game prints
-# "13% Chance for target to Fumble attacks for 3 Seconds".
-UNPRINTED_DEBUFF = {'offensiveFumble': 'DamageDurationFumble'}
-
-
-def _ui(tag):
-    """A tags_ui string with its colour codes and printf slots stripped."""
-    return re.sub(r'\{[^}]*\}', '', I.UI_TAGS[tag]).strip()
-
 
 def _fmt(v):
     return ('%f' % v).rstrip('0').rstrip('.')
@@ -70,6 +52,10 @@ def rolled(base_path, sources, roll):
     # a Max equal to its Min would print "+306-306" for the game's "+306".
     nums = {k: v for k, v in nums.items()
             if not (k.endswith('Max') and nums.get(k[:-3] + 'Min') == v)}
+    # A proc split off above carries its own Chance; the echoed Chance must not
+    # gate what is left of the field on the merged line.
+    for p in roll.proc_lines:
+        nums.pop(p['field'] + 'Chance', None)
     head = ''.join(l + '\n' for l in base_txt.splitlines()
                    if l.startswith(('Class=', 'characterBaseAttackSpeedTag=')))
     synthetic = head + ''.join(f'{k}={v:g}\n' for k, v in sorted(nums.items()))
@@ -80,28 +66,26 @@ def rolled(base_path, sources, roll):
 
     printed = I.process_stats_fields(synthetic)
     fields = {f for f, _ in printed}
-    for f, line in printed:
-        stem = f[:-3] if f.endswith('Min') else None
-        if stem in PER_SECOND:
-            v, d = nums[f], nums.get(stem + 'DurationMin')
-            if not d or not line.startswith(I._fmt_num(str(v))):
-                raise ValueError(f'{f}: the renderer no longer prints it per second; '
-                                 f'drop it from PER_SECOND ({line!r})')
-            line = f'{_fmt(v * d)} {_ui(PER_SECOND[stem])} over {_fmt(d)} Seconds'
-        out.append((f, line))
+    out += printed
 
     for f in SUPPLEMENT:
         if f in nums:
             if f in fields:
                 raise ValueError(f'the renderer prints {f} itself now; drop it from SUPPLEMENT')
             out.append((f, supplement(f, nums[f])))
-    for stem, tag in UNPRINTED_DEBUFF.items():
-        f = stem + 'Min'
-        if f in nums:
-            if f in fields:
-                raise ValueError(f'the renderer prints {f} itself now; drop it from UNPRINTED_DEBUFF')
-            d = nums.get(stem + 'DurationMin')
-            out.append((f, f'{nums[f]:.0f}{_ui(tag)}' + (f' for {_fmt(d)} Seconds' if d else '')))
+
+    # A source whose chance-gated value seedroll split off (an affix with its own
+    # Chance beside other sources): its own line, "N% Chance of ...".
+    for p in roll.proc_lines:
+        f = p['field']
+        txt = f"{f}Chance={p['chance']:g}\n"
+        if f.endswith('Modifier'):
+            txt += f"{f}={p['min']:g}\n"
+        else:
+            txt += f"{f}Min={p['min']:g}\n" + (f"{f}Max={p['max']:g}\n" if p['max'] else '')
+            if p.get('duration'):
+                txt += f"{f}DurationMin={p['duration']:g}\n"
+        out += I.process_stats_fields(txt)
 
     # The conversion: the TYPES come from the source whose pair was rolled
     # (seedroll credits only the first valid pair's source), the percentage is
@@ -127,7 +111,7 @@ def rolled(base_path, sources, roll):
         if racial.strip():
             out += I.process_stats_fields(racial)
         out += [(None, l) for l in I.resolve_item_skill(txt)]
-        for i in range(1, 5):
+        for i in range(1, 9):
             name = re.search(rf'^augmentSkillName{i}=(\S+)', txt, re.M)
             if name:
                 part = _only(txt, rf'^augmentSkill(Name|Level){i}$')
