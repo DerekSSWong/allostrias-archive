@@ -2124,8 +2124,6 @@ __AFFIX_JS__
       <div class="rule"></div>
       ${e.lines.length ? `<ul>${e.lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>`
         : `<p class="note">No stat line this sheet renders.</p>`}
-      ${block("Grants", e.grantName
-        ? [`${esc(e.grantName)}${e.grantLv > 1 ? " (level " + e.grantLv + ")" : ""}`] : [], "skl")}
       ${block("Skill modifiers", (e.mods || []).map(esc), "skl")}
       ${block("Completion bonus", (e.bonus || []).map(esc))}
       ${e.set ? `<div class="rule"></div><div class="blk">

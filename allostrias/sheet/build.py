@@ -36,6 +36,7 @@ from PIL import Image, ImageChops
 
 from ..archive import seedroll
 from .. import item_stats
+from .. import item_lines
 from .. import settings as S
 from ..archive import arc
 from ..archive.records import Records
@@ -1412,13 +1413,18 @@ def gather(pr, ca, dir_name, icons):
                 if n and l:
                     plus_mastery[n[0]] = plus_mastery.get(n[0], 0) + int(float(l[0]))
 
-        for i in range(1, 9):
-            n, l = base.get(f'augmentSkillName{i}'), base.get(f'augmentSkillLevel{i}')
-            if n and l:
-                plus_skill[n[0]] = plus_skill.get(n[0], 0) + int(float(l[0]))
-            n, l = base.get(f'augmentMasteryName{i}'), base.get(f'augmentMasteryLevel{i}')
-            if n and l:
-                plus_mastery[n[0]] = plus_mastery.get(n[0], 0) + int(float(l[0]))
+        # "+N to <skill>" from the item's own records. The prefix and suffix
+        # grant ranks too -- "of the Blademaster" and its kind -- and reading only
+        # the base left 21 such grants on six characters' gear out of every
+        # effective level.
+        for d in (base, pfx, sfx):
+            for i in range(1, 9):
+                n, l = (d or {}).get(f'augmentSkillName{i}'), (d or {}).get(f'augmentSkillLevel{i}')
+                if n and l:
+                    plus_skill[n[0]] = plus_skill.get(n[0], 0) + int(float(l[0]))
+                n, l = (d or {}).get(f'augmentMasteryName{i}'), (d or {}).get(f'augmentMasteryLevel{i}')
+                if n and l:
+                    plus_mastery[n[0]] = plus_mastery.get(n[0], 0) + int(float(l[0]))
 
         # Channel 1, the item half.
         tgt = pet_target(r['base_path'])
@@ -1429,12 +1435,20 @@ def gather(pr, ca, dir_name, icons):
             if tgt:
                 pet_stats_at(P, tgt, 0, aff_src.get(ckind) or name, kind=ckind)
 
+        # The tooltip prints what the stash cards print: item_lines.rolled(), the
+        # composition test_seedroll_game.py holds to the game's own tooltips.
+        # Its +skill lines (every source, not just the base) are the Skill
+        # modifiers block; the rest -- the granted skill included -- are lines.
+        paths = {k: r[f'{k}_path'] for k in ('base', 'prefix', 'suffix') if r[f'{k}_path']}
+        shown = item_lines.rolled(r['base_path'], paths, roll) if not roll.unmodeled else []
+        is_grant = lambda k: bool(k) and k.startswith(('skill:', 'mastery:'))
+
         icon = item_icon(base)
         equipment.append({
             'slot': r['slot'], 'n': name, 'rarity': rarity, 'style': style,
             'affixes': affixes, 'slotLabel': slot_label,
             'icon': icons.want(icon), 'lv': int(float((base.get('levelRequirement') or [0])[0])),
-            'lines': stat_lines(rolled, {}), 'attached': attached,
+            'lines': [t for k, t in shown if not is_grant(k)], 'attached': attached,
             'set': None, 'path': r['base_path'], 'badge': badge,
             'granted': (base.get('itemSkillName') or [None])[0],
             'grantLv': (base.get('itemSkillLevel')
@@ -1446,7 +1460,7 @@ def gather(pr, ca, dir_name, icons):
             'grantName': (skill_name(ca, (base.get('itemSkillName') or [None])[0],
                                      rec((base.get('itemSkillName') or [None])[0]) or {})
                           if base.get('itemSkillName') else None),
-            'mods': skill_mods(ca, base),
+            'mods': [t for k, t in shown if is_grant(k)],
             'bonus': bonus_lines(ca, rec(r['relic_bonus_path'])) if r['relic_bonus_path'] else [],
             'setPath': (base.get('itemSetName') or [None])[0],
         })
