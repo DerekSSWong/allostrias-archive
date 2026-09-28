@@ -35,6 +35,7 @@ import sys
 
 from .. import settings as S
 from .. import item_stats as I
+from .. import item_lines as IL
 from ..db import catalogue
 from ..sheet import build as SB
 from . import filter as F
@@ -355,16 +356,12 @@ def _only(txt, pattern):
                      if keep.match(l.partition('=')[0]) or l.startswith('Class=')) + '\n'
 
 
-# Stat fields the ported tooltip renderer does not print, with the game's own
-# text for each (a tags_ui string). gd-lib's renderer has the same gap; the user
-# chose on 2026-09-25 to close it here only, so item_stats.py stays a verbatim
-# copy. 13 affix records carry Energy Cost Reduction, and the sheet reads it.
-SUPPLEMENT = {'skillManaCostReduction': 'SkillManaCostReduction'}
-
-
-def _supplement(field, value):
-    fmt = I.UI_TAGS[SUPPLEMENT[field]]
-    return re.sub(r'\{\^.\}', '', fmt.replace('{%.0f0}', _fmt(round(value))))
+# Stat fields the ported tooltip renderer does not print (Energy Cost Reduction,
+# 13 affix records). The gap is closed in this repo only, by the user's choice on
+# 2026-09-25, so item_stats.py stays a verbatim copy. The table lives in
+# item_lines.py now, shared with the Gear Stash view.
+SUPPLEMENT = IL.SUPPLEMENT
+_supplement = IL.supplement
 
 
 def display(txt, stats, pet_txt, pet_stats):

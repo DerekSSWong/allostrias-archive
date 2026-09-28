@@ -5,7 +5,7 @@
   catalogue.sqlite  what those record paths MEAN -- names, rarities, stat rows
   database.arz      the records themselves, via archive/records.py
   resources/*.arc   the icons, the frame, and the display strings
-  seedroll.py       the port that turns a stored centre into the value rolled
+  archive/seedroll.py  the port that turns a stored centre into the value rolled
 
 ⚠️ NOTHING HERE READS ANOTHER PROJECT'S OUTPUT. It used to: records and tags
 came from `.extracted/`, a text tree gd-lib writes into the game directory, so
@@ -34,7 +34,7 @@ import sqlite3
 
 from PIL import Image, ImageChops
 
-from . import seedroll
+from ..archive import seedroll
 from .. import item_stats
 from .. import settings as S
 from ..archive import arc

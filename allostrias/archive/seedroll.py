@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """Replay the game's item-roll RNG to recover an item's REAL stat values.
 
-DESTINED FOR `allostrias/archive/seedroll.py`. It is here so the character
-sheet does not reach into the game directory at build time: `allostrias/
-archive/rolls.py` deliberately carries only the roll BAND ("Replaying a
-specific item's seed to get the value it rolled is elsewhere"), and elsewhere
-was gd-lib. A sheet built on that import would make GD Lens's tree a
-dependency of the archive's, which is the thing this build must not do.
+Read by the character sheet and the Gear Stash view. `archive/rolls.py` is the
+other half: it carries only the roll BAND, the range a stored centre can roll
+between; this replays one item's seed to the value it did roll.
 
 Provenance, and it matters because nothing here is original: Item Assistant
 (github.com/marius00/iagd, MIT, (c) 2019 marius00),
@@ -15,10 +12,13 @@ order tables and the jitter formulas are IAGD's. Porting rather than importing
 is the pattern this repo already uses for the .arz/.arc parsers and the
 eligibility walk.
 
-⚠️ VERIFIED BY DIFFERENTIAL TEST, NOT BY READING. `gate_seedroll.py` runs this
-and gd-lib's original over every worn item on the frozen reference save and
-asserts every field matches exactly. Run it after ANY edit here. A
-transcription slip in an order table does not raise -- it desyncs the stream
+⚠️ VERIFIED BY RUNNING, NOT BY READING. Two gates, run after ANY edit here:
+  tests/test_seedroll.py       against gd-lib's original, with the corrections
+                               below applied to the oracle, over every worn item.
+  tests/test_seedroll_game.py  against the GAME: Item Assistant stores the game's
+                               own tooltip text for every item it holds, and every
+                               number this renders must be on it.
+A transcription slip in an order table does not raise -- it desyncs the stream
 and returns plausible numbers, which is the one failure mode a reader cannot
 catch.
 
@@ -175,9 +175,14 @@ OFF_SLOW = [
     ('offensiveSlowTotalSpeed', True), ('offensiveSlowAttackSpeed', True),
     ('offensiveSlowSpellCastSpeed', True), ('offensiveSlowRunSpeed', True),
     ('offensiveSlowOffensiveAbility', False), ('offensiveSlowDefensiveAbility', False),
+    # NOT IAGD's -- see ADDITIONS. Unscaled: the game shows 13/10/14/11% on four
+    # items where a scaled draw gives 18/10/14/13.
+    ('offensiveFumble', False),
 ]
 
 DMG = [
+    # NOT IAGD's -- see ADDITIONS. Scaled: 5 reads 7% at attributeScalePercent 30.
+    'offensivePercentCurrentLifeMin',
     'offensiveTotalDamageModifier', 'offensiveCritDamageModifier',
     'offensivePhysicalModifier', 'offensivePierceModifier', 'offensiveFireModifier', 'offensiveColdModifier', 'offensiveLightningModifier',
     'offensivePoisonModifier', 'offensiveLifeModifier', 'offensiveAetherModifier', 'offensiveChaosModifier', 'offensiveElementalModifier',
@@ -268,7 +273,43 @@ SKILL = [
 # These two draw EARLY when they come from an affix -- see draw_skill_early().
 SKILL_EARLY = ['skillCooldownReduction', 'skillManaCostReduction']
 
-NON_SCALING = {'offensiveCritDamageModifier', 'offensiveTotalDamageModifier'}
+# Damage modifiers attributeScalePercent does NOT scale. Settled against the
+# game's own tooltips (tests/test_seedroll_game.py), 2026-09-28: Crit Damage is
+# unscaled on all 142 scaled items that carry it. `offensiveTotalDamageModifier`
+# ("% to All Damage") was listed here too, from IAGD by way of gd-lib, and the
+# game disagrees: it read low on 53 of 55 scaled items, +44% where the game
+# shows +61%. It scales. CORRECTIONS names that departure from gd-lib.
+NON_SCALING = {'offensiveCritDamageModifier'}
+CORRECTIONS = {'offensiveTotalDamageModifier': 'scales with attributeScalePercent'}
+
+# Fields IAGD (and so gd-lib) refuses, modelled here from the game's own
+# tooltips, 2026-09-28. Each is PLACED BUT NOT PINNED: the in-game values bound
+# where it draws, and inside that span every placement gives the same numbers
+# for every record that carries the field. tests/test_seedroll_game.py proves
+# that from the catalogue, so a record that WOULD tell the placements apart
+# fails the gate instead of rolling on a guess. Value: the span, as (the ORDER
+# field it draws after, the ORDER field it draws before -- None for the end of
+# the order). A field in FIXED is modelled as no draw, which the gate also
+# holds equal to every draw inside the span.
+#   offensiveFumble      4 items (Maleficus x2, Madness x2) exact. After the
+#                        damage modifiers up to Chaos, before the conversion.
+#   defensiveElementalResistanceChance  1 item (Defender of Devil's Crossing).
+#                        A chance with no resistance beside it; the game prints
+#                        nothing for it. Taken as no draw -- a draw anywhere
+#                        after defensiveProtectionModifier matches equally.
+#   offensivePercentCurrentLifeMin  1 item (Demonslayer's Life-Ender), "7%
+#                        Reduction to Enemy's Health". A scaled scalar, after
+#                        the character stats, before the Vitality modifier.
+#                        The "Sapping" prefix carries it too, and where an
+#                        affix's draw falls against the base's is not settled
+#                        by one base-only item -- so an affix carrying it is
+#                        still REFUSED (BASE_ONLY).
+ADDITIONS = {
+    'offensivePercentCurrentLifeMin': ('characterSpellCastSpeedModifier', 'offensiveLifeModifier'),
+    'offensiveFumble': ('offensiveChaosModifier', 'conversionPercentage'),
+    'defensiveElementalResistanceChance': ('defensiveProtectionModifier', None),
+}
+BASE_ONLY = {'offensivePercentCurrentLifeMin'}
 
 
 def _build_order():
@@ -321,6 +362,7 @@ FIXED = {
     'characterSpellCastSpeed', 'characterRunSpeed', 'characterIncreasedExperience', 'characterIncreasedGold',
     'characterLightRadius', 'characterGlobalReqReduction', 'characterLevelReqReduction', 'characterModifierPoints',
     'defensiveProtection',      # armour: 0 draws
+    'defensiveElementalResistanceChance',   # see ADDITIONS
 }
 
 STAT_PREFIXES = ('offensive', 'defensive', 'retaliation', 'character', 'skill', 'conversion',
@@ -662,6 +704,8 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None):
         elif is_concerning(f):
             unmodeled.append(f)
     unmodeled += [f + ' [affix pair]' for f in affix_pair_fields]
+    unmodeled += [f + ' [on an affix: placement unpinned]' for f in BASE_ONLY
+                  if f in p_values or f in s_values]
 
     # The parts are per-source draws; the total had one scale-and-truncate applied to
     # their sum. Hand the difference to the largest part so the two agree exactly.

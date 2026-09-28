@@ -68,10 +68,14 @@
     return out;
   }
 
-  /* field index -> the strongest verdict any row reading it holds. */
-  function wantedFields(verdicts) {
+  /* field index -> the strongest verdict any row reading it holds.
+
+     `idx`, here and in match()/score(), is the corpus the record's indices
+     point into: the affix corpus when omitted, the Gear Stash's own when it
+     grades an item. Everything else about the scale is shared. */
+  function wantedFields(verdicts, idx) {
     var want = {};
-    IDX.fr.forEach(function (rows, fi) {
+    (idx || IDX).fr.forEach(function (rows, fi) {
       var best = 'ignore';
       rows.forEach(function (key) {
         var v = verdicts[key] || 'ignore';
@@ -85,16 +89,16 @@
   /* ---- one record ------------------------------------------------------
      (line -> best verdict), keyed on the LINE, never the field: a Min and its
      Max are one line, and counting them as two made a one-line affix a 2/2. */
-  function match(rec, want, skills) {
-    var best = {}, i, k;
+  function match(rec, want, skills, idx) {
+    var ix = idx || IDX, best = {}, i, k;
     for (i = 0; i < rec[6].length; i++) {
       var fi = rec[6][i][0], v = want[fi];
       if (!v) continue;
-      k = 'f' + IDX.lk[fi];
+      k = 'f' + ix.lk[fi];
       if (RANK[v] > (best[k] ? RANK[best[k]] : 0)) best[k] = v;
     }
     for (i = 0; i < rec[7].length; i++) {
-      var sv = skills[IDX.k[rec[7][i][0]]];
+      var sv = skills[ix.k[rec[7][i][0]]];
       if (sv) best['s' + rec[7][i][1]] = sv;
     }
     return best;
@@ -104,8 +108,8 @@
      CARRIED -- so padding the sheet cannot use still costs.
      ⚠️ THE TWO SUMS RUN OVER DIFFERENT SETS: points over every MATCHED line so
      an avoided one subtracts; coverage over the USEFUL ones only. */
-  function score(rec, want, skills) {
-    var got = match(rec, want, skills), keys = Object.keys(got), total = rec[5];
+  function score(rec, want, skills, idx) {
+    var got = match(rec, want, skills, idx), keys = Object.keys(got), total = rec[5];
     var good = Object.keys(usefulOf(got));
     if (!good.length || !total) return [0.0, 'F'];
     var pts = 0;

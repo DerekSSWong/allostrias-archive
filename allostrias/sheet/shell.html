@@ -660,6 +660,26 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 .acard li.pet{color:var(--dim)}
 .acard li .lv{font-size:10.5px; color:var(--faint)}
 .affixview mark{background:var(--gold-deep); color:var(--band-ink); padding:0 1px}
+
+/* ---------- the Gear Stash view ----------
+   Every piece of equipment held, one card each: its icon on the slot tile, its
+   name in its tier colour, where it is kept, and every line it ROLLED. Built on
+   the Affixes view's parts -- the mode switch, the query bar, the chips, the
+   grade groups, the card's line list and verdict gutter. */
+.scards{display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap:var(--s2); align-items:start}
+.scard .sh{display:grid; grid-template-columns:52px minmax(0, 1fr); gap:var(--s3);
+  align-items:center; margin-bottom:6px}
+.scard .sn{display:block; font:600 14px "Libertinus Serif",Georgia,serif; line-height:1.25}
+.scard .sm{display:block; font:11px Jura,system-ui,sans-serif; color:var(--faint)}
+.scard .cbh{margin-top:6px; font:700 9.5px Jura,system-ui,sans-serif; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--gold-dim)}
+.scard[data-r="Legendary"] .tile{border-color:#3E1063; box-shadow:inset 0 0 12px rgba(90,3,154,.55)}
+.scard[data-r="Epic"] .tile{border-color:#1E5C74; box-shadow:inset 0 0 12px rgba(57,171,207,.3)}
+.scard[data-r="Rare"] .tile{border-color:#1E5E24}
+/* Its own icon sheet: the stash holds far more items than any character wears. */
+.sico{background-image:var(--satlas)}
+.agrade[data-g="U"] summary .g{color:var(--dim)}
 </style>
 
 <div class="rail" id="rail" data-open="0">
@@ -683,13 +703,13 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     </div>
   </div>
 
-  <!-- Character is this view. Affixes is named but has no view yet; the
-       other five have neither. Choosing any of them hides this view and shows
-       nothing in its place. -->
+  <!-- Character is this view; Affixes and Gear Stash have their own. The
+       other four have neither: choosing one hides this view and shows nothing
+       in its place. -->
   <nav class="navbar" id="navbar" aria-label="Sections">
     <button class="navbtn char" type="button" data-view="character" aria-current="page">Character</button>
     <button class="navbtn" type="button" data-view="affixes">Affixes</button>
-    <button class="navbtn" type="button" data-view="nav3" aria-label="Unassigned"></button>
+    <button class="navbtn" type="button" data-view="stash">Gear Stash</button>
     <button class="navbtn" type="button" data-view="nav4" aria-label="Unassigned"></button>
     <button class="navbtn" type="button" data-view="nav5" aria-label="Unassigned"></button>
     <button class="navbtn" type="button" data-view="nav6" aria-label="Unassigned"></button>
@@ -748,6 +768,29 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
       <div id="alist"></div>
     </div>
   </section>
+
+  <!-- The Gear Stash view: the transfer stash and Item Assistant's collection.
+       Personal ranks every item for the character on screen; Atlas lists them
+       all, ungraded. -->
+  <section class="panel affixview" id="stashview" hidden>
+    <div class="hd ahd">
+      <div class="amodebox"><span class="amodelbl" id="smodelbl" aria-hidden="true">Personal</span>
+      <button class="amode" id="smode" type="button" role="switch" aria-checked="false"
+              aria-label="Atlas view" title="Personal / Atlas"><span class="ml" data-m="personal" title="Personal"></span><span
+              class="trk"><span class="knob"></span></span><span class="ml" data-m="atlas" title="Atlas"></span></button></div>
+      <span class="n" id="stashn"></span></div>
+    <div class="bd">
+      <div class="aquery">
+        <div id="sterms"></div>
+        <div class="aqbar">
+          <button class="abtn" type="button" id="sadd">+ Term</button>
+          <button class="abtn" type="button" id="sclear">Clear</button>
+        </div>
+      </div>
+      <div class="aslots" id="sslots"></div>
+      <div id="slist"></div>
+    </div>
+  </section>
 </div>
 
 <div class="tipfloat panel" id="tip" role="tooltip" hidden></div>
@@ -773,10 +816,17 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
      grade says whether an affix's lines are what this build wants — not drop rates, and not the
      item it lands on. The loot filter it downloads colours each affix by that grade and is
      meaningful for this character only.</p>
+  <p><strong>Gear Stash</strong> lists every piece of equipment in the transfer stash and in Item
+     Assistant's collection, each line at the value the item actually rolled — replayed from its
+     seed, and held to the game's own tooltips, which Item Assistant keeps. The component and the
+     augment are left off; a crafting bonus is shown at its record value. An item the replay cannot
+     roll yet shows no numbers rather than unrolled ones. Personal grades each item as Affixes grades
+     an affix, by its lines and not by how high they rolled.</p>
 </footer>
 
 <script id="bundle" type="application/json">__BUNDLE__</script>
 <script id="affixes" type="application/json">__AFFIXES__</script>
+<script id="gearstash" type="application/json">__GEARSTASH__</script>
 <script>
 __SEARCH_JS__
 __AFFIX_JS__
@@ -1255,8 +1305,7 @@ __AFFIX_JS__
 
   /* markRanges() answers over the APOSTROPHE-STRIPPED line, so its offsets are
      mapped back onto the text as printed before anything is wrapped. */
-  function hl(text){
-    const rows = liveRows();
+  function hl(text, rows = liveRows()){
     if (!rows.length) return esc(text);
     const keep = [];
     for (let i = 0; i < text.length; i++) if (!/['’]/.test(text[i])) keep.push(i);
@@ -1287,16 +1336,20 @@ __AFFIX_JS__
     </div>`;
   }
 
-  function renderTerms(){
-    $("aterms").innerHTML = aview.rows.map((r, i) => `<div class="aterm">${
-      i ? `<select data-ti="${i}" aria-label="How this term combines">${
+  /* The search rows, for either view: `at` names the data attribute its
+     inputs and remove buttons carry, so one view's typing never reaches the
+     other's rows. */
+  function termsHtml(rows, at){
+    return rows.map((r, i) => `<div class="aterm">${
+      i ? `<select data-${at}="${i}" aria-label="How this term combines">${
         ["AND", "OR", "NOT"].map(o => `<option${r.op === o ? " selected" : ""}>${o}</option>`).join("")
       }</select>` : ""}
-      <input type="search" data-ti="${i}" value="${esc(r.text)}"${
+      <input type="search" data-${at}="${i}" value="${esc(r.text)}"${
         i ? "" : ' placeholder="Search"'} aria-label="Search term ${i + 1}">
-      ${i ? `<button class="arm" type="button" data-rm="${i}" aria-label="Remove term"></button>` : ""}
+      ${i ? `<button class="arm" type="button" data-${at}rm="${i}" aria-label="Remove term"></button>` : ""}
     </div>`).join("");
   }
+  function renderTerms(){ $("aterms").innerHTML = termsHtml(aview.rows, "ti"); }
 
   function renderSlots(){
     const have = new Set();
@@ -1433,8 +1486,8 @@ __AFFIX_JS__
       aview.rows = [{op: "AND", text: ""}]; aview.slots.clear(); aview.masteries.clear(); aview.open = {};
       renderTerms(); renderSlots(); renderList(); return true;
     }
-    const rm = t.closest("[data-rm]");
-    if (rm){ aview.rows.splice(Number(rm.dataset.rm), 1); renderTerms(); renderList(); return true; }
+    const rm = t.closest("[data-tirm]");
+    if (rm){ aview.rows.splice(Number(rm.dataset.tirm), 1); renderTerms(); renderList(); return true; }
     if (t.closest("#afilter")){ downloadFilter(); return true; }
     if (t.closest("#amode")){
       aview.mode = aview.mode === "atlas" ? "personal" : "atlas";
@@ -1454,6 +1507,217 @@ __AFFIX_JS__
     if (i === undefined || e.target.tagName !== "SELECT") return;
     aview.rows[Number(i)].op = e.target.value;
     renderList();
+  });
+
+  /* ---- the Gear Stash view -----------------------------------------------
+     Every piece of equipment in the transfer stash and in Item Assistant's
+     collection (allostrias/gearstash/build.py), each line at the value it
+     rolled. Personal grades each item with the Affixes scorer -- the same
+     verdicts (state.vmap), the same skill window as `priority` -- over the
+     stash bundle's OWN field index; a "+N to all skills in <mastery>" line is
+     wanted when the character has that mastery. Items rank by score inside
+     each grade. An item the seed replay refused carries no numbers and is
+     graded nothing: it sits in its own group.
+
+     Grading is kept until what it read changes, as the Affixes view's is. */
+  let GST = JSON.parse($("gearstash").textContent);
+  const sview = {rows: [{op: "AND", text: ""}], slots: new Set(), srcs: new Set(),
+                 open: {}, mode: "personal", sig: null, got: null};
+
+  function stashAtlas(){
+    const sv = $("stashview");
+    if (sv.style && sv.style.setProperty) sv.style.setProperty("--satlas", 'url("' + GST.atlas + '")');
+  }
+  function sicon(i, box){
+    const f = GST.frames[i];
+    if (!f) return "";
+    const [x, y, w, h] = f, k = Math.min(box / w, box / h, 1), S = GST.sheetSize;
+    return `<span class="ico sico" style="width:${w*k}px;height:${h*k}px;`
+         + `background-size:${S[0]*k}px ${S[1]*k}px;`
+         + `background-position:${-x*k}px ${-y*k}px"></span>`;
+  }
+
+  function stashSkills(ch){
+    const out = wantedSkills(ch);
+    for (const m of ch.masteries || []) out["mastery:" + m.n] = "priority";
+    return out;
+  }
+  /* An item as the scorer's record: positions 5-7 are all score() reads. */
+  const asRec = g => [0, 0, 0, 0, 0, g[0], g[1], g[2]];
+
+  function stashGraded(){
+    const ch = CH[state.i];
+    affixIndex();                             // loads the shared grade scale
+    const skills = stashSkills(ch);
+    const sig = ch.dir + "\n" + JSON.stringify(state.vmap || {}) + "\n"
+              + Object.keys(skills).sort().join("|");
+    if (sview.sig === sig && sview.got) return;
+    const want = AX.wantedFields(state.vmap || {}, GST);
+    sview.got = GST.items.map(it => {
+      if (!it.g) return null;
+      const rec = asRec(it.g), [sc, g] = AX.score(rec, want, skills, GST);
+      return {s: sc, g, v: AX.match(rec, want, skills, GST)};
+    });
+    sview.sig = sig;
+  }
+
+  const sliveRows = () => sview.rows.filter(r => r.text.trim() !== "");
+  function stashSlots(it){
+    const k = GST.coarse[it.sl];
+    return k ? [it.sl, k] : [it.sl];
+  }
+  function stashLines(it){
+    if (!it._nl) it._nl = [it.n, ...(it.l || []).map(l => l[0]), ...(it.cb || []),
+                           it.sl, it.src + (it.at ? " " + it.at : ""), it.set || ""]
+      .map(l => GS.normalise(l));
+    return it._nl;
+  }
+  function stashMatches(it){
+    if (sview.slots.size && !stashSlots(it).some(sl => sview.slots.has(sl))) return false;
+    if (sview.srcs.size && !sview.srcs.has(it.src)) return false;
+    return GS.rowsMatch(stashLines(it), sliveRows(), true);
+  }
+
+  function scard(it, idx){
+    const rows = sliveRows(), h = t => hl(t, rows);
+    const got = sview.mode === "atlas" ? null : ((sview.got[idx] || {}).v || {});
+    const gutter = k => got ? `<span class="vd"${k && got[k] ? ` data-v="${got[k]}"` : ""}></span>` : "";
+    const lines = it.l
+      ? `<ul>${it.l.map(([t, k]) => `<li>${gutter(k)}<span>${h(t)}</span></li>`).join("")}</ul>`
+      : `<p class="note">Stats withheld: the seed replay does not model this item yet (${
+          esc(it.why)}).</p>`;
+    const cb = it.cb && it.cb.length
+      ? `<div class="cbh">Crafting bonus · record value</div><ul>${
+          it.cb.map(t => `<li>${gutter(0)}<span>${h(t)}</span></li>`).join("")}</ul>` : "";
+    return `<div class="acard scard" data-i="${idx}" data-r="${esc(it.r || "Common")}">
+      <div class="sh"><span class="tile">${sicon(it.i, 46)}</span><span>
+        <span class="sn t-${esc(it.r || "Common")}">${badge({badge: it.b})}${h(it.n)}</span>
+        <span class="sm">${h(it.sl)}${it.lv ? " · lvl " + it.lv : ""} · ${
+          h(it.src + (it.at ? " " + it.at : ""))}</span>
+        ${it.set ? `<span class="sm">${h(it.set)}</span>` : ""}</span></div>
+      ${lines}${cb}</div>`;
+  }
+
+  function renderStashSlots(){
+    const have = new Set(), srcs = new Set();
+    for (const it of GST.items){ stashSlots(it).forEach(sl => have.add(sl)); srcs.add(it.src); }
+    const chip = (attr, v, on) => `<button class="achip" type="button" data-${attr}="${esc(v)}" aria-pressed="${
+      on}">${esc(v)}</button>`;
+    const group = grp => {
+      const live = grp.values.filter(v => have.has(v));
+      return live.length ? `<div><div class="aslotlbl">${esc(grp.label)}</div><div class="aslotrow">${
+        live.map(v => chip("sslot", v, sview.slots.has(v))).join("")}</div></div>` : "";
+    };
+    /* Where each item is kept, under the weapon types like the Affixes view's
+       masteries. Only the sources this bundle holds. */
+    const source = `<div><div class="aslotlbl">Kept in</div><div class="aslotrow">${
+      ["Transfer", "IAGD"].filter(v => srcs.has(v))
+        .map(v => chip("src", v, sview.srcs.has(v))).join("")}</div></div>`;
+    $("sslots").innerHTML = GST.slotGroups.map((entry, i) =>
+      `<div class="aslotcol">${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}${
+        i === 0 ? source : ""}</div>`).join("");
+  }
+
+  /* The slot order the chips are in, for the Atlas's sort. */
+  function slotRank(){
+    const order = GST.slotGroups.flatMap(e => (Array.isArray(e) ? e : [e]).flatMap(g => g.values));
+    return sl => { const i = order.indexOf(sl); return i < 0 ? order.length : i; };
+  }
+
+  function renderStashList(){
+    const filtering = sliveRows().length || sview.slots.size || sview.srcs.size;
+    const all = GST.items.map((it, i) => [it, i]);
+    const hits = all.filter(([it]) => stashMatches(it));
+    const cards = list => `<div class="scards">${list.map(([it, i]) => scard(it, i)).join("")}</div>`;
+    $("stashn").textContent = filtering ? `${hits.length} of ${all.length} items` : `${all.length} items`;
+    if (sview.mode === "atlas"){
+      const rank = slotRank();
+      hits.sort(([a], [b]) => rank(a.sl) - rank(b.sl) || a.n.localeCompare(b.n));
+      $("slist").innerHTML = hits.length ? cards(hits) : `<p class="note">Nothing matches.</p>`;
+      return;
+    }
+    const by = {}, order = [...AX.gradeOrder()].reverse().concat("U");
+    order.forEach(g => { by[g] = []; });
+    for (const [it, i] of all){
+      const got = sview.got[i];
+      by[got ? got.g : "U"].push([it, i]);
+    }
+    const score = i => (sview.got[i] || {s: 0}).s;
+    $("slist").innerHTML = order.map(g => {
+      const inG = by[g];
+      if (g === "U" && !inG.length) return "";
+      const hitsG = inG.filter(([it]) => stashMatches(it))
+        .sort(([a, i], [b, j]) => score(j) - score(i) || a.n.localeCompare(b.n));
+      const open = g in sview.open ? sview.open[g]
+                 : filtering ? hitsG.length > 0 : g !== "F" && g !== "U";
+      return `<details class="agrade" data-g="${g}"${open ? " open" : ""}>
+        <summary><h2><span class="g">${g === "U" ? "Not replayed" : g}</span></h2>
+          <span class="n">${filtering ? `${hitsG.length} of ${inG.length}` : inG.length}</span></summary>
+        <div class="agbody">${open ? (hitsG.length ? cards(hitsG)
+                                                : `<p class="note">Nothing here matches.</p>`) : ""}</div>
+      </details>`;
+    }).join("");
+  }
+
+  function renderStash(){
+    stashAtlas();
+    const atlas = sview.mode === "atlas";
+    if (!atlas) stashGraded();
+    $("smode").setAttribute("aria-checked", String(atlas));
+    $("smodelbl").textContent = atlas ? "Atlas" : "Personal";
+    if (!$("sterms").innerHTML) $("sterms").innerHTML = termsHtml(sview.rows, "si");
+    renderStashSlots(); renderStashList();
+  }
+
+  /* true when the click was the view's own. Same rules as affixClick(). */
+  function stashClick(e){
+    const t = e.target;
+    const sum = t.closest(".agrade > summary");
+    if (sum){
+      e.preventDefault();
+      const d = sum.parentElement;
+      sview.open[d.dataset.g] = !d.hasAttribute("open");
+      renderStashList(); return true;
+    }
+    const chip = t.closest(".achip");
+    if (chip){
+      const [set, v] = chip.dataset.src !== undefined
+        ? [sview.srcs, chip.dataset.src] : [sview.slots, chip.dataset.sslot];
+      set.has(v) ? set.delete(v) : set.add(v);
+      renderStashSlots(); renderStashList(); return true;
+    }
+    if (t.closest("#sadd")){
+      sview.rows.push({op: "AND", text: ""});
+      $("sterms").innerHTML = termsHtml(sview.rows, "si"); return true;
+    }
+    if (t.closest("#sclear")){
+      sview.rows = [{op: "AND", text: ""}]; sview.slots.clear(); sview.srcs.clear(); sview.open = {};
+      $("sterms").innerHTML = termsHtml(sview.rows, "si");
+      renderStashSlots(); renderStashList(); return true;
+    }
+    const rm = t.closest("[data-sirm]");
+    if (rm){
+      sview.rows.splice(Number(rm.dataset.sirm), 1);
+      $("sterms").innerHTML = termsHtml(sview.rows, "si"); renderStashList(); return true;
+    }
+    if (t.closest("#smode")){
+      sview.mode = sview.mode === "atlas" ? "personal" : "atlas";
+      renderStash(); return true;
+    }
+    return false;
+  }
+
+  document.addEventListener("input", e => {
+    const i = e.target.dataset && e.target.dataset.si;
+    if (i === undefined || e.target.tagName === "SELECT") return;
+    sview.rows[Number(i)].text = e.target.value;
+    renderStashList();
+  });
+  document.addEventListener("change", e => {
+    const i = e.target.dataset && e.target.dataset.si;
+    if (i === undefined || e.target.tagName !== "SELECT") return;
+    sview.rows[Number(i)].op = e.target.value;
+    renderStashList();
   });
 
   /* ---- hand-set verdicts --------------------------------------------------
@@ -1985,6 +2249,7 @@ __AFFIX_JS__
     const ch = CH[state.i];
     renderToggles(ch); renderSheet(ch); hideTip();
     if (state.view === "affixes") renderAffixes();
+    if (state.view === "stash") renderStash();
   }
 
   function render(){
@@ -2007,7 +2272,9 @@ __AFFIX_JS__
     state.view = view;
     $("mainview").hidden = view !== "character";
     $("affixview").hidden = view !== "affixes";
+    $("stashview").hidden = view !== "stash";
     if (view === "affixes") renderAffixes();
+    if (view === "stash") renderStash();
     document.querySelectorAll(".navbtn").forEach(b => {
       if (b.dataset.view === view) b.setAttribute("aria-current", "page");
       else b.removeAttribute("aria-current");
@@ -2018,6 +2285,7 @@ __AFFIX_JS__
     const nb = e.target.closest(".navbtn");
     if (nb){ setView(nb.dataset.view); return; }
     if (e.target.closest("#affixview") && affixClick(e)) return;
+    if (e.target.closest("#stashview") && stashClick(e)) return;
     if (e.target.closest(".railtab")){
       drawer($("rail").getAttribute("data-open") !== "1"); return;
     }
@@ -2088,6 +2356,8 @@ __AFFIX_JS__
       Object.assign(FR, d.frames);
       SZ[0] = d.sheetSize[0]; SZ[1] = d.sheetSize[1];
       document.documentElement.style.setProperty("--atlas", 'url("' + d.atlas + '")');
+      /* The stash is re-read with the saves: a new bundle, graded afresh. */
+      if (d.gearstash){ GST = d.gearstash; sview.sig = null; sview.got = null; }
       /* A save can gain or lose a character, so the index we were on may no
          longer be the same person. Hold the NAME, not the position. */
       const wasName = (CH[state.i] || {}).name;
@@ -2095,7 +2365,8 @@ __AFFIX_JS__
       select(again >= 0 ? again : 0);
       render();
       note.textContent = "read in " + d.seconds + "s"
-        + (d.unreadable ? " · " + d.unreadable + " save(s) unreadable" : "");
+        + (d.unreadable ? " · " + d.unreadable + " save(s) unreadable" : "")
+        + ((d.stashErrors || []).length ? " · " + d.stashErrors.join(" · ") : "");
     } catch (e) {
       note.className = "refreshnote bad";
       note.textContent = String((e && e.message) || e);

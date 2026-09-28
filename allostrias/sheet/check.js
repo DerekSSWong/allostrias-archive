@@ -8,6 +8,7 @@ const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const bundle = html.match(/<script id="bundle" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const affixJson = html.match(/<script id="affixes" type="application\/json">([\s\S]*?)<\/script>/)[1];
+const stashJson = html.match(/<script id="gearstash" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const code = html.match(/<script>\n([\s\S]*?)<\/script>/)[1];
 
 class El {
@@ -23,6 +24,7 @@ class El {
 const els={}; const get=id=>(els[id]||=new El());
 els.bundle=new El(); els.bundle._html=bundle;
 els.affixes=new El(); els.affixes._html=affixJson;
+els.gearstash=new El(); els.gearstash._html=stashJson;
 // The Affixes view's download, captured: a link the page clicks, and the blob
 // it points at.
 const saved=[];
@@ -1388,6 +1390,8 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
          .test(navBtns[0]||''), `the first navigation button is not a selected Character: ${navBtns[0]}`);
   want(/data-view="affixes"[^>]*>Affixes$/.test(navBtns[1]||''),
        `the second navigation button is not Affixes: ${navBtns[1]}`);
+  want(/data-view="stash"[^>]*>Gear Stash$/.test(navBtns[2]||''),
+       `the third navigation button is not Gear Stash: ${navBtns[2]}`);
   for (const st of ['', ':hover', ':active', ':disabled'])
     want(new RegExp(`\\.navbtn\\.char${st}\\{[^}]*border-image(-source)?:url\\("data:image/png;base64,[^"]{200,}`).test(html),
          `the Character button has no ${st||'resting'} art`);
@@ -1699,7 +1703,7 @@ const stub=(sel, dataset, extra={})=>{ const el={id:'', dataset, ...extra};
   want(/placeholder="Search"/.test(get('aterms')._html), 'the first search box does not read "Search"');
   // An added term's remove button is the game's window close art, all three
   // states, and carries no text of its own.
-  want(/<button class="arm" type="button" data-rm="\d+" aria-label="Remove term"><\/button>/.test(
+  want(/<button class="arm" type="button" data-tirm="\d+" aria-label="Remove term"><\/button>/.test(
          (fire('click', stub('#aadd', {})), get('aterms')._html)), 'the remove-term button is not the bare close art');
   for (const st of ['', ':hover', ':active'])
     want(new RegExp(`\\.arm${st}\\{[^}]*background(-image)?:url\\("data:image/png;base64,[^"]{100,}`).test(html),
@@ -2008,6 +2012,128 @@ want(/details\.panel:not\(\[open\]\) > summary\.hd::after\{transform:scaleY\(-1\
      'the arrow does not flip when the pane is collapsed');
 want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.test(html),
      'the arrow has no hover state');
+
+// ---- the Gear Stash view ----------------------------------------------------
+// Driven the way a reader drives it -- the nav button, the mode switch, a
+// search term, a slot chip, a source chip, a verdict click -- and every grade
+// it renders is held to the Affixes scorer run HERE, on the verdicts the sheet
+// painted and the stash bundle's own field index.
+{
+  const G=JSON.parse(stashJson);
+  const esc=t=>String(t).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const asRec=g=>[0,0,0,0,0,g[0],g[1],g[2]];
+  const sskills=c=>({...skillsOf(c), ...Object.fromEntries((c.masteries||[]).map(m=>['mastery:'+m.n,'priority']))});
+  const sstub=(sel, dataset)=>{ const el={id:'', dataset}; el.closest=s=>(s===sel||s==='#stashview')?el:null; return el; };
+  const nav=v=>{ const el={id:'', dataset:{view:v}}; el.closest=s=>s==='.navbtn'?el:null; return el; };
+  const sgroups=()=>{ const out={};
+    for (const m of get('slist')._html.matchAll(/<details class="agrade" data-g="([^"]*)"[^>]*>[\s\S]*?<span class="n">([^<]*)<\/span>/g)) out[m[1]]=m[2];
+    return out; };
+  const scards=()=>get('slist')._html.split('<div class="acard scard"').slice(1);
+  const expected=verdicts=>{
+    const want_=AXE.wantedFields(verdicts, G), by={};
+    for (const it of G.items){
+      const g=it.g ? AXE.score(asRec(it.g), want_, sskills(opener), G)[1] : 'U';
+      by[g]=(by[g]||0)+1;
+    }
+    return by;
+  };
+
+  fire('click', nav('stash'));
+  want(get('stashview').hidden===false && get('mainview').hidden===true && get('affixview').hidden===true,
+       'choosing Gear Stash did not show its view alone');
+  want(get('stashn')._html===`${G.items.length} items`, `the view counts "${get('stashn')._html}", the bundle ${G.items.length}`);
+  want(G.items.length>0, 'the stash bundle holds no items');
+
+  // Personal: every grade group's count is the scorer's.
+  const by=expected(paintedVerdicts()), groups=sgroups();
+  for (const g of Object.keys(by))
+    want(groups[g]===String(by[g]), `stash grade ${g}: the page shows ${groups[g]}, the scorer ${by[g]}`);
+  want(['S','A','B','C'].some(g=>by[g]), `no stash item grades above F for ${opener.name}`);
+  // An item the seed replay refused has no numbers and no grade: it sits in
+  // its own group, and says why.
+  const refused=G.items.filter(it=>!it.g);
+  want(refused.every(it=>!it.l && it.why), 'a refused item carries lines, or no reason');
+  want((by.U||0)===refused.length, `${by.U||0} items in Not replayed, ${refused.length} refused`);
+  if (!refused.length) uncovered.push('no stash item is refused, so the Not replayed group is not drawn');
+  // Cards print the bundle's lines verbatim, each with a verdict gutter, and
+  // Personal marks wanted lines.
+  const cardAt=h=>G.items[Number((/^ data-i="(\d+)"/.exec(h)||[])[1])];
+  const printed=scards().filter(h=>(cardAt(h)||{}).l);
+  want(printed.length && printed.every(h=>cardAt(h).l.every(([t])=>h.includes(esc(t)))),
+       'a card does not print its bundle lines');
+  const marks=[...get('slist')._html.matchAll(/<li><span class="vd"( data-v="(\w+)")?><\/span>/g)];
+  want(marks.length && marks.some(m=>m[2]==='priority'), 'no stash card line wears the priority mark');
+
+  // Search, per line, through the view's own term box.
+  const typed=(i,v)=>fire('input', {dataset:{si:String(i)}, value:v, tagName:'INPUT'});
+  const lines=it=>[it.n, ...(it.l||[]).map(l=>l[0]), ...(it.cb||[]), it.sl, it.src+(it.at?' '+it.at:''), it.set||''].map(GSE.normalise);
+  typed(0, 'fire resist');
+  const hits=G.items.filter(it=>GSE.rowsMatch(lines(it), [{text:'fire resist'}], true));
+  want(hits.length>0 && hits.length<G.items.length, `"fire resist" should narrow the stash, matched ${hits.length}`);
+  want(get('stashn')._html===`${hits.length} of ${G.items.length} items`,
+       `"fire resist": the stash says "${get('stashn')._html}", the matcher ${hits.length}`);
+  // A slot chip narrows it further, to that slot.
+  fire('click', sstub('.achip', {sslot:'Ring'}));
+  const ring=hits.filter(it=>it.sl==='Ring').length;
+  want(get('stashn')._html===`${ring} of ${G.items.length} items`, `Ring: the stash says "${get('stashn')._html}", expected ${ring}`);
+  fire('click', sstub('.achip', {sslot:'Ring'}));
+  typed(0, '');
+  // A source chip keeps only that source.
+  for (const src of ['Transfer', 'IAGD']){
+    const n=G.items.filter(it=>it.src===src).length;
+    if (!n){ uncovered.push(`no stash item is kept in ${src}`); continue; }
+    fire('click', sstub('.achip', {src}));
+    want(get('stashn')._html===`${n} of ${G.items.length} items`, `${src}: the stash says "${get('stashn')._html}", expected ${n}`);
+    fire('click', sstub('.achip', {src}));
+  }
+  // A coarse chip reaches every weapon it covers.
+  fire('click', sstub('.achip', {sslot:'1H Weapon'}));
+  const oneH=G.items.filter(it=>G.coarse[it.sl]==='1H Weapon').length;
+  want(get('stashn')._html===`${oneH} of ${G.items.length} items`, `1H Weapon: the stash says "${get('stashn')._html}", expected ${oneH}`);
+  fire('click', sstub('#sclear', {}));
+  want(get('stashn')._html===`${G.items.length} items`, 'Clear did not drop the stash chip');
+
+  // A verdict click re-grades the stash.
+  const readBy=new Set(G.fr.flat());
+  const before=JSON.stringify(sgroups());
+  const pv=paintedVerdicts();
+  const key=Object.keys(pv).find(k=>pv[k]==='ignore' && readBy.has(k) && !k.startsWith('Pet Bonuses'));
+  if (key){
+    const [sec, label]=key.split(' / ');
+    const ri=B.sheet.find(x=>x[0]===sec)[1].findIndex(r=>r.label===label);
+    const row=stub('.row', {sec, ri:String(ri)});
+    fire('click', row); fire('click', row);
+    const by2=expected(paintedVerdicts()), g2=sgroups();
+    for (const g of Object.keys(by2))
+      want(g2[g]===String(by2[g]), `after marking ${key}: stash grade ${g} shows ${g2[g]}, the scorer ${by2[g]}`);
+    want(JSON.stringify(g2)!==before, `marking ${key} priority moved no stash item`);
+    fire('click', row); fire('click', row);
+    want(JSON.stringify(sgroups())===before, `${key} back to ignore did not restore the stash grades`);
+  } else uncovered.push('no ignore row that a stash field feeds');
+
+  // A "+N to all skills in <mastery>" line is wanted exactly when the
+  // character has that mastery.
+  const mk=G.k.findIndex(k=>k.startsWith('mastery:'));
+  if (mk>=0){
+    const it=G.items.find(it=>it.g && it.g[2].some(g=>g[0]===mk));
+    const has=(opener.masteries||[]).some(m=>'mastery:'+m.n===G.k[mk]);
+    const got=AXE.match(asRec(it.g), {}, sskills(opener), G);
+    want((got['sk'+mk]==='priority')===has, `${it.n}: ${G.k[mk]} graded ${got['sk'+mk]} for ${opener.name}, who ${has?'has':'lacks'} it`);
+    const mastered=B.characters.filter(c=>(c.masteries||[]).some(m=>'mastery:'+m.n===G.k[mk])).length;
+    if (!mastered) uncovered.push(`no frozen character has ${G.k[mk]}`);
+  } else uncovered.push('no stash item grants +skills to a mastery');
+
+  // Atlas: every item, no grades, no gutter; and back.
+  fire('click', sstub('#smode', {}));
+  want(get('smodelbl')._html==='Atlas' && !/class="agrade"/.test(get('slist')._html),
+       'the stash Atlas still shows grade groups');
+  want(scards().length===G.items.length, `the stash Atlas renders ${scards().length} of ${G.items.length} items`);
+  want(!/<span class="vd"/.test(get('slist')._html), 'an Atlas stash card wears a verdict gutter');
+  fire('click', sstub('#smode', {}));
+  want(get('smodelbl')._html==='Personal', 'the stash mode switch did not come back to Personal');
+  console.log(`gear stash: ${G.items.length} items, ${refused.length} not replayed, grades ${JSON.stringify(by)}`);
+  fire('click', nav('character'));
+}
 
 (async () => {
 // The download button hands over EXACTLY the filter the scorer renders.

@@ -23,14 +23,16 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from . import assemble
 from . import build
 from ..affixes import build as affix_build
+from ..gearstash import build as stash_build
 from .. import settings as S
-from ..db import character
+from ..archive import gst
+from ..db import character, iagd, stash
 
 BUNDLE = os.path.join(S.ROOT, 'cache', 'sheet')
 
 
 def refresh():
-    """Re-read the saves into profile.sqlite, then rebuild the page's bundle.
+    """Re-read the saves and the stashes, then rebuild the page's bundles.
 
     Two steps and they are not the same one. `character.refresh` is the
     archive's own: it re-reads every player.gdc into the character_* tables,
@@ -41,7 +43,21 @@ def refresh():
     t0 = time.time()
     cfg = S.load()
     counts = character.refresh(cfg)
+    # The two stashes, each in its own try as main.py reads them: the game may
+    # be mid-write on transfer.gst, and a stash that cannot be read must not
+    # stop the characters refreshing. The previous database stands, the page
+    # says why, and the stash view shows what it last read.
+    stash_errors = []
+    try:
+        stash.refresh(cfg)
+    except (gst.SaveError, OSError) as exc:
+        stash_errors.append(f'transfer stash: {exc}')
+    try:
+        iagd.refresh(cfg)
+    except (iagd.IagdError, OSError) as exc:
+        stash_errors.append(f'IAGD: {exc}')
     build.main()
+    stash_build.main()
     assemble.main()
     b = json.load(open(os.path.join(BUNDLE, 'sheet.json')))
     return {
@@ -52,6 +68,8 @@ def refresh():
         'frames': b['frames'],
         'sheetSize': b['sheetSize'],
         'atlas': b['atlas'],
+        'gearstash': json.load(open(os.path.join(stash_build.OUT, 'gearstash.json'))),
+        'stashErrors': stash_errors,
     }
 
 

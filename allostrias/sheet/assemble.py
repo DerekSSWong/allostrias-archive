@@ -5,8 +5,9 @@ from .. import settings as S
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(S.ROOT, 'cache', 'sheet')
 AFFIXES = os.path.join(S.ROOT, 'cache', 'affixes')
+GEARSTASH = os.path.join(S.ROOT, 'cache', 'gearstash')
 
-def main(out_dir=None, affixes_dir=None):
+def main(out_dir=None, affixes_dir=None, gearstash_dir=None):
     out_dir = out_dir or OUT
     shell = open(os.path.join(HERE, 'shell.html')).read()
     b = json.load(open(os.path.join(out_dir, 'sheet.json')))
@@ -117,9 +118,13 @@ def main(out_dir=None, affixes_dir=None):
     corpus = os.path.join(affixes_dir or AFFIXES, 'affixes.json')
     if not os.path.exists(corpus):
         raise SystemExit(f'no affix corpus at {corpus}: run allostrias.affixes.build first')
+    stash = os.path.join(gearstash_dir or GEARSTASH, 'gearstash.json')
+    if not os.path.exists(stash):
+        raise SystemExit(f'no gear stash bundle at {stash}: run allostrias.gearstash.build first')
     for token, value in [('__SEARCH_JS__', open(os.path.join(ax_dir, 'search.js')).read()),
                          ('__AFFIX_JS__', open(os.path.join(ax_dir, 'affixes.js')).read()),
-                         ('__AFFIXES__', open(corpus).read().replace('</', '<\\u002f'))]:
+                         ('__AFFIXES__', open(corpus).read().replace('</', '<\\u002f')),
+                         ('__GEARSTASH__', open(stash).read().replace('</', '<\\u002f'))]:
         if token not in shell:
             raise SystemExit(f'{token} missing from the shell')
         shell = shell.replace(token, value)

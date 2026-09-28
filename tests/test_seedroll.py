@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Differential gate: seedroll.py must agree with gd-lib's rolls.py exactly.
+"""Differential gate: seedroll.py must agree with gd-lib's rolls.py exactly,
+once seedroll.CORRECTIONS are applied to the oracle.
+
+A correction is a place where the GAME settled that gd-lib is wrong
+(tests/test_seedroll_game.py is that evidence). Each is applied to the oracle
+in-process, and each must still be a real difference -- a correction gd-lib
+has since adopted, or one the port has quietly dropped, fails here.
 
 gd-lib is the ORACLE here and nothing else. It is imported by this gate, never
 by the build -- that is the whole point of the port. Run after any edit to
@@ -19,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from _oracle import sibling                         # noqa: E402
 from allostrias import settings as S                # noqa: E402
 from allostrias.archive.records import Records      # noqa: E402
-from allostrias.sheet import seedroll               # the port, under test
+from allostrias.archive import seedroll               # the port, under test
 
 cfg = S.load()
 GDLIB = sibling('.gdlib')
@@ -38,6 +44,19 @@ def main():
     sys.path.insert(0, GDLIB)
     import rolls as oracle                          # gd-lib, the oracle
 
+    for f in seedroll.CORRECTIONS:
+        assert f in oracle.NON_SCALING and f not in seedroll.NON_SCALING, \
+            f'correction {f} is no longer a difference between port and oracle'
+        oracle.NON_SCALING.discard(f)
+    oracle.ORDER[:] = oracle._build_order()
+    # ADDITIONS are fields the oracle refuses and the port models; they are the
+    # only entries the port's order may have that the oracle's lacks.
+    added = set(seedroll.ADDITIONS)
+    assert [o for o in seedroll.ORDER if o[1] not in added] == oracle.ORDER, \
+        'corrected oracle order differs from the port'
+    assert all(any(o[1] == f for o in oracle.ORDER) is False for f in added), \
+        'an addition is in the oracle now: drop it from seedroll.ADDITIONS'
+
     con = sqlite3.connect(os.path.join(S.ROOT, 'cache', 'profile.sqlite'))
     con.row_factory = sqlite3.Row
     items = con.execute('select * from character_worn').fetchall()
@@ -53,7 +72,9 @@ def main():
         mine = seedroll.compute(base, r['seed'], pfx, sfx)
         theirs = oracle.compute(base, r['seed'], pfx, sfx)
 
-        if set(mine.unmodeled) != set(theirs.unmodeled):
+        theirs_unmodeled = {f for f in theirs.unmodeled
+                            if not any(f.startswith(a) for a in added)}
+        if set(mine.unmodeled) != theirs_unmodeled:
             bad.append(f"{r['dir_name']}/{r['slot']}: refusal differs")
         keys = set(mine.stats) | set(theirs.stats)
         for k in keys:
