@@ -27,7 +27,7 @@ SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema.s
 # skipped, and the wrong numbers stayed in the database until --force. Silent
 # staleness is the failure this project keeps paying for.
 PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCHEMA_VERSION = '14'  # item.style_tag, item.style, item.display_name
+SCHEMA_VERSION = '15'  # item.quality_tag, item.quality; display_name leads with quality
 
 
 def code_digest() -> str:

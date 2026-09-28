@@ -61,6 +61,13 @@ CREATE TABLE IF NOT EXISTS item (
     -- (tagStyleArmorFabric01, 2 records) resolves in no archive: the fact that
     -- a record HAS a style is not the same as knowing what it is called, and
     -- collapsing them would lose the first.
+    -- The material/condition word on ordinary gear, rendered FIRST:
+    -- "Preserver Warmaul", "Scrapmetal Obsolete Heavy Crossbow". 264
+    -- equipment records carry one, all Common -- and a Common base with affixes
+    -- is a rare item, which is how "Magestorm Preserver Warmaul of Insanity"
+    -- lost its middle word until 2026-09-28 (IAGD's rendered name caught it).
+    quality_tag    TEXT,                   -- itemQualityTag, NULL if none
+    quality        TEXT,                   -- resolved English, NULL if unresolved
     style_tag      TEXT,                   -- itemStyleTag, NULL if none
     style          TEXT,                   -- resolved English, NULL if unresolved
     classification TEXT,                   -- Rare / Epic / Legendary / ...
@@ -70,8 +77,8 @@ CREATE TABLE IF NOT EXISTS item (
     -- the exclusion it depends on (a blueprint pointing at the record) needs
     -- the loot-table walk. NULL until that step runs.
     is_mi          INTEGER,
-    -- What the game shows. GENERATED, not stored: it is a function of two
-    -- columns in the same row, so it cannot drift from them and costs nothing.
+    -- What the game shows: <quality> <style> <name>. GENERATED, not stored: it
+    -- is a function of columns in the same row, so it cannot drift from them.
     --
     -- ⚠️ STILL NOT UNIQUE, and must never be used as a key. Adding the style
     -- splits 1,175 of the 2,025 colliding names; 850 remain -- "Murderer's
@@ -87,8 +94,8 @@ CREATE TABLE IF NOT EXISTS item (
     -- buried.
     display_name   TEXT GENERATED ALWAYS AS (
                        CASE WHEN name IS NULL THEN NULL
-                            WHEN style IS NULL THEN name
-                            ELSE style || ' ' || name END) VIRTUAL
+                            ELSE coalesce(quality || ' ', '') || coalesce(style || ' ', '')
+                                 || name END) VIRTUAL
 );
 
 CREATE INDEX IF NOT EXISTS item_name_idx           ON item(name);

@@ -140,8 +140,13 @@ print('  (base, seed) unique across the collection')
 # agreement is evidence rather than a tautology, which is exactly what a rule
 # derived from one reading of the data cannot supply for itself.
 #
+# An affixed item's name is the base's display_name wrapped in its affixes'
+# names -- "Demonic Bloodsworn Scepter of Solael's Malice" -- composed here from
+# the catalogue alone, so those rows check the wrapping too (none were held
+# until 2026-09-28).
+#
 # ⚠️ THE ORACLE IS PARTIAL AND THE SPLIT IS THE POINT. This collection holds
-# only Epic and Legendary items, so it exercises two of the fifty style
+# almost only Epic and Legendary items, so it exercises two of the fifty style
 # families. The other forty-eight -- Elite, Obsolete, Infantry, Leather and the
 # rest -- are ASSUMED to render the same way and are checked by nothing. Do not
 # read a pass here as "display_name is verified".
@@ -149,11 +154,14 @@ agree = disagree = 0
 unverified = set()
 examples = []
 for row in conn.execute("""
-        SELECT p.Name AS rendered, b.display_name AS ours, b.style_tag,
-               i.component_path
+        SELECT p.Name AS rendered, b.style_tag, i.component_path,
+               trim(coalesce(pa.name || ' ', '') || b.display_name
+                    || coalesce(' ' || sa.name, '')) AS ours
         FROM iagd_item i
         JOIN ia.PlayerItem p ON p.Id = i.id
-        JOIN cat.item b ON b.path = i.base_path"""):
+        JOIN cat.item b ON b.path = i.base_path
+        LEFT JOIN cat.affix pa ON pa.path = i.prefix_path
+        LEFT JOIN cat.affix sa ON sa.path = i.suffix_path"""):
     # IAGD decorates a name that carries a component -- "Mark of the Forbidden
     # [Wardstone]" -- which is its display choice, not part of the item's name.
     # Those rows say nothing about the composition rule, so they are excluded

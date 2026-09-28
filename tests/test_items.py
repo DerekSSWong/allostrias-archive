@@ -245,9 +245,18 @@ for tag, word, count in (('tagStyleUniqueTier3', 'Mythical', 954),
 # exactly what a schema change would alter.
 bad = one("SELECT count(*) FROM item WHERE display_name IS NOT "
           "(CASE WHEN name IS NULL THEN NULL "
-          "      WHEN style IS NULL THEN name "
-          "      ELSE style || ' ' || name END)")
+          "      ELSE coalesce(quality || ' ', '') || coalesce(style || ' ', '') "
+          "           || name END)")
 assert bad == 0, f'{bad} display_name(s) disagree with their own row'
+# The quality word leads, and is on Common gear only -- derived, not typed: a
+# quality on anything else would be a new fact worth stopping for.
+q_rows = one("SELECT count(*) FROM item WHERE quality_tag IS NOT NULL AND is_equipment = 1")
+q_other = one("SELECT count(*) FROM item WHERE quality_tag IS NOT NULL AND is_equipment = 1 "
+              "AND classification IS NOT 'Common'")
+assert q_rows > 0 and q_other == 0, f'{q_rows} equipment qualities, {q_other} off Common'
+assert one("SELECT display_name FROM item WHERE path = "
+           "'records/items/gearweapons/melee2h/a13_blunt2h001.dbr'") == 'Preserver Warmaul'
+print(f'  {q_rows} Common equipment records lead with a quality word')
 
 # What it fixes, and what it does NOT. The second number is the point: this
 # must never be sold as making names unique.

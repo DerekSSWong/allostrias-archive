@@ -443,10 +443,14 @@ def item_display(base, path, pfx=(None, None), sfx=(None, None)):
     """
     name = record_name(base, path) or os.path.basename(path).replace('.dbr', '')
     style = tag(base.get('itemStyleTag', [None])[0])
+    # The quality word leads: "Preserver Warmaul" (catalogue item.quality).
+    quality_word = tag(base.get('itemQualityTag', [None])[0])
     rarity, badge = quality((base.get('itemClassification') or [None])[0],
                             pfx[1], sfx[1])
     if style and name and not name.startswith(style):
         name = f'{style} {name}'
+    if quality_word and name and not name.startswith(quality_word):
+        name = f'{quality_word} {name}'
     base_name = name
     name = ' '.join(x for x in (pfx[0], name, sfx[0]) if x)
     return name, rarity, style, base_name, badge
