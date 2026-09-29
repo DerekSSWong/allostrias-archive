@@ -13,7 +13,9 @@
         (`offensiveManaBurnDrain`), Sapping (`offensivePercentCurrentLife` on an
         affix, `seedroll.BASE_ONLY`)
       - Asterllonos, Star of the North / Stoneplate Waistguard / Ironlord
-        Demolisher (`defensiveBonusProtection`), Legion Warhammer
+        Demolisher (`defensiveBonusProtection`) -- a Mythical Ironlord
+        Demolisher is now held (IAGD #1924, 2026-09-29) and
+        `test_seedroll_game` fails on it until the field is settled -- Legion Warhammer
         (`defensivePhysicalChance`), Maw of Despair (`retaliationSlowManaLeach`),
         Malkadarr's Dreadblade (`offensiveFreezeMax`), Frostguard Girdle
         (`defensiveProtectionChance`), Screams of the Aether (`retaliationFearMin`)
@@ -32,15 +34,11 @@
       - Floor vs round-half-even is not separated by any held item either; an
         item whose `itemLevel/4+1` ends in .5 and moves a printed line would.
 
-- [ ] Reuse Gear Stash cards between Refreshes. Every click rebuilds all ~1,950
-      cards (card text 1.3 s, seed replay 0.6 s of a 2.9 s build) though only
-      new or moved items changed. About 2 s off each Refresh. Needs a plan: the
-      icon atlas is filled as a side effect of `card()`, so a reused card must
-      still register its icon.
-
-- [ ] Let `bonuses` join the shared pass. 5.0 s of its 6.5 s is reading 13,846
-      records one at a time that `shared_pass` has already read. About 5 s off
-      a post-patch rebuild, 10-15 s off `test_rebuild`. It needs item ids, so
-      it would hold what it needs during the read and resolve in `finish`, as
-      `eligibility` does. `shared_pass.py` says a consumer must be worth its
-      coupling; 5 s is borderline.
+- [ ] LOW VALUE. Let `bonuses` join the shared pass. Of its 6.5 s, 3.8 s is
+      re-reading the 9,926 item records the pass already read; the other 1.3 s
+      is 3,981 pool, bonus and skill records the pass would also have to hold.
+      So about 3.8 s off a rebuild after a game patch (55.8 s), about 11 s off
+      `test_rebuild`. Shape: a fourth consumer keeping only `bonusTableName`,
+      the pet-bonus field and the skill-reference fields of any record carrying
+      them, resolved against `item` in `finish` as `eligibility` does. Not worth
+      the coupling `shared_pass.py` warns about unless suite time matters.
