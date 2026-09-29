@@ -120,7 +120,7 @@ def skill_masteries():
             raise SystemExit(f'class{i:02d} has no name or no skill roster')
         names.append(mastery)
         for button in filter(None, (b.strip() for b in row.group(1).split(';'))):
-            m = re.search(r'^skillName=(\S+)', I.read_rel(button) or '', re.M)
+            m = re.search(r'^skillName=' + I.PATH, I.read_rel(button) or '', re.M)
             if m and out.setdefault(m.group(1).lower(), mastery) != mastery:
                 raise SystemExit(f'{m.group(1)} is on two masteries\' rosters')
     return names, out

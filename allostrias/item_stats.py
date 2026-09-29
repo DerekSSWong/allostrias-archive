@@ -136,6 +136,11 @@ RANGE_FIELD_MAP = {
 # tests/test_seedroll_game.py). tests/test_item_stats.py still holds this file
 # to gd-lib's on every record that carries none of these fields, and names the
 # count it leaves to the game gate. A field regex -> why.
+# A record-path field's value: up to the end of the line or the first `;`. Not
+# `\S+` -- a few paths hold a space ("hands_d310_vindictive flame.dbr"), and
+# stopping there silently dropped that modifier's whole block.
+PATH = r'([^;\n]*[^;\s])'
+
 DIVERGED = {
     r'^defensive\w+MaxResist$': 'Max Resist had no line',
     r'^offensivePierceRatio(Min|Max)$': 'Armor Piercing had no line',
@@ -917,7 +922,7 @@ def supplement_shared_stats(txt, prefix, existing):
 
 
 def resolve_pet_bonus(txt, level_idx=0):
-    m = re.search(r'^petBonusName=(\S+)', txt, re.M)
+    m = re.search(r'^petBonusName=' + PATH, txt, re.M)
     if not m:
         return []
     link_txt = read_rel(m.group(1))
@@ -962,7 +967,7 @@ def resolve_item_skill(txt):
     existing class skill) is still NOT resolved here -- those target files
     don't carry a skillDisplayName tag (they're raw class-skill records), so
     there's no clean name to show."""
-    m = re.search(r'^itemSkillName=(\S+)', txt, re.M)
+    m = re.search(r'^itemSkillName=' + PATH, txt, re.M)
     if not m:
         return []
     skill_txt = read_rel(m.group(1))
@@ -979,7 +984,7 @@ def resolve_item_skill(txt):
         # Mogdrogen sets, showed nothing at all. ONE hop only, deliberately: the
         # chain can continue, and each further hop is a different record family
         # with its own display rules.
-        buff_m = re.search(r'^buffSkillName=(\S+)', skill_txt, re.M)
+        buff_m = re.search(r'^buffSkillName=' + PATH, skill_txt, re.M)
         buff_txt = read_rel(buff_m.group(1)) if buff_m else None
         if buff_txt is None:
             return []
@@ -1050,10 +1055,10 @@ def skill_display_name(txt):
     disp_m = re.search(r'^skillDisplayName=(\S+)', txt, re.M)
     if disp_m:
         return clean_name(SKILL_TAGS.get(disp_m.group(1), '')) or None
-    pet_m = re.search(r'^petSkillName=(\S+)', txt, re.M)
+    pet_m = re.search(r'^petSkillName=' + PATH, txt, re.M)
     if pet_m:
         return skill_display_name(read_rel(pet_m.group(1)))
-    buff_m = re.search(r'^buffSkillName=(\S+)', txt, re.M)
+    buff_m = re.search(r'^buffSkillName=' + PATH, txt, re.M)
     if buff_m:
         return skill_display_name(read_rel(buff_m.group(1)))
     return None
@@ -1069,7 +1074,7 @@ def resolve_augment_skills(txt):
     # ARCHIVE-ONLY: slots 1-8. gd-lib read 1-4 and dropped the fifth grant on 76
     # IAGD items ("+2 to Wereraven", "+2 to Leap", ...), which the game prints.
     for i in range(1, 9):
-        name_m = re.search(rf'^augmentSkillName{i}=(\S+)', txt, re.M)
+        name_m = re.search(rf'^augmentSkillName{i}=' + PATH, txt, re.M)
         lvl_m = re.search(rf'^augmentSkillLevel{i}=(\d+)', txt, re.M)
         if not name_m or not lvl_m:
             continue
@@ -1089,7 +1094,7 @@ def resolve_augment_mastery(txt):
     "+1 to all skills in Oathkeeper" was silently absent)."""
     lines = []
     for i in range(1, 9):
-        name_m = re.search(rf'^augmentMasteryName{i}=(\S+)', txt, re.M)
+        name_m = re.search(rf'^augmentMasteryName{i}=' + PATH, txt, re.M)
         lvl_m = re.search(rf'^augmentMasteryLevel{i}=(\d+)', txt, re.M)
         if not name_m or not lvl_m:
             continue
@@ -1214,7 +1219,7 @@ def resolve_pet_conversions(txt):
     just the conversion lines as a supplement, so both together cover the
     full petBonusName payload without double-counting the stat fields
     resolve_pet_bonus() already handles."""
-    m = re.search(r'^petBonusName=(\S+)', txt, re.M)
+    m = re.search(r'^petBonusName=' + PATH, txt, re.M)
     if not m:
         return []
     return extract_conversions(read_rel(m.group(1)) or '', PET_PREFIX)
@@ -1242,7 +1247,7 @@ def resolve_skill_trigger_chance(txt, prefix):
     instead, because its page reproduces the game's own tooltip; that difference
     is presentation and is why skill_triggers returns a phrase and no more.
     """
-    m = re.search(r'^itemSkillAutoController=(\S+)', txt, re.M)
+    m = re.search(r'^itemSkillAutoController=' + PATH, txt, re.M)
     if not m:
         return None
     ctrl_txt = read_rel(m.group(1))
@@ -1533,7 +1538,7 @@ def format_skill_modifier_stats(txt, prefix):
     if refresh_chance_m:
         amount_m = re.search(r'^refreshDurationAmount=([\d.]+)', txt, re.M)
         max_m = re.search(r'^refreshDurationMax=([\d.]+)', txt, re.M)
-        skill_m = re.search(r'^refreshDurationSkill=(\S+)', txt, re.M)
+        skill_m = re.search(r'^refreshDurationSkill=' + PATH, txt, re.M)
         amount = _first_value(amount_m.group(1)) if amount_m else '1'
         when = refresh_trigger_phrase(txt, 'refreshDurationChance')
         skill_name = skill_display_name(read_rel(skill_m.group(1))) if skill_m else None
@@ -1553,7 +1558,7 @@ def format_skill_modifier_stats(txt, prefix):
     cd_chance_m = re.search(r'^refreshCooldownChance=([\d.]+)', txt, re.M)
     if cd_chance_m:
         cd_amount_m = re.search(r'^refreshCooldownAmount=([\d.]+)', txt, re.M)
-        cd_skill_m = re.search(r'^refreshCooldownSkill=(\S+)', txt, re.M)
+        cd_skill_m = re.search(r'^refreshCooldownSkill=' + PATH, txt, re.M)
         amount = _first_value(cd_amount_m.group(1)) if cd_amount_m else '1'
         when = refresh_trigger_phrase(txt, 'refreshCooldownChance')
         skill_name = skill_display_name(read_rel(cd_skill_m.group(1))) if cd_skill_m else None
@@ -1587,9 +1592,11 @@ def resolve_skill_modifiers(txt):
     cosmetic pet-model swaps, e.g. "Always summons Chaos Skeletal Mages")
     have no numeric payload at all and correctly yield nothing."""
     blocks = {}
-    for i in range(1, 5):
-        mod_name_m = re.search(rf'^modifiedSkillName{i}=(\S+)', txt, re.M)
-        mod_mod_m = re.search(rf'^modifierSkillName{i}=(\S+)', txt, re.M)
+    # ARCHIVE-ONLY: slots 1-8. gd-lib read 1-4; 17 items carry a fifth
+    # (Mythical d204 gloves' Werewolf block, which the game prints).
+    for i in range(1, 9):
+        mod_name_m = re.search(rf'^modifiedSkillName{i}=' + PATH, txt, re.M)
+        mod_mod_m = re.search(rf'^modifierSkillName{i}=' + PATH, txt, re.M)
         if not mod_name_m or not mod_mod_m:
             continue
         target_name = modified_skill_name(read_rel(mod_name_m.group(1)))
@@ -1598,8 +1605,13 @@ def resolve_skill_modifiers(txt):
         mod_txt = read_rel(mod_mod_m.group(1))
         if mod_txt is None:
             continue
-        if re.search(r'^petSkillName=(\S+)', mod_txt, re.M):
-            pet_m = re.search(r'^petSkillName=(\S+)', mod_txt, re.M)
+        prefix = f'{target_name}: '
+        # A PetModifier wrapper's own cooldownTime is the game's first line
+        # ("-2 Second Skill Recharge", Mythical d109 medal); its payload is one hop on.
+        wrap_cd = re.search(r'^cooldownTime=(-?[\d.]+)', mod_txt, re.M)
+        head = [f'{prefix}{_first_value(wrap_cd.group(1))} Second Skill Recharge'] if wrap_cd else []
+        if re.search(r'^petSkillName=' + PATH, mod_txt, re.M):
+            pet_m = re.search(r'^petSkillName=' + PATH, mod_txt, re.M)
             mod_txt = read_rel(pet_m.group(1))
         # A modifier whose entire payload the specialist has no opinion on would
         # otherwise vanish along with its skill heading -- Krieg's Armament's
@@ -1608,10 +1620,22 @@ def resolve_skill_modifiers(txt):
         block = blocks.setdefault(target_name, [])
         # A transmuter's modifier joins its parent's block (see modified_skill_name);
         # a line both already print is printed once.
-        block.extend(l for l in supplement_shared_stats(
-            mod_txt, f'{target_name}: ',
-            format_skill_modifier_stats(mod_txt, f'{target_name}: ')) if l not in block)
+        lines = head + supplement_shared_stats(
+            mod_txt, prefix, format_skill_modifier_stats(mod_txt, prefix))
+        lines += [prefix + _game_tag(tag, v) for f, tag in MODIFIER_EXTRAS
+                  for v in re.findall(rf'^{f}=(-?[\d.]+)', mod_txt or '', re.M)[:1]]
+        block.extend(l for l in lines if l not in block)
     return [l for b in blocks.values() for l in b]
+
+
+# ARCHIVE-ONLY: modifier stats neither formatter prints, which emptied their
+# blocks (Onslaught, Divine Mandate, Presence of Virtue, Mark of Torment,
+# Bursting Round), with the game's own tags_ui string for each.
+MODIFIER_EXTRAS = [
+    ('offensiveDamageMultModifier', 'tagDamageModifierDamageMult'),   # Total Damage Modified by N%
+    ('damageAbsorptionPercent', 'SkillDamageAbsorptionPercent'),      # N% Damage Absorption
+    ('projectilePiercing', 'ProjectilePiercingChanceMod'),            # +N% Chance to pass through Enemies
+]
 
 
 TAG_FAMILY = re.compile(r'^(tag(?:GDX\d+)?Class\d+SkillName\d+)([A-Z])$')

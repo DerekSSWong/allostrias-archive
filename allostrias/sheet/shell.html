@@ -543,14 +543,18 @@ __MASTERY_BARS__
 .tip .setpc.on{color:var(--ink)}
 /* A set's tiers and a granted skill: the skill orange, as the game prints it. */
 .stier{margin-top:6px}
-.sset{margin-top:var(--s2); padding-top:var(--s2); border-top:1px solid var(--rule)}
+/* The game's thin rail (mainmenu/borderthindivider) above a set block and
+   above each granted skill: every "Grants:" line opens one. */
+.trule{height:__DIVIDER_RULE_H__px; margin:6px 0 4px; padding:0;
+  background:url("__DIVIDER_RULE__") center/100% 100% no-repeat}
+li.trule{display:block; list-style:none}
+.sset{margin-top:var(--s2)}
 .sset > b{font:600 12.5px "Libertinus Serif",Georgia,serif; color:var(--gold)}
-.acard li.gh, .stier li.gh{color:var(--skill); font-weight:600}
+li.gh{font-weight:600}
 .stier > i{display:block; font:italic 12px "Libertinus Serif",Georgia,serif; color:var(--gold-dim)}
 .stier.off{opacity:.45}
 .stier ul, .tip ul.grant, .scard ul.grant{margin:0; padding:0; list-style:none}
 .tip .stier li, .tip ul.grant li{font-size:13px; color:var(--stat)}
-.stier li.gh, ul.grant li.gh{color:var(--skill); font-weight:600}
 .tip .setpc i{font-style:normal; color:var(--gold-dim)}
 .rule{height:3px; background:url("__DIVIDER__") center/100% 3px no-repeat; opacity:.85}
 .srcs{display:flex; flex-direction:column; gap:1px}
@@ -1322,6 +1326,7 @@ __AFFIX_JS__
 
   /* markRanges() answers over the APOSTROPHE-STRIPPED line, so its offsets are
      mapped back onto the text as printed before anything is wrapped. */
+  const RULE_LI = '<li class="trule" aria-hidden="true"></li>';
   function hl(text, rows = liveRows()){
     if (!rows.length) return esc(text);
     const keep = [];
@@ -1344,7 +1349,8 @@ __AFFIX_JS__
         <span class="ak">${c.kind}</span><span class="al">${lv}</span>
 </div>
       <div class="as">${c.slots.map(hl).join(" · ")}</div>
-      <ul>${c.effects.map(e => `<li${e.pet ? ' class="pet"' : e.text.startsWith("Grants: ") ? ' class="gh"' : ""}>${
+      <ul>${c.effects.map(e => `${e.text.startsWith("Grants: ") ? RULE_LI : ""}<li${
+        e.pet ? ' class="pet"' : e.text.startsWith("Grants: ") ? ' class="gh"' : ""}>${
         /* Personal: the sheet's verdict mark on every line it has one for --
            the gutter always, the image only where there is a verdict. */
         aview.mode === "atlas" ? "" : `<span class="vd"${e.v ? ` data-v="${e.v}"` : ""}></span>`
@@ -1615,7 +1621,8 @@ __AFFIX_JS__
     const got = sview.mode === "atlas" ? null : ((sview.got[idx] || {}).v || {});
     const gutter = k => got ? `<span class="vd"${k && got[k] ? ` data-v="${got[k]}"` : ""}></span>` : "";
     const lines = it.l
-      ? `<ul>${it.l.map(([t, k]) => `<li${t.startsWith("Grants: ") ? ' class="gh"' : ""}>${
+      ? `<ul>${it.l.map(([t, k]) => `${t.startsWith("Grants: ") ? RULE_LI : ""}<li${
+          t.startsWith("Grants: ") ? ' class="gh"' : ""}>${
           gutter(k)}<span>${h(t)}</span></li>`).join("")}</ul>`
       : `<p class="note">Stats withheld: the seed replay does not model this item yet (${
           esc(it.why)}).</p>`;
@@ -1625,7 +1632,7 @@ __AFFIX_JS__
         <span class="sm">${h(it.sl)}${it.lv ? " · lvl " + it.lv : ""} · ${
           it.x.length > 1 ? it.x.length + " held · " : ""}${h(keptIn(it))}</span>
         ${set ? `<span class="sm">${h(set.n)}</span>` : ""}</span></div>
-      ${lines}${set ? `<div class="sset"><b>${h(set.n)}</b>
+      ${lines}${set ? `<div class="trule"></div><div class="sset"><b>${h(set.n)}</b>
         <span class="sm">${set.members.map(h).join(" · ")}</span>${setTiersHtml(set, null, h)}</div>` : ""}</div>`;
   }
 
@@ -2152,7 +2159,8 @@ __AFFIX_JS__
 
   /* A granted skill's lines: "Grants: X" heads its block, the rest are X's. */
   const grantHtml = lines => `<ul class="grant">${lines.map(l =>
-    `<li${l.startsWith("Grants: ") ? ' class="gh"' : ""}>${esc(l)}</li>`).join("")}</ul>`;
+    `${l.startsWith("Grants: ") ? RULE_LI : ""}<li${l.startsWith("Grants: ") ? ' class="gh"' : ""}>${
+      esc(l)}</li>`).join("")}</ul>`;
   /* A set's tiers, "(N) Set" over what that tier adds, then what the full set
      grants past its tiers. `worn` lights the tiers reached; null lights none
      and dims none (the Gear Stash, where nothing is worn). */
@@ -2162,7 +2170,8 @@ __AFFIX_JS__
     return set.tiers.map(([n, ls]) => `<div class="stier${dim(n)}"><i>(${n}) Set</i><ul>${
         ls.map(l => `<li>${h(l)}</li>`).join("")}</ul></div>`).join("")
       + (set.after.length ? `<div class="stier${dim(set.total)}"><ul>${
-        set.after.map(l => `<li${l.startsWith("Grants: ") ? ' class="gh"' : ""}>${h(l)}</li>`).join("")
+        set.after.map(l => `${l.startsWith("Grants: ") ? RULE_LI : ""}<li${
+          l.startsWith("Grants: ") ? ' class="gh"' : ""}>${h(l)}</li>`).join("")
         }</ul></div>` : "");
   }
 
@@ -2177,8 +2186,8 @@ __AFFIX_JS__
         : `<p class="note">No stat line this sheet renders.</p>`}
       ${block("Skill modifiers", (e.mods || []).map(esc), "skl")}
       ${block("Completion bonus", (e.bonus || []).map(esc))}
-      ${(e.grants || []).length ? `<div class="rule"></div>${grantHtml(e.grants)}` : ""}
-      ${e.set ? `<div class="rule"></div><div class="blk">
+      ${(e.grants || []).length ? grantHtml(e.grants) : ""}
+      ${e.set ? `<div class="trule"></div><div class="blk">
           <b>${esc(e.set.n)} &mdash; ${e.set.worn} of ${e.set.total}</b>
           ${e.set.members.map(m => `<div class="setpc${m.worn ? " on" : ""}"><span>${
             esc(m.n)}</span>${m.worn ? "<i>worn</i>" : ""}</div>`).join("")}

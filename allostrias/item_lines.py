@@ -113,11 +113,11 @@ def rolled(base_path, sources, roll):
             out += I.process_stats_fields(racial)
         granted += [('granted', l) for l in I.resolve_item_skill(txt)]
         for i in range(1, 9):
-            name = re.search(rf'^augmentSkillName{i}=(\S+)', txt, re.M)
+            name = re.search(rf'^augmentSkillName{i}=' + I.PATH, txt, re.M)
             if name:
                 part = _only(txt, rf'^augmentSkill(Name|Level){i}$')
                 out += [('skill:' + name.group(1), l) for l in I.resolve_augment_skills(part)]
-            name = re.search(rf'^augmentMasteryName{i}=(\S+)', txt, re.M)
+            name = re.search(rf'^augmentMasteryName{i}=' + I.PATH, txt, re.M)
             if name:
                 part = _only(txt, rf'^augmentMastery(Name|Level){i}$')
                 out += [('mastery:' + name.group(1), l) for l in I.resolve_augment_mastery(part)]
