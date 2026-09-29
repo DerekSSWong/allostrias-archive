@@ -43,7 +43,9 @@ def png_b64(im: Image.Image, quantize: int = 0) -> str:
     if quantize:
         im = im.quantize(colors=quantize, method=Image.FASTOCTREE)
     b = io.BytesIO()
-    im.save(b, 'PNG', optimize=True)
+    # No optimize=True: over the sheet and Gear Stash images it took encoding
+    # from 0.28 s to 1.25 s for 1.5% less output, paid on every Refresh.
+    im.save(b, 'PNG')
     return 'data:image/png;base64,' + base64.b64encode(b.getvalue()).decode()
 
 
@@ -193,7 +195,7 @@ def main():
     tx = Textures('Items.arc')
     sheet, frames = build_atlas(items, tx)
     print(f'atlas {sheet.size} icons {len(frames)}')
-    sheet.save(os.path.join(OUT, 'atlas.png'), optimize=True)
+    sheet.save(os.path.join(OUT, 'atlas.png'))
     atlas_uri = png_b64(sheet, quantize=255)
     print(f'atlas b64 {len(atlas_uri)/1e6:.2f} MB')
 

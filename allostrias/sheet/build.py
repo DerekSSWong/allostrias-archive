@@ -26,6 +26,7 @@ that they do.
 """
 import base64
 import fnmatch
+import functools
 import io
 import json
 import os
@@ -114,7 +115,9 @@ def png_b64(im, quantize=0):
     if quantize:
         im = im.quantize(colors=quantize, method=Image.FASTOCTREE)
     b = io.BytesIO()
-    im.save(b, 'PNG', optimize=True)
+    # No optimize=True: over the sheet and Gear Stash images it took encoding
+    # from 0.28 s to 1.25 s for 1.5% less output, paid on every Refresh.
+    im.save(b, 'PNG')
     return 'data:image/png;base64,' + base64.b64encode(b.getvalue()).decode()
 
 
@@ -2266,6 +2269,14 @@ def build_chrome(ui):
     return out
 
 
+@functools.cache
+def page_chrome():
+    """build_chrome, once per process. The frame is cut from UI.arc and
+    gameiteminfo.dbr alone -- nothing a save changes -- and it was 1.3 s of
+    the sheet's 1.5 s on every Refresh."""
+    return build_chrome(Textures('UI.arc'))
+
+
 def main(profile_db=None, out_dir=None):
     """Build the bundle. Both overrides exist for the frozen-save gate, which
     reads a profile the live saves did not fill and must not write its bundle
@@ -2327,7 +2338,7 @@ def main(profile_db=None, out_dir=None):
     sheet, frames = icons.pack()
     print(f'icon sheet {sheet.size}, {len(frames)} icons')
 
-    chrome = build_chrome(ui_tx)
+    chrome = page_chrome()
     bundle = {'characters': out, 'sheet': SHEET, 'targets': {**TARGETS, **SHEET_TARGETS}, 'frames': frames,
               'sheetSize': list(sheet.size), 'atlas': png_b64(sheet, quantize=255),
               'chrome': chrome}

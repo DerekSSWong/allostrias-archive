@@ -50,7 +50,9 @@ def png_b64(im, quantize=0):
     if quantize:
         im = im.quantize(colors=quantize, method=Image.FASTOCTREE)
     b = io.BytesIO()
-    im.save(b, 'PNG', optimize=True)
+    # No optimize=True: over the sheet and Gear Stash images it took encoding
+    # from 0.28 s to 1.25 s for 1.5% less output, paid on every Refresh.
+    im.save(b, 'PNG')
     return 'data:image/png;base64,' + base64.b64encode(b.getvalue()).decode()
 
 
