@@ -13,6 +13,9 @@ crafted item: it rolls with it (seedroll.MODIFIER_KINDS) and its value is merged
 into the item's lines, as the game prints it. A relic's is not applied by the game
 and is left off like a component.
 
+Epic and Legendary copies of one base record are then folded into one card, each
+number at the range it rolled across them (merge(), the user's rule of 2026-09-29).
+
 An item seedroll refuses is shown with its stats withheld and the reason, never
 with its unrolled record values: a desynced roll and a record centre both look
 like real numbers.
@@ -23,6 +26,7 @@ the sheet reads, and its skill grants -- and nothing is graded here.
 """
 import json
 import os
+import re
 import sqlite3
 import sys
 
@@ -159,34 +163,46 @@ def held(st_db, iagd_db):
             yield 'IAGD', ' · '.join(tags), r
 
 
-def card(ca, ix, icons, source, where, r):
-    """One item's card, or None when it is not equipment."""
+def _roll(ca, r):
+    """(class row, recs, paths, roll) for one held row: the records it rolls
+    from -- a crafting bonus among them, a relic's excepted -- and the roll."""
     cls = ca.execute('SELECT class, is_equipment FROM item WHERE path = ?',
                      (r['base_path'],)).fetchone()
     if cls is None:
         raise SystemExit(f"{r['base_path']} is in no catalogue record: rebuild the catalogue")
-    if not cls['is_equipment']:
-        return None
-    base = SB.rec(r['base_path'])
-    recs = {'base': base}
+    recs = {'base': SB.rec(r['base_path'])}
     paths = {'base': r['base_path']}
     for which in ('prefix', 'suffix'):
         if r[f'{which}_path']:
             recs[which] = SB.rec(r[f'{which}_path'])
             paths[which] = r[f'{which}_path']
+    if r['modifier_path'] and cls['class'] != 'ItemRelic':
+        recs['modifier'] = SB.rec(r['modifier_path'])
+    roll = seedroll.compute(recs['base'], r['seed'], recs.get('prefix'), recs.get('suffix'),
+                            modifier=recs.get('modifier'))
+    return cls, recs, paths, roll
+
+
+def _face(ix, recs, paths, roll):
+    """[l, g]: a rolled item's lines with their verdict keys, and its grading."""
+    shown = item_lines.rolled(paths['base'], paths, roll)
+    return [[text, _verdict_key(ix, key)] for key, text in shown], grading(ix, recs, roll, shown)
+
+
+def card(ca, ix, icons, source, where, r):
+    """One item's card, or None when it is not equipment."""
+    cls, recs, paths, roll = _roll(ca, r)
+    if not cls['is_equipment']:
+        return None
+    base = recs['base']
     pfx = SB.affix_of(ca, r['prefix_path'], 'prefix')
     sfx = SB.affix_of(ca, r['suffix_path'], 'suffix')
     name, rarity, _style, _base_name, badge = SB.item_display(base, r['base_path'], pfx, sfx)
-    if r['modifier_path'] and cls['class'] != 'ItemRelic':
-        recs['modifier'] = SB.rec(r['modifier_path'])
-    roll = seedroll.compute(base, r['seed'], recs.get('prefix'), recs.get('suffix'),
-                            modifier=recs.get('modifier'))
-
     out = {
         'n': name, 'r': rarity, 'b': badge,
         'sl': AB.CLASS_TO_LABEL.get(cls['class'], cls['class']),
         'lv': int(float((base.get('levelRequirement') or [0])[0])),
-        'src': source, 'at': where, 'i': icons.want(SB.item_icon(base)),
+        'x': [[source, where]], 'i': icons.want(SB.item_icon(base)),
     }
     set_path = (base.get('itemSetName') or [None])[0]
     if set_path:
@@ -194,9 +210,123 @@ def card(ca, ix, icons, source, where, r):
     if roll.unmodeled:
         out['why'] = 'not replayed: ' + ', '.join(roll.unmodeled)
         return out
-    shown = item_lines.rolled(r['base_path'], paths, roll)
-    out['l'] = [[text, _verdict_key(ix, key)] for key, text in shown]
-    out['g'] = grading(ix, recs, roll, shown)
+    out['l'], out['g'] = _face(ix, recs, paths, roll)
+    return out
+
+
+# ---- duplicates ---------------------------------------------------------------
+# The user's rule (2026-09-29): Epic and Legendary copies of one item are ONE card,
+# each stat at the range it rolled across them. "One item" is one base record: a
+# Mythical and an Empowered share a name but not a record (see item.style_tag).
+# A crafting bonus of the same stat on every copy merges like any stat; otherwise
+# the bonus is taken out of every copy and the card says so instead.
+MERGED = ('Epic', 'Legendary')
+
+_NUM = re.compile(r'\d+(?:\.\d+)?')
+
+
+def shape(text):
+    """A line with its numbers taken out, and a unit's plural with them: "for 1
+    Second" and "for 2 Seconds" are one line."""
+    return re.sub(r'(#\s+\w+?)s\b', r'\1', _NUM.sub('#', text))
+
+
+def merge_lines(copies):
+    """[[text, key]] for several copies' lines: each line once, every number that
+    differs as "[lo–hi]". A line not every copy carries says on how many."""
+    order, texts = [], {}
+    for lines in copies:
+        seen, prev = {}, None
+        for text, key in lines:
+            s = (key, shape(text))
+            seen[s] = seen.get(s, 0) + 1
+            at = (s, seen[s])
+            if at not in texts:
+                order.insert(order.index(prev) + 1 if prev else 0, at)
+                texts[at] = []
+            texts[at].append(text)
+            prev = at
+    out = []
+    for at in order:
+        ts = texts[at]
+        cols = list(zip(*(_NUM.findall(t) for t in ts)))
+        spans = [(min(c, key=float), max(c, key=float)) for c in cols]
+        it = iter(spans)
+        text = _NUM.sub(lambda _: (lambda lo, hi: lo if float(lo) == float(hi)
+                                   else f'[{lo}–{hi}]')(*next(it)),
+                        max(ts, key=len))            # the plural, where one differs
+        if len(ts) < len(copies):
+            text += f' (on {len(ts)} of {len(copies)} copies)'
+        out.append([text, at[0][0]])
+    return out
+
+
+def merge_grading(name, gs):
+    """One grading for the copies. The scorer reads which lines an item carries,
+    never how high they rolled, so the copies must agree on all but the values;
+    each value becomes the span it rolled across them."""
+    if len({json.dumps([g[0], [s[0] for s in g[1]], g[2]]) for g in gs}) != 1:
+        raise ValueError(f'{name}: copies carry different graded lines')
+    scored = [[f, min(g[1][i][1] for g in gs), max(g[1][i][2] for g in gs)]
+              for i, (f, _, _) in enumerate(gs[0][1])]
+    return [gs[0][0], scored, gs[0][2]]
+
+
+def without_bonus(roll):
+    """The roll with the crafting bonus's draws taken back out. The bonus still
+    moved every draw after it, so this is NOT the roll of the item uncrafted."""
+    parts = {f: {w: v for w, v in per.items() if w != 'modifier'} for f, per in roll.parts.items()}
+    stats = dict(roll.stats)
+    for f, per in roll.parts.items():
+        if 'modifier' in per:
+            if parts[f]:
+                stats[f] = sum(parts[f].values())
+            else:
+                del stats[f]
+    return seedroll.Roll(stats, {f: p for f, p in parts.items() if p},
+                         roll.unmodeled, roll.proc_lines, roll.conversions)
+
+
+def bonus_kind(roll):
+    """The stats a crafting bonus rolled on this copy, or None."""
+    return tuple(sorted(f for f, per in roll.parts.items() if 'modifier' in per)) or None
+
+
+def merge(ca, ix, held_cards):
+    """The cards the page shows, from (row, card) per held item: Epic and
+    Legendary copies of one base record folded into one card. A refused copy
+    stays its own card: it has no numbers to fold."""
+    groups, order = {}, []
+    for r, c in held_cards:
+        key = r['base_path'] if c['r'] in MERGED and 'why' not in c else id(c)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append((r, c))
+    out = []
+    for key in order:
+        members = groups[key]
+        if len(members) == 1:
+            out.append(members[0][1])
+            continue
+        rolls = [_roll(ca, r) for r, _ in members]
+        kinds = [bonus_kind(roll) for _, _, _, roll in rolls]
+        merged = dict(members[0][1], x=[c['x'][0] for _, c in members])
+        if len(set(kinds)) == 1:
+            faces = [(c['l'], c['g']) for _, c in members]
+        else:
+            faces = [_face(ix, {k: v for k, v in recs.items() if k != 'modifier'}, paths,
+                           without_bonus(roll)) for _, recs, paths, roll in rolls]
+        merged['l'] = merge_lines([l for l, _ in faces])
+        merged['g'] = merge_grading(merged['n'], [g for _, g in faces])
+        if len(set(kinds)) > 1:
+            n_kinds = len({k for k in kinds if k})
+            crafted = sum(1 for k in kinds if k)
+            note = 'crafting bonus' if n_kinds == 1 else f'{n_kinds} different crafting bonuses'
+            if crafted < len(members):
+                note += f' on {crafted} of {len(members)} copies'
+            merged['l'].append([f'({note})', 0])
+        out.append(merged)
     return out
 
 
@@ -220,14 +350,15 @@ def main(out_dir=None):
     ca.row_factory = sqlite3.Row
     icons = SB.Icons(Textures('Items.arc'), Textures('UI.arc'))
     ix = Index()
-    items, skipped = [], 0
+    each, skipped = [], 0
     iagd_db = os.path.join(S.ROOT, 'cache', 'stash_iagd.sqlite') if cfg.iagd else None
     for source, where, r in held(os.path.join(S.ROOT, 'cache', 'stash.sqlite'), iagd_db):
         c = card(ca, ix, icons, source, where, r)
         if c is None:
             skipped += 1
         else:
-            items.append(c)
+            each.append((r, c))
+    items = merge(ca, ix, each)
     sheet, frames = icons.pack()
     bundle = {
         'items': items, **ix.tables(),
@@ -240,8 +371,9 @@ def main(out_dir=None):
     with open(p, 'w') as fh:
         json.dump(bundle, fh, separators=(',', ':'))
     refused = sum(1 for c in items if 'why' in c)
-    print(f"{len(items)} items ({sum(c['src'] == 'Transfer' for c in items)} transfer, "
-          f"{sum(c['src'] == 'IAGD' for c in items)} IAGD), {skipped} not equipment, "
+    held_n = [x[0] for c in items for x in c['x']]
+    print(f"{len(items)} cards for {len(held_n)} items ({held_n.count('Transfer')} transfer, "
+          f"{held_n.count('IAGD')} IAGD), {skipped} not equipment, "
           f"{refused} not replayed, {len(frames)} icons, "
           f"{os.path.getsize(p) / 1e6:.2f} MB -> {p}")
 

@@ -1576,15 +1576,21 @@ __AFFIX_JS__
     const k = GST.coarse[it.sl];
     return k ? [it.sl, k] : [it.sl];
   }
+  /* Where the copies a card stands for are kept: "IAGD ×2, Transfer Tab 3". */
+  function keptIn(it){
+    const n = {};
+    for (const [s, a] of it.x){ const k = s + (a ? " " + a : ""); n[k] = (n[k] || 0) + 1; }
+    return Object.entries(n).map(([k, c]) => c > 1 ? `${k} ×${c}` : k).join(", ");
+  }
   function stashLines(it){
     if (!it._nl) it._nl = [it.n, ...(it.l || []).map(l => l[0]),
-                           it.sl, it.src + (it.at ? " " + it.at : ""), it.set || ""]
+                           it.sl, keptIn(it), it.set || ""]
       .map(l => GS.normalise(l));
     return it._nl;
   }
   function stashMatches(it){
     if (sview.slots.size && !stashSlots(it).some(sl => sview.slots.has(sl))) return false;
-    if (sview.srcs.size && !sview.srcs.has(it.src)) return false;
+    if (sview.srcs.size && !it.x.some(([s]) => sview.srcs.has(s))) return false;
     return GS.rowsMatch(stashLines(it), sliveRows(), true);
   }
 
@@ -1600,14 +1606,14 @@ __AFFIX_JS__
       <div class="sh"><span class="tile">${sicon(it.i, 46)}</span><span>
         <span class="sn t-${esc(it.r || "Common")}">${badge({badge: it.b})}${h(it.n)}</span>
         <span class="sm">${h(it.sl)}${it.lv ? " · lvl " + it.lv : ""} · ${
-          h(it.src + (it.at ? " " + it.at : ""))}</span>
+          it.x.length > 1 ? it.x.length + " held · " : ""}${h(keptIn(it))}</span>
         ${it.set ? `<span class="sm">${h(it.set)}</span>` : ""}</span></div>
       ${lines}</div>`;
   }
 
   function renderStashSlots(){
     const have = new Set(), srcs = new Set();
-    for (const it of GST.items){ stashSlots(it).forEach(sl => have.add(sl)); srcs.add(it.src); }
+    for (const it of GST.items){ stashSlots(it).forEach(sl => have.add(sl)); it.x.forEach(([s]) => srcs.add(s)); }
     const chip = (attr, v, on) => `<button class="achip" type="button" data-${attr}="${esc(v)}" aria-pressed="${
       on}">${esc(v)}</button>`;
     const group = grp => {

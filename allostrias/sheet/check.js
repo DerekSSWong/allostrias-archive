@@ -2090,7 +2090,9 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
 
   // Search, per line, through the view's own term box.
   const typed=(i,v)=>fire('input', {dataset:{si:String(i)}, value:v, tagName:'INPUT'});
-  const lines=it=>[it.n, ...(it.l||[]).map(l=>l[0]), it.sl, it.src+(it.at?' '+it.at:''), it.set||''].map(GSE.normalise);
+  const kept=it=>{ const n={}; for (const [s,a] of it.x){ const k=s+(a?' '+a:''); n[k]=(n[k]||0)+1; }
+    return Object.entries(n).map(([k,c])=>c>1?`${k} ×${c}`:k).join(', '); };
+  const lines=it=>[it.n, ...(it.l||[]).map(l=>l[0]), it.sl, kept(it), it.set||''].map(GSE.normalise);
   typed(0, 'fire resist');
   const hits=G.items.filter(it=>GSE.rowsMatch(lines(it), [{text:'fire resist'}], true));
   want(hits.length>0 && hits.length<G.items.length, `"fire resist" should narrow the stash, matched ${hits.length}`);
@@ -2104,7 +2106,7 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   typed(0, '');
   // A source chip keeps only that source.
   for (const src of ['Transfer', 'IAGD']){
-    const n=G.items.filter(it=>it.src===src).length;
+    const n=G.items.filter(it=>it.x.some(([s])=>s===src)).length;
     if (!n){ uncovered.push(`no stash item is kept in ${src}`); continue; }
     fire('click', sstub('.achip', {src}));
     want(get('stashn')._html===`${n} of ${G.items.length} items`, `${src}: the stash says "${get('stashn')._html}", expected ${n}`);
@@ -2153,6 +2155,12 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
        'the stash Atlas still shows grade groups');
   want(scards().length===G.items.length, `the stash Atlas renders ${scards().length} of ${G.items.length} items`);
   want(!/<span class="vd"/.test(get('slist')._html), 'an Atlas stash card wears a verdict gutter');
+  // A merged card says how many copies it stands for.
+  const multi=G.items.findIndex(it=>it.x.length>1);
+  if (multi>=0){
+    const h=scards().find(h=>h.startsWith(` data-i="${multi}"`))||'';
+    want(h.includes(`${G.items[multi].x.length} held · `), `${G.items[multi].n}: its card does not say how many are held`);
+  } else uncovered.push('no stash item is held twice, so no card is merged');
   fire('click', sstub('#smode', {}));
   want(get('smodelbl')._html==='Personal', 'the stash mode switch did not come back to Personal');
   console.log(`gear stash: ${G.items.length} items, ${refused.length} not replayed, grades ${JSON.stringify(by)}`);

@@ -12,11 +12,16 @@ socketed into it.
      evidence is evidence about what the view prints.
   4. A refused roll shows no numbers and says why. A crafting bonus rolls with
      the item (seedroll.MODIFIER_KINDS), so its card is the roll WITH it.
+  5. The user's rule (2026-09-29): Epic/Legendary copies of one base record are
+     one card. Every copy's every number lies inside its merged line, and every
+     range's ends were rolled by some copy. A crafting bonus not of one stat on
+     every copy is taken out and named instead.
 
 Reads the live stash databases, which every launch refills; nothing here is a
 count typed in.
 """
 import os
+import re
 import sqlite3
 import sys
 
@@ -36,6 +41,83 @@ class NoArt(SB.Icons):
 
     def __init__(self):
         super().__init__(None, None)
+
+
+_TOKEN = re.compile(r'\[(\d+(?:\.\d+)?)–(\d+(?:\.\d+)?)\]|(\d+(?:\.\d+)?)')
+_ON = re.compile(r' \(on (\d+) of (\d+) copies\)$')
+
+
+def _spans(text):
+    """(shape, [(lo, hi)]) of a merged line; a plain number is lo == hi."""
+    text = _ON.sub('', text)
+    spans = [(float(a), float(b)) if a else (float(n), float(n)) for a, b, n in _TOKEN.findall(text)]
+    return GB.shape(_TOKEN.sub('0', text)), spans
+
+
+def merged(ca, ix, cards):
+    """5: the merge, re-derived from the per-copy cards."""
+    bad, groups, order = [], {}, []
+    for r, c in cards:
+        k = r['base_path'] if c['r'] in GB.MERGED and 'why' not in c else id(c)
+        if k not in groups:
+            groups[k] = []
+            order.append(k)
+        groups[k].append((r, c))
+    out = GB.merge(ca, ix, cards)
+    if len(out) != len(order):
+        return [f'{len(out)} cards after merging, {len(order)} distinct items']
+    n_merged = 0
+    for k, m in zip(order, out):
+        members = groups[k]
+        if len(members) == 1:
+            if m is not members[0][1]:
+                bad.append(f"{m['n']}: a single copy was changed by the merge")
+            continue
+        n_merged += 1
+        name = members[0][1]['n']
+        if m['n'] != name or m['x'] != [c['x'][0] for _, c in members]:
+            bad.append(f'{name}: the merged card is not its {len(members)} copies')
+            continue
+        rolls = [GB._roll(ca, r) for r, _ in members]
+        kinds = [GB.bonus_kind(roll) for *_, roll in rolls]
+        if len(set(kinds)) == 1:
+            copies = [c['l'] for _, c in members]
+        else:
+            copies = [GB._face(ix, {w: v for w, v in recs.items() if w != 'modifier'}, paths,
+                               GB.without_bonus(roll))[0] for _, recs, paths, roll in rolls]
+            n_kinds, crafted = len({x for x in kinds if x}), sum(1 for x in kinds if x)
+            want = ('crafting bonus' if n_kinds == 1 else f'{n_kinds} different crafting bonuses') + (
+                f' on {crafted} of {len(members)} copies' if crafted < len(members) else '')
+            if m['l'][-1] != [f'({want})', 0]:
+                bad.append(f'{name}: its crafting bonuses differ, yet it says {m["l"][-1][0]!r}')
+            only = {f for *_, roll in rolls for f, per in roll.parts.items()
+                    if set(per) == {'modifier'}}
+            if {GB._verdict_key(ix, f) for f in only} & {kk for _, kk in m['l']}:
+                bad.append(f'{name}: a differing crafting bonus is still printed')
+        lines = [(_spans(t), kk, t) for t, kk in m['l']]
+        hit = [[] for _ in lines]
+        for cl in copies:
+            for t, kk in cl:
+                sh = GB.shape(t)
+                nums = [float(x) for x in GB._NUM.findall(t)]
+                at = next((i for i, ((s2, sp), k2, _) in enumerate(lines)
+                           if k2 == kk and s2 == sh and len(sp) == len(nums)
+                           and all(lo <= v <= hi for v, (lo, hi) in zip(nums, sp))), None)
+                if at is None:
+                    bad.append(f'{name}: {t!r} lies in no merged line')
+                else:
+                    hit[at].append(nums)
+        for ((_, sp), _, t), got in zip(lines, hit):
+            if not got:
+                continue            # the crafting-bonus note
+            if any(not any(g[i] == lo for g in got) or not any(g[i] == hi for g in got)
+                   for i, (lo, hi) in enumerate(sp)):
+                bad.append(f'{name}: {t!r} has an end no copy rolled')
+            on = _ON.search(t)
+            if (int(on.group(1)) if on else len(members)) != len(got) or (on and len(got) == len(members)):
+                bad.append(f'{name}: {t!r} is on {len(got)} of {len(members)} copies')
+    print(f'{n_merged} merged cards, {len(out)} cards in all')
+    return bad
 
 
 def main():
@@ -75,7 +157,7 @@ def main():
         socketed += 1
         bare = dict(r)
         bare['component_path'] = bare['augment_path'] = None
-        again = GB.card(ca, ix, icons, c['src'], c['at'], bare)
+        again = GB.card(ca, ix, icons, *c['x'][0], bare)
         if again != c:
             bad.append(f"{c['n']}: its component/augment changed the card")
     if not socketed:
@@ -105,6 +187,7 @@ def main():
         print(f'UNPROVEN -- {refused} item(s) the seed replay does not model yet show no '
               f'stats. Lifting them is pinned in the backlog (the user moves one of each '
               f'into IAGD; test_seedroll_game.py then settles the roll).')
+    bad += merged(ca, ix, cards)
     if bad:
         print('\nFAIL')
         for b in bad[:25]:
