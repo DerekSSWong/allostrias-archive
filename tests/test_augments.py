@@ -71,21 +71,36 @@ def sold(item_id):
         out[f] = min(out.get(f, rank), rank)
     return {f: B['standings'][k][0] for f, k in out.items()}
 
-drops = lambda item_id: bool(ca.execute('SELECT 1 FROM item_drop WHERE item_id = ?', (item_id,)).fetchone())
+def drops(item_id):
+    names = [n for (n,) in ca.execute('SELECT DISTINCT h.name FROM item_drop d JOIN holder h '
+                                      'ON h.id = d.holder_id WHERE d.item_id = ?', (item_id,))]
+    if not names:
+        return 0
+    named = sorted(n for n in names if n)
+    return [len(names), named if len(named) == len(names) <= AG.DROP_NAMED else []]
+
+quest = lambda item_id: int(bool(ca.execute('SELECT 1 FROM quest_reward WHERE item_id = ?',
+                                            (item_id,)).fetchone()))
 routes = collections.Counter()
 for r, c in zip(rows, cards):
     assert dict(c['buy']) == sold(r['id']), (c['n'], c['buy'], sold(r['id']))
-    assert c['drop'] == drops(r['id']), c['n']
+    assert c['drop'] == drops(r['id']) and c['quest'] == quest(r['id']), c['n']
     bps = ca.execute('SELECT b.id, x.known FROM recipe x JOIN item b ON b.id = x.blueprint_id '
                      'WHERE x.output_item_id = ? ORDER BY b.path', (r['id'],)).fetchall()
     assert len(bps) == len(c['bp']), (c['n'], len(bps), c['bp'])
     for b, i in zip(bps, c['bp']):
         got = B['bps'][i]
         assert got['k'] == b['known'] and dict(got['buy']) == sold(b['id']) \
-            and got['drop'] == drops(b['id']), (c['n'], got)
-    route = ('sold' if c['buy'] else '') + ('+blueprint' if c['bp'] else '') + ('+drops' if c['drop'] else '')
+            and got['drop'] == drops(b['id']) and got['quest'] == quest(b['id']), (c['n'], got)
+    route = ('sold' if c['buy'] else '') + ('+blueprint' if c['bp'] else '') \
+        + ('+drops' if c['drop'] else '') + ('+quest' if c['quest'] else '')
     routes[(c['t'], route or 'NO SOURCE')] += 1
     assert c['sl'] and c['a'], c['n']
+unsourced = [(c['n'], i) for c in cards for i in c['bp']
+             if not (B['bps'][i]['k'] or B['bps'][i]['buy'] or B['bps'][i]['drop'] or B['bps'][i]['quest'])]
+print(f'blueprints with no source in the data: {len(unsourced)} {unsourced[:5]}')
+kilrian = next(c for c in cards if c['n'] == "Kilrian's Shattered Soul")
+assert kilrian['drop'] and kilrian['drop'][1] == ['Kilrian, the Tainted Soul'], kilrian['drop']
 print('sources, card by card, as the catalogue answers them:')
 for k, v in sorted(routes.items()):
     print(f'  {v:4} {k[0]:10} {k[1]}')

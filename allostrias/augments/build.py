@@ -20,10 +20,10 @@ as the Gear Stash grades an item.
 What the character has is the PAGE's to compare: standings ship per character in
 the sheet bundle, blueprints per core here. Nothing below knows a character.
 
-A SOURCE THE DATA DOES NOT HAVE IS SHOWN AS MISSING, never guessed. Nine rune
-blueprints (Korvan Swiftness, Dreeg's Vector, Rahn's Might) are sold, dropped
-and known by no record the catalogue reads; Kilrian's Shattered Soul has no
-blueprint and no drop; three named augments no vendor stocks. Each says so.
+A SOURCE THE DATA DOES NOT HAVE IS SHOWN AS MISSING, never guessed: three named
+augments no vendor stocks say so. A quest reward (quest_reward) is its own
+source, never a drop. A drop names who drops it when that is DROP_NAMED or
+fewer named holders -- Kilrian's Shattered Soul, from Kilrian, the Tainted Soul.
 """
 import json
 import os
@@ -62,6 +62,24 @@ SLOT_FLAGS = {
 APPLIED = re.compile(r'\(((?:Applied to|Used in)[^)]*)\)\s*$')
 
 GAMEFACTIONS = 'records/game/gamefactions.dbr'
+
+# A drop from this many named holders or fewer lists them; more is just "Drops".
+DROP_NAMED = 3
+
+
+def dropped_by(ca, item_id):
+    """0 when nothing drops it; else [holders, [names]] -- the names only when
+    every holder is named and there are DROP_NAMED or fewer of them."""
+    rows = ca.execute('SELECT DISTINCT h.name FROM item_drop d JOIN holder h ON h.id = d.holder_id '
+                      'WHERE d.item_id = ?', (item_id,)).fetchall()
+    if not rows:
+        return 0
+    names = sorted(r[0] for r in rows if r[0])
+    return [len(rows), names if len(names) == len(rows) <= DROP_NAMED else []]
+
+
+def quest_given(ca, item_id):
+    return int(bool(ca.execute('SELECT 1 FROM quest_reward WHERE item_id = ?', (item_id,)).fetchone()))
 
 
 def standings():
@@ -169,8 +187,7 @@ def main(out_dir=None):
             'l': [[text, GB._verdict_key(ix, key)] for key, text in shown],
             'g': GB.grading(ix, {'base': d}, roll, shown),
             'buy': sold_by(ca, r['id'], tiers),
-            'drop': int(bool(ca.execute('SELECT 1 FROM item_drop WHERE item_id = ?',
-                                        (r['id'],)).fetchone())),
+            'drop': dropped_by(ca, r['id']), 'quest': quest_given(ca, r['id']),
             'bp': [],
         }
         for b in ca.execute("""SELECT b.id, b.path, x.known FROM recipe x JOIN item b ON b.id = x.blueprint_id
@@ -179,8 +196,7 @@ def main(out_dir=None):
                 bp_ix[b['path']] = len(bps)
                 bps.append({
                     'k': b['known'], 'buy': sold_by(ca, b['id'], tiers),
-                    'drop': int(bool(ca.execute('SELECT 1 FROM item_drop WHERE item_id = ?',
-                                                (b['id'],)).fetchone())),
+                    'drop': dropped_by(ca, b['id']), 'quest': quest_given(ca, b['id']),
                 })
             card['bp'].append(bp_ix[b['path']])
         if not card['sl']:

@@ -892,7 +892,8 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
      an affix, by its lines and not by how high they rolled.</p>
   <p><strong>Augments &amp; Components</strong> lists every augment, component and rune in the game
      with how each is had: the faction and standing that sells it, whether it needs a blueprint and
-     how that blueprint is had — sold, dropped, or known from the start — and whether it drops. A
+     how that blueprint is had — sold, dropped, a quest reward, or known from the start — and whether
+     it drops (naming who, when that is a few named foes) or is a quest reward. A
      source the game data does not hold is shown as missing, never guessed. Personal sets this
      character's reputation against each standing needed, says whether the account has unlocked the
      blueprint, and counts what is held in the materials tab, the transfer stash and Item Assistant.
@@ -1869,7 +1870,7 @@ __AFFIX_JS__
                  facs: new Set(), open: {}, mode: "personal", sig: null, got: null};
   const AUG_TYPES = ["Augment", "Component", "Rune"];
   const AUG_SOURCES = ["Faction vendor", "Faction blueprint", "Dropped blueprint",
-                       "Default blueprint", "Drops", "Not in the game data"];
+                       "Default blueprint", "Drops", "Quest reward", "Not in the game data"];
 
   let gatlasSet = null;
   function augAtlas(){
@@ -1907,9 +1908,11 @@ __AFFIX_JS__
       if (b.k) out.push("Default blueprint");
       if (b.buy.length) out.push("Faction blueprint");
       if (b.drop) out.push("Dropped blueprint");
+      if (b.quest) out.push("Quest reward");
     }
     if (it.drop) out.push("Drops");
-    if (!out.length || bpsOf(it).some(b => !b.k && !b.buy.length && !b.drop))
+    if (it.quest) out.push("Quest reward");
+    if (!out.length || bpsOf(it).some(b => !b.k && !b.buy.length && !b.drop && !b.quest))
       out.push("Not in the game data");
     return [...new Set(out)];
   }
@@ -1928,6 +1931,9 @@ __AFFIX_JS__
     const got = AUG.unlocked[ch.hardcore ? "h" : "t"];
     return got ? it.bp.some(b => got.includes(b)) : null;
   }
+
+  /* "Drops", or who drops it when the build named them (few, all named). */
+  const dropText = (d, what = "") => d[1].length ? `${what}Drops from ${d[1].join(", ")}` : `${what}Drops`;
 
   /* A card's source rows: [text, extra html]. `text` is what search reads and
      what the card prints; the extra is Personal's, for this character. */
@@ -1950,11 +1956,13 @@ __AFFIX_JS__
       }
       for (const b of bps.filter(b => !b.k)){
         for (const [f, s] of b.buy) rows.push([`Blueprint sold by ${facName(f)} · ${s}`, rep(f, s), facName(f)]);
-        if (b.drop) rows.push(["Blueprint drops", ""]);
-        if (!b.buy.length && !b.drop) rows.push(["Blueprint source not in the game data", ""]);
+        if (b.drop) rows.push([b.drop[1].length ? `Blueprint drops from ${b.drop[1].join(", ")}` : "Blueprint drops", ""]);
+        if (b.quest) rows.push(["Blueprint: quest reward", ""]);
+        if (!b.buy.length && !b.drop && !b.quest) rows.push(["Blueprint source not in the game data", ""]);
       }
     }
-    if (it.drop) rows.push(["Drops", ""]);
+    if (it.drop) rows.push([dropText(it.drop), ""]);
+    if (it.quest) rows.push(["Quest reward", ""]);
     if (!rows.length) rows.push(["No source in the game data", ""]);
     if (ch){
       const n = (it.own || []).reduce((a, [, c]) => a + c, 0);

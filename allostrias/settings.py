@@ -42,6 +42,13 @@ TEXT_ARC_RELPATHS = (
     os.path.join('gdx2', 'resources', 'Text_EN.arc'),
     os.path.join('gdx3', 'resources', 'Text_EN.arc'),
 )
+# Quest scripts, one archive per era: what a quest rewards is only here.
+QUEST_ARC_RELPATHS = (
+    os.path.join('resources', 'Quests.arc'),
+    os.path.join('gdx1', 'resources', 'Quests.arc'),
+    os.path.join('gdx2', 'resources', 'Quests.arc'),
+    os.path.join('gdx3', 'resources', 'Quests.arc'),
+)
 # The base archive alone proves a directory is the game install.
 ARZ_RELPATH = ARZ_RELPATHS[0]
 
@@ -70,6 +77,16 @@ class Settings:
     def text_arc_paths(self) -> list[str]:
         """Every English text archive that exists, in load order."""
         return self._present(TEXT_ARC_RELPATHS)
+
+    @property
+    def quest_arc_paths(self) -> list[str]:
+        """Every Quests.arc that exists, in load order."""
+        return self._present(QUEST_ARC_RELPATHS)
+
+    @property
+    def catalogue_sources(self) -> list[str]:
+        """Every archive the catalogue is built from: what staleness compares."""
+        return self.arz_paths + self.quest_arc_paths
 
     def _present(self, relpaths) -> list[str]:
         found = [os.path.join(self.game, rel) for rel in relpaths]

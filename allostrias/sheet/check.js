@@ -2322,8 +2322,13 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
       const count=(it.own||[]).reduce((a,[,c])=>a+c,0);
       if (count) held++;
       want(h.includes(count ? `Held: ${count}` : 'None held'), `${it.n}: its held count is not ${count}`);
-      const sources=it.buy.length+bps.length+it.drop;
+      const sources=it.buy.length+bps.length+(it.drop?1:0)+it.quest;
       if (!sources) want(h.includes('No source in the game data'), `${it.n}: has no source and does not say so`);
+      if (it.drop) want(h.includes(it.drop[1].length ? `Drops from ${it.drop[1].map(escT).join(', ')}` : '>Drops<'),
+                        `${it.n}: its drop row is not "${it.drop[1].length ? 'Drops from '+it.drop[1] : 'Drops'}"`);
+      if (it.quest) want(h.includes('>Quest reward<'), `${it.n}: its quest reward is not said`);
+      for (const b of bps.filter(b=>!b.k && b.quest))
+        want(h.includes('Blueprint: quest reward'), `${it.n}: its blueprint's quest reward is not said`);
       if (it.lv) want(h.includes(`Required Player Level: ${it.lv}</p>`), `${it.n}: no Required Player Level`);
     }
     fire('click', gstub('.achip', {gtype:t}));
@@ -2333,7 +2338,8 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   if (!unmet) uncovered.push(`${opener.name} meets every faction standing, so no unmet row is drawn`);
   if (!bpOn || !bpOff) uncovered.push(`the account has ${bpOn?'every':'no'} blueprint these need`);
   if (!held) uncovered.push('nothing here is held');
-  if (!G.items.some(it=>!it.buy.length && !it.bp.length && !it.drop)) uncovered.push('every card has a source');
+  if (!G.items.some(it=>!it.buy.length && !it.bp.length && !it.drop && !it.quest)) uncovered.push('every card has a source');
+  if (!G.items.some(it=>it.drop && it.drop[1].length)) uncovered.push('no card names who drops it');
 
   // A faction chip keeps what that faction sells, or sells the blueprint of.
   const fac=Object.keys(G.factions).find(f=>G.items.some(it=>it.buy.some(([x])=>x===f)));

@@ -30,11 +30,21 @@ THREE THINGS HERE ARE EASY TO GET WRONG AND NONE OF THEM FAILS LOUDLY:
     gives, while the sandbox CREATURES are real bosses that really drop. Both
     are asserted, so neither can be "fixed" to match the other.
 
+  * A HOLDER CAN NAME AN ITEM DIRECTLY. `lootMisc<N>Item<N>` on a creature is a
+    loot slot holding an item record, not a table: Kilrian, the Tainted Soul
+    drops Kilrian's Shattered Soul that way and through nothing else, as do
+    19 other components, lore notes and quest items. Only that field family is
+    followed. The creature's own worn gear (`default*Piece`, `loot*HandItem*`)
+    also names items directly, but that is what it wears; whether it drops is
+    not established here.
+
 WHAT THIS IS NOT: a definition of what counts as a Monster Infrequent.
 Reachability reaches 410 of the 421 real MI names -- 7 are not monster drops
 at all and 4 the walk cannot see -- so using it as the membership rule would
 silently delete real items. This answers "where does it come from", nothing else.
 """
+import re
+
 from ...archive import values as V
 
 # The three classes that are loot tables. LevelTable is the one that looks
@@ -43,6 +53,8 @@ TABLE_CLASSES = frozenset({
     'LootItemTable_DynWeight', 'LootMasterTable', 'LevelTable'})
 ITEM_PREFIX = 'records/items/'
 MONSTER_CLASS = 'Monster'
+# A holder's direct loot slot: an item record, dropped as itself.
+DIRECT_FIELD = re.compile(r'^lootMisc\d+Item\d+$')
 
 
 def _references(attrs) -> set[str]:
@@ -79,12 +91,15 @@ class Collector:
 
     def __init__(self, conn, db, tags: dict[str, str]):
         self.conn, self.tags = conn, tags
-        self.graph: dict[str, tuple[str, set[str]]] = {}
+        # path -> (class, every .dbr it names, items named in a direct loot slot)
+        self.graph: dict[str, tuple[str, set[str], set[str]]] = {}
         self.monster: dict[str, tuple] = {}
 
     def offer(self, path: str, kept: dict):
         record_class = V.first_str(kept, 'Class') or ''
-        self.graph[path] = (record_class, _references(kept))
+        direct = {v.lower() for f, vs in kept.items() if DIRECT_FIELD.match(f)
+                  for v in vs if isinstance(v, str) and v.lower().startswith(ITEM_PREFIX)}
+        self.graph[path] = (record_class, _references(kept), direct)
         if record_class == MONSTER_CLASS:
             # Collected in the one pass that already holds the record. A
             # holder is named by many items and each of their tiers, so
@@ -108,7 +123,7 @@ class Collector:
         item_ids = {row['path']: row['id']
                     for row in conn.execute('SELECT id, path FROM item')}
 
-        tables = {p for p, (cls, _) in graph.items() if cls in TABLE_CLASSES}
+        tables = {p for p, (cls, _, _) in graph.items() if cls in TABLE_CLASSES}
 
         def expand(roots: frozenset[str]) -> set[str]:
             """Every item record reachable from these tables, following nesting.
@@ -131,7 +146,7 @@ class Collector:
                 if current in seen:
                     continue
                 seen.add(current)
-                for ref in graph.get(current, ('', ()))[1]:
+                for ref in graph.get(current, ('', (), ()))[1]:
                     if ref in tables:
                         stack.append(ref)
                     elif ref.startswith(ITEM_PREFIX) and ref in graph:
@@ -148,11 +163,12 @@ class Collector:
 
         holder_id = 0
         for path in sorted(graph):
-            record_class, refs = graph[path]
+            record_class, refs, direct = graph[path]
             if path in tables:
                 continue
             roots = frozenset(refs & tables)
-            if not roots:
+            direct = {d for d in direct if d in graph}      # a dangling slot names nothing
+            if not roots and not direct:
                 continue
             holder_id += 1
             tag, classification, min_lvl, max_lvl, xp = monster.get(
@@ -164,7 +180,7 @@ class Collector:
                 classification, min_lvl, max_lvl, xp))
             if roots not in memo:
                 memo[roots] = expand(roots)
-            for item_path in memo[roots]:
+            for item_path in memo[roots] | direct:
                 item_id = item_ids.get(item_path)
                 if item_id is not None:
                     drop_rows.append((item_id, holder_id))
@@ -188,4 +204,7 @@ class Collector:
                 'distinct monster names': named,
                 'root sets expanded': len(memo),
                 'monsters with a tag but no name': unnamed,
-                'item-drop pairs': len(drop_rows)}
+                'item-drop pairs': len(drop_rows),
+                'items only in a direct loot slot': len(
+                    {d for _, _, ds in graph.values() for d in ds if d in item_ids}
+                    - {i for m in memo.values() for i in m})}

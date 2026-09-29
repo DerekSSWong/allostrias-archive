@@ -91,7 +91,7 @@ original = os.stat(target)
 os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns + 1_000_000_000))
 try:
     conn = catalogue.connect(cfg.catalogue_db, create=False)
-    reason = catalogue.staleness(conn, cfg.game, cfg.arz_paths)
+    reason = catalogue.staleness(conn, cfg.game, cfg.catalogue_sources)
     conn.close()
     assert reason and 'GDX2' in reason, f'update not detected, got {reason!r}'
     print('simulated update:', reason)
@@ -111,7 +111,7 @@ try:
     with open(probe, 'a', encoding='utf-8') as fh:
         fh.write('\n# rebuild-gate probe\n')
     conn = catalogue.connect(cfg.catalogue_db, create=False)
-    reason = catalogue.staleness(conn, cfg.game, cfg.arz_paths)
+    reason = catalogue.staleness(conn, cfg.game, cfg.catalogue_sources)
     conn.close()
     assert reason == 'extractor code changed', \
         f'editing an extractor did not invalidate the build (got {reason!r})'
@@ -123,7 +123,7 @@ finally:
 # None here: step 4 above deliberately leaves the archive stamp disagreeing
 # with disk, so an archive reason is still outstanding and expected.
 conn = catalogue.connect(cfg.catalogue_db, create=False)
-after_revert = catalogue.staleness(conn, cfg.game, cfg.arz_paths)
+after_revert = catalogue.staleness(conn, cfg.game, cfg.catalogue_sources)
 conn.close()
 assert after_revert != 'extractor code changed', \
     'reverting the edit left the build looking code-stale -- the digest is ' \
@@ -154,9 +154,9 @@ rows = conn.execute('SELECT ordinal, relpath FROM source_archive '
                     'ORDER BY ordinal').fetchall()
 version = conn.execute(
     "SELECT value FROM build_meta WHERE key='schema_version'").fetchone()[0]
-after_restore = catalogue.staleness(conn, cfg.game, cfg.arz_paths)
+after_restore = catalogue.staleness(conn, cfg.game, cfg.catalogue_sources)
 conn.close()
-assert [r['ordinal'] for r in rows] == [0, 1, 2, 3], rows
+assert [r['ordinal'] for r in rows] == list(range(len(cfg.catalogue_sources))), [tuple(r) for r in rows]
 assert version == catalogue.SCHEMA_VERSION
 print(f'stamp: schema {version}, {len(rows)} archives in load order')
 # The mtime was restored in step 4, so the stamp now disagrees with disk --

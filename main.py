@@ -40,8 +40,8 @@ from allostrias.archive import gdc, gst
 from allostrias.archive.savecrypt import SaveError
 from allostrias.db import catalogue, character, freeze, iagd, stash
 from allostrias.db.extract import (affixes, bonuses, factions, items, mi,
-                                   recipes, shared_pass, skills, vendors,
-                                   zones)
+                                   quests, recipes, shared_pass, skills,
+                                   vendors, zones)
 
 
 # Shown by `status` only. The tier is what the database stores; naming it is a
@@ -131,7 +131,7 @@ def cmd_status(cfg: S.Settings, _args) -> int:
         return 0
     conn = catalogue.connect(cfg.catalogue_db, create=False)
     try:
-        reason = catalogue.staleness(conn, cfg.game, cfg.arz_paths)
+        reason = catalogue.staleness(conn, cfg.game, cfg.catalogue_sources)
     finally:
         conn.close()
     print(f'\n{"rebuild needed: " + reason if reason else "up to date"}')
@@ -143,7 +143,7 @@ def cmd_rebuild(cfg: S.Settings, args) -> int:
     if not fresh and not args.force:
         conn = catalogue.connect(cfg.catalogue_db, create=False)
         try:
-            reason = catalogue.staleness(conn, cfg.game, cfg.arz_paths)
+            reason = catalogue.staleness(conn, cfg.game, cfg.catalogue_sources)
         finally:
             conn.close()
         if reason is None:
@@ -175,13 +175,13 @@ def cmd_rebuild(cfg: S.Settings, args) -> int:
             # whole record tree, so one walk feeds both. See that module --
             # this tuple is no longer the whole story.
             for extractor in (items, affixes, bonuses, shared_pass, mi,
-                              factions, recipes, skills, vendors,
+                              factions, recipes, quests, skills, vendors,
                               zones):
                 for label, count in extractor.extract(conn, db, tags).items():
                     print(f'  {label:22} {count}')
         # Stamped last, on purpose: a stamp written before the data would mark
         # a build that then failed as fresh.
-        catalogue.stamp(conn, cfg.game, cfg.arz_paths)
+        catalogue.stamp(conn, cfg.game, cfg.catalogue_sources)
     finally:
         conn.close()
     size = os.path.getsize(cfg.catalogue_db) / 1e6

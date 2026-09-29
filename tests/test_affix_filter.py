@@ -31,6 +31,8 @@ from allostrias import settings as S                     # noqa: E402
 from allostrias import item_stats as I                   # noqa: E402
 from allostrias.affixes import filter as F               # noqa: E402
 from allostrias.db import catalogue                      # noqa: E402
+from allostrias.db.extract import drops                  # noqa: E402
+from allostrias.sheet import build as SB                 # noqa: E402
 
 cfg = S.load()
 conn = catalogue.connect(cfg.catalogue_db, create=False)
@@ -81,12 +83,27 @@ def patched(path):
     return not os.path.isfile(p) or open(p, encoding='utf-8').read() != I.read_rel(path)
 
 
+# ⚠️ AND GD Lens's drop walk follows loot TABLES only. A creature's direct loot
+# slot (drops.DIRECT_FIELD: Nuktuk's Dung Divider) makes a record droppable here
+# and not there, which can move the tier "the strongest that can drop" picks. A
+# diff is excused on that ground only where a holder names a carrier in that
+# field -- read off the holder's own record.
+def direct_drop(path):
+    return any(drops.DIRECT_FIELD.match(f) and path in (v.lower() for v in vs)
+               for (h,) in conn.execute('SELECT h.path FROM item_drop d JOIN holder h ON h.id = d.holder_id '
+                                        'JOIN item i ON i.id = d.item_id WHERE i.path = ?', (path,))
+               for f, vs in (SB.rec(h) or {}).items())
+
+
 differ = [t for t in set(bases) | set(theirs_bases) if bases.get(t) != theirs_bases.get(t)]
-unexplained = [t for t in differ if not all(patched(p) for p in carriers.get(t, []))]
+direct = [t for t in differ if any(direct_drop(p) for p in carriers.get(t, []))]
+unexplained = [t for t in differ if t not in direct
+               and not all(patched(p) for p in carriers.get(t, []))]
 assert not unexplained, (f'{len(unexplained)} base lines differ from GD Lens on records '
                          f'the game has not changed: {unexplained[:5]}')
-print(f'  {len(bases) - len(differ)} base lines identical; {len(differ)} differ, '
-      f'each carried only by records added or patched since the snapshot')
+print(f'  {len(bases) - len(differ)} base lines identical; {len(differ)} differ: {len(direct)} '
+      f'dropped from a direct loot slot GD Lens does not follow ({direct[:3]}), the rest '
+      f'carried only by records added or patched since the snapshot')
 
 # Both engines, same colours. The grades are arbitrary but cover every one,
 # and a tag with no grade at all, which is F.

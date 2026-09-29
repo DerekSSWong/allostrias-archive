@@ -445,6 +445,17 @@ CREATE TABLE IF NOT EXISTS recipe (
     known          INTEGER NOT NULL
 );
 
+-- What a quest can hand out (extract/quests.py): an item named in a .qst
+-- script, directly or through a loot table. NOT a drop -- item_drop feeds the
+-- MI rule and a quest reward is no MI. `quest` is the script's path in
+-- Quests.arc without its extension (gdareag/sq_dreeg_01); which step gives
+-- it, and whether it is one of a choice, is not read.
+CREATE TABLE IF NOT EXISTS quest_reward (
+    item_id INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
+    quest   TEXT    NOT NULL,
+    PRIMARY KEY (item_id, quest)
+) WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS recipe_reagent (
     recipe_id   INTEGER NOT NULL REFERENCES recipe(id) ON DELETE CASCADE,
     slot        TEXT    NOT NULL,   -- 'base', '1', '2', ...
