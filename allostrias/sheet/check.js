@@ -9,6 +9,7 @@ const html = fs.readFileSync(process.argv[2], 'utf8');
 const bundle = html.match(/<script id="bundle" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const affixJson = html.match(/<script id="affixes" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const stashJson = html.match(/<script id="gearstash" type="application\/json">([\s\S]*?)<\/script>/)[1];
+const augJson = html.match(/<script id="augments" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const code = html.match(/<script>\n([\s\S]*?)<\/script>/)[1];
 // A block of lines as the page prints them (the user's rule, 2026-09-29): a
 // granted skill's own lines lose the "X: " the data keeps, and its header bolds
@@ -33,6 +34,7 @@ const els={}; const get=id=>(els[id]||=new El());
 els.bundle=new El(); els.bundle._html=bundle;
 els.affixes=new El(); els.affixes._html=affixJson;
 els.gearstash=new El(); els.gearstash._html=stashJson;
+els.augments=new El(); els.augments._html=augJson;
 // The Affixes view's download, captured: a link the page clicks, and the blob
 // it points at.
 const saved=[];
@@ -1440,6 +1442,8 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
        `the second navigation button is not Affixes: ${navBtns[1]}`);
   want(/data-view="stash"[^>]*>Gear Stash$/.test(navBtns[2]||''),
        `the third navigation button is not Gear Stash: ${navBtns[2]}`);
+  want(/data-view="augments"[^>]*>Augments &amp; Components$/.test(navBtns[3]||''),
+       `the fourth navigation button is not Augments & Components: ${navBtns[3]}`);
   for (const st of ['', ':hover', ':active', ':disabled'])
     want(new RegExp(`\\.navbtn\\.char${st}\\{[^}]*border-image(-source)?:url\\("data:image/png;base64,[^"]{200,}`).test(html),
          `the Character button has no ${st||'resting'} art`);
@@ -2248,6 +2252,125 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   fire('click', sstub('#smode', {}));
   want(get('smodelbl')._html==='Personal', 'the stash mode switch did not come back to Personal');
   console.log(`gear stash: ${G.items.length} items, ${refused.length} not replayed, grades ${JSON.stringify(by)}`);
+  fire('click', nav('character'));
+}
+
+// ---- the Augments & Components view -----------------------------------------
+// Driven like the Gear Stash. Every badge is derived HERE from the bundle and
+// the character's standings -- sold-by rows, the standing numbers and whether
+// they are met, the blueprint's state for this character's core, what is held --
+// and held to what the page printed.
+{
+  const G=JSON.parse(augJson);
+  const asRec=g=>[0,0,0,0,0,g[0],g[1],g[2]];
+  const sskills=c=>({...skillsOf(c), ...Object.fromEntries((c.masteries||[]).map(m=>['mastery:'+m.n,'priority']))});
+  const gstub=(sel, dataset)=>{ const el={id:'', dataset}; el.closest=s=>(s===sel||s==='#augview')?el:null; return el; };
+  const nav=v=>{ const el={id:'', dataset:{view:v}}; el.closest=s=>s==='.navbtn'?el:null; return el; };
+  const ggroups=()=>{ const out={};
+    for (const m of get('glist')._html.matchAll(/<details class="agrade" data-g="([^"]*)"[^>]*>[\s\S]*?<span class="n">([^<]*)<\/span>/g)) out[m[1]]=m[2];
+    return out; };
+  const gcards=()=>get('glist')._html.split('<div class="acard scard gcard"').slice(1);
+  const cardAt=h=>G.items[Number((/^ data-i="(\d+)"/.exec(h)||[])[1])];
+  const n=v=>v.toLocaleString('en-US');
+  const need=s=>G.standings.find(([k])=>k===s)[1];
+  const typed=(i,v)=>fire('input', {dataset:{gi:String(i)}, value:v, tagName:'INPUT'});
+
+  fire('click', nav('augments'));
+  want(get('augview').hidden===false && get('mainview').hidden===true && get('stashview').hidden===true
+       && get('affixview').hidden===true, 'choosing Augments & Components did not show its view alone');
+  want(get('augn')._html===String(G.items.length), `the view counts "${get('augn')._html}", the bundle ${G.items.length}`);
+  for (const t of ['Augment','Component','Rune'])
+    want(G.items.some(it=>it.t===t), `the bundle holds no ${t}`);
+
+  // Personal: every grade group's count is the scorer's.
+  const want_=AXE.wantedFields(paintedVerdicts(), G), by={};
+  for (const it of G.items){ const g=AXE.score(asRec(it.g), want_, sskills(opener), G)[1]; by[g]=(by[g]||0)+1; }
+  const groups=ggroups();
+  for (const g of Object.keys(by))
+    want(groups[g]===String(by[g]), `augment grade ${g}: the page shows ${groups[g]}, the scorer ${by[g]}`);
+
+  // Every card of each type, in Personal: a Type chip opens every group it has
+  // a card in. Each card prints its lines, its slot clause and its sources.
+  const oc=B.characters.find(c=>c.name===opener.name)||opener;
+  const core=oc.hardcore ? 'h' : 't', unlocked=G.unlocked[core];
+  let met=0, unmet=0, bpOn=0, bpOff=0, held=0, seen=0;
+  for (const t of ['Augment','Component','Rune']){
+    fire('click', gstub('.achip', {gtype:t}));
+    const total=G.items.filter(it=>it.t===t).length;
+    want(get('augn')._html===`${total} of ${G.items.length}`, `${t}: the view says "${get('augn')._html}", expected ${total}`);
+    const hs=gcards();
+    want(hs.length===total, `${t}: ${hs.length} cards rendered, ${total} in the bundle`);
+    for (const h of hs){
+      const it=cardAt(h); seen++;
+      want(displayed(it.l.map(([x])=>x)).every(l=>h.includes(l)), `${it.n}: its card does not print its lines`);
+      want(h.includes(`${escT(it.t)} · ${escT(it.a)}`), `${it.n}: its card does not print its type and slot clause`);
+      const bps=it.bp.map(b=>G.bps[b]);
+      for (const [f, st] of [...it.buy, ...bps.filter(b=>!b.k).flatMap(b=>b.buy)]){
+        const have=oc.factions[f], ok=have>=need(st);
+        ok ? met++ : unmet++;
+        want(h.includes(`<b>${escT(G.factions[f])}</b> · ${st} <span class="${ok?'ok':'no'}">${n(have)} / ${n(need(st))}</span>`),
+             `${it.n}: no ${ok?'met':'unmet'} ${G.factions[f]} · ${st} row at ${have}`);
+      }
+      if (bps.some(b=>b.k)) want(h.includes('Blueprint: known by default'), `${it.n}: its default blueprint is not said`);
+      else if (bps.length){
+        const on=unlocked ? it.bp.some(b=>unlocked.includes(b)) : null;
+        if (on===null) want(h.includes('no formulas file for this mode'), `${it.n}: an unknown blueprint state is not said`);
+        else { on ? bpOn++ : bpOff++;
+          want(h.includes(on ? '<li class="ok">Blueprint unlocked' : '<li class="no">Blueprint not unlocked'),
+               `${it.n}: its blueprint should read ${on?'unlocked':'not unlocked'}`); }
+      }
+      const count=(it.own||[]).reduce((a,[,c])=>a+c,0);
+      if (count) held++;
+      want(h.includes(count ? `Held: ${count}` : 'None held'), `${it.n}: its held count is not ${count}`);
+      const sources=it.buy.length+bps.length+it.drop;
+      if (!sources) want(h.includes('No source in the game data'), `${it.n}: has no source and does not say so`);
+      if (it.lv) want(h.includes(`Required Player Level: ${it.lv}</p>`), `${it.n}: no Required Player Level`);
+    }
+    fire('click', gstub('.achip', {gtype:t}));
+  }
+  want(seen===G.items.length, `${seen} of ${G.items.length} cards were checked`);
+  if (!met) uncovered.push(`${opener.name} meets no faction standing an augment needs`);
+  if (!unmet) uncovered.push(`${opener.name} meets every faction standing, so no unmet row is drawn`);
+  if (!bpOn || !bpOff) uncovered.push(`the account has ${bpOn?'every':'no'} blueprint these need`);
+  if (!held) uncovered.push('nothing here is held');
+  if (!G.items.some(it=>!it.buy.length && !it.bp.length && !it.drop)) uncovered.push('every card has a source');
+
+  // A faction chip keeps what that faction sells, or sells the blueprint of.
+  const fac=Object.keys(G.factions).find(f=>G.items.some(it=>it.buy.some(([x])=>x===f)));
+  const byFac=G.items.filter(it=>[...it.buy, ...it.bp.flatMap(b=>G.bps[b].buy)].some(([x])=>x===fac)).length;
+  fire('click', gstub('.achip', {gfac:fac}));
+  want(get('augn')._html===`${byFac} of ${G.items.length}`, `${G.factions[fac]}: the view says "${get('augn')._html}", expected ${byFac}`);
+  fire('click', gstub('.achip', {gfac:fac}));
+  // A source chip, and search over what the card prints.
+  const dflt=G.items.filter(it=>it.bp.some(b=>G.bps[b].k)).length;
+  fire('click', gstub('.achip', {gsrc:'Default blueprint'}));
+  want(get('augn')._html===`${dflt} of ${G.items.length}`, `Default blueprint: the view says "${get('augn')._html}", expected ${dflt}`);
+  fire('click', gstub('#gclear', {}));
+  typed(0, G.factions[fac]);
+  want(get('augn')._html===`${byFac} of ${G.items.length}`,
+       `searching "${G.factions[fac]}": the view says "${get('augn')._html}", the faction chip ${byFac}`);
+  typed(0, '');
+  // A slot chip reaches what applies there, a coarse one every weapon it covers.
+  const ring=G.items.filter(it=>it.sl.includes('Ring')).length;
+  fire('click', gstub('.achip', {gslot:'Ring'}));
+  want(get('augn')._html===`${ring} of ${G.items.length}`, `Ring: the view says "${get('augn')._html}", expected ${ring}`);
+  fire('click', gstub('#gclear', {}));
+  const twoH=G.items.filter(it=>it.sl.some(sl=>G.coarse[sl]==='2H Weapon')).length;
+  fire('click', gstub('.achip', {gslot:'2H Weapon'}));
+  want(get('augn')._html===`${twoH} of ${G.items.length}`, `2H Weapon: the view says "${get('augn')._html}", expected ${twoH}`);
+  fire('click', gstub('#gclear', {}));
+
+  // Atlas: every card, no grades, no gutter, nothing about this character.
+  fire('click', gstub('#gmode', {}));
+  const atlas=get('glist')._html;
+  want(get('gmodelbl')._html==='Atlas' && !/class="agrade"/.test(atlas), 'the augments Atlas still shows grade groups');
+  want(gcards().length===G.items.length, `the augments Atlas renders ${gcards().length} of ${G.items.length}`);
+  want(!/<span class="vd"|class="(ok|no)"|Held: |None held|Blueprint (not )?unlocked/.test(atlas),
+       'an Atlas card carries something of this character');
+  fire('click', gstub('#gmode', {}));
+  want(get('gmodelbl')._html==='Personal', 'the augments mode switch did not come back to Personal');
+  console.log(`augments: ${G.items.length} cards, grades ${JSON.stringify(by)}; standings ${met} met / ${unmet} unmet, `
+              + `blueprints ${bpOn} unlocked / ${bpOff} not, ${held} held`);
   fire('click', nav('character'));
 }
 

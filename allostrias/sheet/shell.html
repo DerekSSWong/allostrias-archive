@@ -705,6 +705,22 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
    element that uses it, and this one is a 1.4 MB data URI -- 3.5 s to open the
    view, 6.7 s to switch to Atlas. */
 .agrade[data-g="U"] summary .g{color:var(--dim)}
+
+/* ---------- the Augments & Components view ----------
+   The Gear Stash's cards, with the slot clause the game prints under the name
+   and, below the lines, how the thing is had: a row per source. Personal adds
+   the character's standing against the one needed, whether the account has the
+   blueprint, and how many are held. Its icon sheet is its own, written into
+   <style id="gatlas"> for the reason the stash's is. */
+.navbtn.long{font-size:11px; letter-spacing:.03em; line-height:1.1; padding:0 2px}
+.gsrc{list-style:none; margin:6px 0 0; padding:0; font:12px Jura,system-ui,sans-serif; color:var(--dim)}
+/* One row of prose per source, not the stat lines' flex row with its gutter. */
+.acard .gsrc li{display:block; padding:1px 0}
+.gsrc b{font-weight:600; color:var(--ink)}
+.gsrc .ok{color:var(--t-rare)}
+.gsrc .no{color:#E0674F}
+.gsrc .unk{color:var(--faint)}
+.gsrc span{white-space:nowrap}
 </style>
 
 <div class="rail" id="rail" data-open="0">
@@ -728,14 +744,14 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     </div>
   </div>
 
-  <!-- Character is this view; Affixes and Gear Stash have their own. The
-       other four have neither: choosing one hides this view and shows nothing
-       in its place. -->
+  <!-- Character is this view; Affixes, Gear Stash and Augments & Components
+       have their own. The other three have neither: choosing one hides this
+       view and shows nothing in its place. -->
   <nav class="navbar" id="navbar" aria-label="Sections">
     <button class="navbtn char" type="button" data-view="character" aria-current="page">Character</button>
     <button class="navbtn" type="button" data-view="affixes">Affixes</button>
     <button class="navbtn" type="button" data-view="stash">Gear Stash</button>
-    <button class="navbtn" type="button" data-view="nav4" aria-label="Unassigned"></button>
+    <button class="navbtn long" type="button" data-view="augments">Augments &amp; Components</button>
     <button class="navbtn" type="button" data-view="nav5" aria-label="Unassigned"></button>
     <button class="navbtn" type="button" data-view="nav6" aria-label="Unassigned"></button>
     <button class="navbtn" type="button" data-view="nav7" aria-label="Unassigned"></button>
@@ -817,6 +833,31 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
       <div id="slist"></div>
     </div>
   </section>
+
+  <!-- The Augments & Components view: every augment, component and rune, and
+       how each is had. Personal grades them for the character on screen and
+       sets its standing and the account's blueprints against each source;
+       Atlas lists them all, ungraded. -->
+  <style id="gatlas"></style>
+  <section class="panel affixview" id="augview" hidden>
+    <div class="hd ahd">
+      <div class="amodebox"><span class="amodelbl" id="gmodelbl" aria-hidden="true">Personal</span>
+      <button class="amode" id="gmode" type="button" role="switch" aria-checked="false"
+              aria-label="Atlas view" title="Personal / Atlas"><span class="ml" data-m="personal" title="Personal"></span><span
+              class="trk"><span class="knob"></span></span><span class="ml" data-m="atlas" title="Atlas"></span></button></div>
+      <span class="n" id="augn"></span></div>
+    <div class="bd">
+      <div class="aquery">
+        <div id="gterms"></div>
+        <div class="aqbar">
+          <button class="abtn" type="button" id="gadd">+ Term</button>
+          <button class="abtn" type="button" id="gclear">Clear</button>
+        </div>
+      </div>
+      <div class="aslots" id="gslots"></div>
+      <div id="glist"></div>
+    </div>
+  </section>
 </div>
 
 <div class="tipfloat panel" id="tip" role="tooltip" hidden></div>
@@ -849,11 +890,19 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
      game prints it (a relic's is not applied by the game and is left off). An item the replay cannot
      roll yet shows no numbers rather than unrolled ones. Personal grades each item as Affixes grades
      an affix, by its lines and not by how high they rolled.</p>
+  <p><strong>Augments &amp; Components</strong> lists every augment, component and rune in the game
+     with how each is had: the faction and standing that sells it, whether it needs a blueprint and
+     how that blueprint is had — sold, dropped, or known from the start — and whether it drops. A
+     source the game data does not hold is shown as missing, never guessed. Personal sets this
+     character's reputation against each standing needed, says whether the account has unlocked the
+     blueprint, and counts what is held in the materials tab, the transfer stash and Item Assistant.
+     Reputation is read from the save's faction block by GDStash's slot order.</p>
 </footer>
 
 <script id="bundle" type="application/json">__BUNDLE__</script>
 <script id="affixes" type="application/json">__AFFIXES__</script>
 <script id="gearstash" type="application/json">__GEARSTASH__</script>
+<script id="augments" type="application/json">__AUGMENTS__</script>
 <script>
 __SEARCH_JS__
 __AFFIX_JS__
@@ -1580,14 +1629,17 @@ __AFFIX_JS__
     $("satlas").textContent = '.sico{background-image:url("' + GST.atlas + '")}';
     satlasSet = GST.atlas;
   }
-  function sicon(i, box){
-    const f = GST.frames[i];
+  /* An icon off a view's own sheet: `B` carries frames and sheetSize, `cls` is
+     the class its <style> rule paints the sheet onto. */
+  function atlasIcon(B, cls, i, box){
+    const f = B.frames[i];
     if (!f) return "";
-    const [x, y, w, h] = f, k = Math.min(box / w, box / h, 1), S = GST.sheetSize;
-    return `<span class="ico sico" style="width:${w*k}px;height:${h*k}px;`
+    const [x, y, w, h] = f, k = Math.min(box / w, box / h, 1), S = B.sheetSize;
+    return `<span class="ico ${cls}" style="width:${w*k}px;height:${h*k}px;`
          + `background-size:${S[0]*k}px ${S[1]*k}px;`
          + `background-position:${-x*k}px ${-y*k}px"></span>`;
   }
+  const sicon = (i, box) => atlasIcon(GST, "sico", i, box);
 
   function stashSkills(ch){
     const out = wantedSkills(ch);
@@ -1799,6 +1851,266 @@ __AFFIX_JS__
     if (i === undefined || e.target.tagName !== "SELECT") return;
     sview.rows[Number(i)].op = e.target.value;
     renderStashList();
+  });
+
+  /* ---- the Augments & Components view -------------------------------------
+     Every augment, component and rune (allostrias/augments/build.py), at its
+     stored values -- none of them roll. Personal grades each as the Gear Stash
+     grades an item, and sets the character against every source: its standing
+     with the faction beside the standing needed, whether the account has the
+     blueprint (per core: a hardcore character reads the hardcore files), and
+     how many are held. Atlas: every card, ungraded, sources only.
+
+     ⚠️ A SOURCE THE DATA LACKS SAYS SO. "No source in the game data" and
+     "blueprint source not in the game data" are statements about the records,
+     not about the game; neither is ever filled in with a guess. */
+  let AUG = JSON.parse($("augments").textContent);
+  const gview = {rows: [{op: "AND", text: ""}], types: new Set(), slots: new Set(), srcs: new Set(),
+                 facs: new Set(), open: {}, mode: "personal", sig: null, got: null};
+  const AUG_TYPES = ["Augment", "Component", "Rune"];
+  const AUG_SOURCES = ["Faction vendor", "Faction blueprint", "Dropped blueprint",
+                       "Default blueprint", "Drops", "Not in the game data"];
+
+  let gatlasSet = null;
+  function augAtlas(){
+    if (gatlasSet === AUG.atlas) return;
+    $("gatlas").textContent = '.gico{background-image:url("' + AUG.atlas + '")}';
+    gatlasSet = AUG.atlas;
+  }
+  const gicon = (i, box) => atlasIcon(AUG, "gico", i, box);
+
+  function augGraded(){
+    const ch = CH[state.i];
+    affixIndex();                             // loads the shared grade scale
+    const skills = stashSkills(ch);
+    const sig = ch.dir + "\n" + JSON.stringify(state.vmap || {}) + "\n"
+              + Object.keys(skills).sort().join("|");
+    if (gview.sig === sig && gview.got) return;
+    const want = AX.wantedFields(state.vmap || {}, AUG);
+    gview.got = AUG.items.map(it => {
+      const rec = asRec(it.g), [sc, g] = AX.score(rec, want, skills, AUG);
+      return {s: sc, g, v: AX.match(rec, want, skills, AUG)};
+    });
+    gview.sig = sig;
+  }
+
+  const gliveRows = () => gview.rows.filter(r => r.text.trim() !== "");
+  const facName = f => AUG.factions[f] || f;
+  const standingAt = s => (AUG.standings.find(([n]) => n === s) || [])[1];
+  const bpsOf = it => it.bp.map(b => AUG.bps[b]);
+
+  /* Which source chips a card answers to. */
+  function sourceKinds(it){
+    const out = [];
+    if (it.buy.length) out.push("Faction vendor");
+    for (const b of bpsOf(it)){
+      if (b.k) out.push("Default blueprint");
+      if (b.buy.length) out.push("Faction blueprint");
+      if (b.drop) out.push("Dropped blueprint");
+    }
+    if (it.drop) out.push("Drops");
+    if (!out.length || bpsOf(it).some(b => !b.k && !b.buy.length && !b.drop))
+      out.push("Not in the game data");
+    return [...new Set(out)];
+  }
+  function factionsOf(it){
+    return [...new Set([...it.buy, ...bpsOf(it).flatMap(b => b.buy)].map(([f]) => f))];
+  }
+  function augSlots(it){
+    const out = it.sl.slice();
+    for (const sl of it.sl){ const k = AUG.coarse[sl]; if (k && !out.includes(k)) out.push(k); }
+    return out;
+  }
+
+  /* The blueprint state for this character's core, or null when the account
+     has no formulas file for it: unknown, which is not "locked". */
+  function bpUnlocked(ch, it){
+    const got = AUG.unlocked[ch.hardcore ? "h" : "t"];
+    return got ? it.bp.some(b => got.includes(b)) : null;
+  }
+
+  /* A card's source rows: [text, extra html]. `text` is what search reads and
+     what the card prints; the extra is Personal's, for this character. */
+  function sourceRows(it, ch){
+    const rep = (f, s) => {
+      if (!ch) return "";
+      const have = (ch.factions || {})[f], need = standingAt(s);
+      if (have === undefined) return ` <span class="unk">(standing unknown)</span>`;
+      return ` <span class="${have >= need ? "ok" : "no"}">${have.toLocaleString("en-US")} / ${
+        need.toLocaleString("en-US")}</span>`;
+    };
+    const rows = it.buy.map(([f, s]) => [`Sold by ${facName(f)} · ${s}`, rep(f, s), facName(f)]);
+    const bps = bpsOf(it);
+    if (bps.length){
+      if (bps.some(b => b.k)) rows.push(["Blueprint: known by default", ""]);
+      else if (ch){
+        const u = bpUnlocked(ch, it);
+        rows.push(u === null ? ["Blueprint", ` <span class="unk">(no formulas file for this mode)</span>`]
+                  : [u ? "Blueprint unlocked" : "Blueprint not unlocked", "", null, u ? "ok" : "no"]);
+      }
+      for (const b of bps.filter(b => !b.k)){
+        for (const [f, s] of b.buy) rows.push([`Blueprint sold by ${facName(f)} · ${s}`, rep(f, s), facName(f)]);
+        if (b.drop) rows.push(["Blueprint drops", ""]);
+        if (!b.buy.length && !b.drop) rows.push(["Blueprint source not in the game data", ""]);
+      }
+    }
+    if (it.drop) rows.push(["Drops", ""]);
+    if (!rows.length) rows.push(["No source in the game data", ""]);
+    if (ch){
+      const n = (it.own || []).reduce((a, [, c]) => a + c, 0);
+      rows.push([n ? `Held: ${n}` + (it.own.length ? " (" + it.own.map(([w, c]) =>
+                    it.own.length > 1 ? `${w} ${c}` : w).join(", ") + ")" : "") : "None held", ""]);
+    }
+    return rows;
+  }
+  function augLines(it){
+    if (!it._nl) it._nl = [it.n, it.t, it.a, ...it.l.map(l => l[0]),
+                           ...sourceRows(it, null).map(([t]) => t)].map(l => GS.normalise(l));
+    return it._nl;
+  }
+  function augMatches(it){
+    if (gview.types.size && !gview.types.has(it.t)) return false;
+    if (gview.slots.size && !augSlots(it).some(sl => gview.slots.has(sl))) return false;
+    if (gview.srcs.size && !sourceKinds(it).some(s => gview.srcs.has(s))) return false;
+    if (gview.facs.size && !factionsOf(it).some(f => gview.facs.has(f))) return false;
+    return GS.rowsMatch(augLines(it), gliveRows(), true);
+  }
+
+  function gcard(it, idx){
+    const rows = gliveRows(), h = t => hl(t, rows), walk = grantWalker();
+    const ch = gview.mode === "atlas" ? null : CH[state.i];
+    const got = ch ? ((gview.got[idx] || {}).v || {}) : null;
+    const gutter = k => got ? `<span class="vd"${k && got[k] ? ` data-v="${got[k]}"` : ""}></span>` : "";
+    /* The faction's name is emphasised where it appears; everything else in a
+       source row is plain, so a search mark lands on the text as printed. */
+    const src = sourceRows(it, ch).map(([t, extra, fac, cls]) => {
+      const at = fac ? t.indexOf(fac) : -1;
+      const body = at < 0 ? h(t) : h(t.slice(0, at)) + `<b>${h(fac)}</b>` + h(t.slice(at + fac.length));
+      return `<li${clsAttr(cls)}>${body}${extra}</li>`;
+    }).join("");
+    return `<div class="acard scard gcard" data-i="${idx}" data-r="${esc(it.r)}">
+      <div class="sh"><span class="tile">${gicon(it.i, 46)}</span><span>
+        <span class="sn t-${esc(it.r)}">${h(it.n)}</span>
+        <span class="sm">${h(it.t)} · ${h(it.a)}</span></span></div>
+      <ul>${it.l.map(([t, k], _, __, g = walk(t)) => `${g.head !== undefined ? RULE_LI : ""}<li${
+          clsAttr(g.cls)}>${gutter(k)}<span>${grantInner(g, h)}</span></li>`).join("")}</ul>
+      <div class="trule"></div><ul class="gsrc">${src}</ul>${reqLine(it.lv)}</div>`;
+  }
+
+  function renderAugSlots(){
+    const have = new Set(), types = new Set(), srcs = new Set(), facs = new Set();
+    for (const it of AUG.items){
+      augSlots(it).forEach(sl => have.add(sl)); types.add(it.t);
+      sourceKinds(it).forEach(s => srcs.add(s)); factionsOf(it).forEach(f => facs.add(f));
+    }
+    const chip = (attr, v, on, label = v) => `<button class="achip" type="button" data-${attr}="${
+      esc(v)}" aria-pressed="${on}">${esc(label)}</button>`;
+    const col = (label, list) => list.length ? `<div><div class="aslotlbl">${esc(label)}</div><div class="aslotrow">${
+      list.join("")}</div></div>` : "";
+    const group = grp => col(grp.label, grp.values.filter(v => have.has(v))
+      .map(v => chip("gslot", v, gview.slots.has(v))));
+    const kinds = col("Type", AUG_TYPES.filter(v => types.has(v)).map(v => chip("gtype", v, gview.types.has(v))))
+      + col("Source", AUG_SOURCES.filter(v => srcs.has(v)).map(v => chip("gsrc", v, gview.srcs.has(v))));
+    const factions = col("Faction", [...facs].sort((a, b) => facName(a).localeCompare(facName(b)))
+      .map(f => chip("gfac", f, gview.facs.has(f), facName(f))));
+    $("gslots").innerHTML = AUG.slotGroups.map((entry, i) =>
+      `<div class="aslotcol">${i === 0 ? kinds : ""}${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}${
+        i === AUG.slotGroups.length - 1 ? factions : ""}</div>`).join("");
+  }
+
+  function renderAugList(){
+    const filtering = gliveRows().length || gview.types.size || gview.slots.size
+                    || gview.srcs.size || gview.facs.size;
+    const all = AUG.items.map((it, i) => [it, i]);
+    const hits = all.filter(([it]) => augMatches(it));
+    const cards = list => `<div class="scards">${list.map(([it, i]) => gcard(it, i)).join("")}</div>`;
+    $("augn").textContent = filtering ? `${hits.length} of ${all.length}` : `${all.length}`;
+    if (gview.mode === "atlas"){
+      hits.sort(([a], [b]) => AUG_TYPES.indexOf(a.t) - AUG_TYPES.indexOf(b.t) || a.n.localeCompare(b.n));
+      $("glist").innerHTML = hits.length ? cards(hits) : `<p class="note">Nothing matches.</p>`;
+      return;
+    }
+    const by = {}, order = [...AX.gradeOrder()].reverse();
+    order.forEach(g => { by[g] = []; });
+    for (const [it, i] of all) by[gview.got[i].g].push([it, i]);
+    const score = i => gview.got[i].s;
+    $("glist").innerHTML = order.map(g => {
+      const inG = by[g];
+      const hitsG = inG.filter(([it]) => augMatches(it))
+        .sort(([a, i], [b, j]) => score(j) - score(i) || a.n.localeCompare(b.n));
+      const open = g in gview.open ? gview.open[g] : filtering ? hitsG.length > 0 : g !== "F";
+      return `<details class="agrade" data-g="${g}"${open ? " open" : ""}>
+        <summary><h2><span class="g">${g}</span></h2>
+          <span class="n">${filtering ? `${hitsG.length} of ${inG.length}` : inG.length}</span></summary>
+        <div class="agbody">${open ? (hitsG.length ? cards(hitsG)
+                                                : `<p class="note">Nothing here matches.</p>`) : ""}</div>
+      </details>`;
+    }).join("");
+  }
+
+  function renderAug(){
+    augAtlas();
+    const atlas = gview.mode === "atlas";
+    if (!atlas) augGraded();
+    $("gmode").setAttribute("aria-checked", String(atlas));
+    $("gmodelbl").textContent = atlas ? "Atlas" : "Personal";
+    if (!$("gterms").innerHTML) $("gterms").innerHTML = termsHtml(gview.rows, "gi");
+    renderAugSlots(); renderAugList();
+  }
+
+  /* true when the click was the view's own. Same rules as stashClick(). */
+  function augClick(e){
+    const t = e.target;
+    const sum = t.closest(".agrade > summary");
+    if (sum){
+      e.preventDefault();
+      const d = sum.parentElement;
+      gview.open[d.dataset.g] = !d.hasAttribute("open");
+      renderAugList(); return true;
+    }
+    const chip = t.closest(".achip");
+    if (chip){
+      const d = chip.dataset;
+      const [set, v] = d.gtype !== undefined ? [gview.types, d.gtype]
+                     : d.gsrc !== undefined ? [gview.srcs, d.gsrc]
+                     : d.gfac !== undefined ? [gview.facs, d.gfac] : [gview.slots, d.gslot];
+      set.has(v) ? set.delete(v) : set.add(v);
+      renderAugSlots(); renderAugList(); return true;
+    }
+    if (t.closest("#gadd")){
+      gview.rows.push({op: "AND", text: ""});
+      $("gterms").innerHTML = termsHtml(gview.rows, "gi"); return true;
+    }
+    if (t.closest("#gclear")){
+      gview.rows = [{op: "AND", text: ""}];
+      [gview.types, gview.slots, gview.srcs, gview.facs].forEach(s => s.clear());
+      gview.open = {};
+      $("gterms").innerHTML = termsHtml(gview.rows, "gi");
+      renderAugSlots(); renderAugList(); return true;
+    }
+    const rm = t.closest("[data-girm]");
+    if (rm){
+      gview.rows.splice(Number(rm.dataset.girm), 1);
+      $("gterms").innerHTML = termsHtml(gview.rows, "gi"); renderAugList(); return true;
+    }
+    if (t.closest("#gmode")){
+      gview.mode = gview.mode === "atlas" ? "personal" : "atlas";
+      renderAug(); return true;
+    }
+    return false;
+  }
+
+  document.addEventListener("input", e => {
+    const i = e.target.dataset && e.target.dataset.gi;
+    if (i === undefined || e.target.tagName === "SELECT") return;
+    gview.rows[Number(i)].text = e.target.value;
+    renderAugList();
+  });
+  document.addEventListener("change", e => {
+    const i = e.target.dataset && e.target.dataset.gi;
+    if (i === undefined || e.target.tagName !== "SELECT") return;
+    gview.rows[Number(i)].op = e.target.value;
+    renderAugList();
   });
 
   /* ---- hand-set verdicts --------------------------------------------------
@@ -2351,6 +2663,7 @@ __AFFIX_JS__
     renderToggles(ch); renderSheet(ch); hideTip();
     if (state.view === "affixes") renderAffixes();
     if (state.view === "stash") renderStash();
+    if (state.view === "augments") renderAug();
   }
 
   function render(){
@@ -2374,8 +2687,10 @@ __AFFIX_JS__
     $("mainview").hidden = view !== "character";
     $("affixview").hidden = view !== "affixes";
     $("stashview").hidden = view !== "stash";
+    $("augview").hidden = view !== "augments";
     if (view === "affixes") renderAffixes();
     if (view === "stash") renderStash();
+    if (view === "augments") renderAug();
     document.querySelectorAll(".navbtn").forEach(b => {
       if (b.dataset.view === view) b.setAttribute("aria-current", "page");
       else b.removeAttribute("aria-current");
@@ -2387,6 +2702,7 @@ __AFFIX_JS__
     if (nb){ setView(nb.dataset.view); return; }
     if (e.target.closest("#affixview") && affixClick(e)) return;
     if (e.target.closest("#stashview") && stashClick(e)) return;
+    if (e.target.closest("#augview") && augClick(e)) return;
     if (e.target.closest(".railtab")){
       drawer($("rail").getAttribute("data-open") !== "1"); return;
     }
@@ -2459,6 +2775,7 @@ __AFFIX_JS__
       document.documentElement.style.setProperty("--atlas", 'url("' + d.atlas + '")');
       /* The stash is re-read with the saves: a new bundle, graded afresh. */
       if (d.gearstash){ GST = d.gearstash; sview.sig = null; sview.got = null; }
+      if (d.augments){ AUG = d.augments; gview.sig = null; gview.got = null; }
       /* A save can gain or lose a character, so the index we were on may no
          longer be the same person. Hold the NAME, not the position. */
       const wasName = (CH[state.i] || {}).name;

@@ -8,9 +8,11 @@ here, so this reads the INPUTS and nothing pretends to be a total:
     block 2  attributes       the BASE allocation, and the base pools
     block 3  inventory        the equipped items, with their seeds
     block 8  skills           mastery bars, skills and devotion together
+    block 13 factions         reputation with each faction -- what a vendor
+                              will sell, not a stat
 
-Eleven further blocks (stash, respawns, teleports, markers, unlock tokens, lore
-notes, play stats, one-time events, shrines, and two unidentified) are skipped.
+Ten further blocks (stash, respawns, teleports, markers, unlock tokens, lore
+notes, play stats, one-time events, shrines, and one unidentified) are skipped.
 None of them holds a stat: shrines say which devotion points were EARNED, and
 block 2 already says how many are bound.
 
@@ -44,7 +46,17 @@ WEAPON_SLOTS = ('mainhand', 'offhand')
 
 # The blocks this reader decodes. A character whose save is missing one of
 # these has not been read, and is not reported as one with no skills.
-REQUIRED_BLOCKS = (1, 2, 3, 8)
+REQUIRED_BLOCKS = (1, 2, 3, 8, 13)
+
+# Block 13's slots, by position: slot i is FACTION_SLOTS[i], as the `faction`
+# table's id (the controller's `myFaction`). THE FILE NAMES NO FACTION -- this
+# order is GDStash's (GDCharFactionPane's FACTION_* constants, v1.9.0a: 1 Devil's
+# Crossing ... 5 Beasts, then User0-User22 at 6-28). tests/test_faction_standing.py
+# holds it to gamefactions.dbr's noRepGainFactions on every frozen save: those
+# can never be positive, and a table shifted one slot either way puts a
+# positive faction there. Slot 0 and slots 29-46 are unnamed and not read out.
+FACTION_SLOTS = ((None, 'Survivors', 'Aetherials', 'Cthonians', 'Outlaws', 'Beasts')
+                 + tuple(f'User{n}' for n in range(23)))
 
 # Difficulty tiers, which are also the resistance penalty tiers.
 DIFFICULTIES = ('Normal', 'Elite', 'Ultimate')
@@ -262,6 +274,30 @@ def _read_skills(reader: Reader, start: int, length: int) -> dict:
     return out
 
 
+def _read_factions(reader: Reader, start: int, length: int) -> dict:
+    """Block 13: {faction id: entry} for the named slots (FACTION_SLOTS).
+
+    Per slot, 14 bytes: two flag bytes, the reputation, and the two boosts a
+    Writ or a Tonic of Reputation leaves (`maxBoosterValue` is 3). The flag names
+    are GDStash's (`modified`, `unlocked`); what the game does with them is not
+    established here, and nothing downstream reads them.
+    """
+    out = {'version': reader.int()}
+    reader.int()                                  # unknown; 0 on every save read
+    count = reader.int()
+    if not len(FACTION_SLOTS) <= count <= 256:
+        raise SaveError(f'implausible faction count {count}')
+    out['factions'] = {}
+    for i in range(count):
+        entry = {'modified': reader.byte(), 'unlocked': reader.byte(),
+                 'value': reader.float(), 'positive_boost': reader.float(),
+                 'negative_boost': reader.float()}
+        if i < len(FACTION_SLOTS) and FACTION_SLOTS[i]:
+            out['factions'][FACTION_SLOTS[i]] = entry
+    _end_block(reader, start, length, 'faction block')
+    return out
+
+
 def _end_block(reader: Reader, start: int, length: int, what: str):
     """Both halves of the proof: the position says no field was skipped, the
     checksum says none was misread."""
@@ -344,7 +380,7 @@ def find_layout(data: bytes) -> dict:
 
 
 def read_save(path: str) -> dict:
-    """Everything block 1, 2, 3 and 8 say about one character.
+    """Everything blocks 1, 2, 3, 8 and 13 say about one character.
 
     Raises rather than returning a partial character. A save whose skills block
     does not verify is not a character with no skills, and the difference has
@@ -358,6 +394,7 @@ def read_save(path: str) -> dict:
         2: _read_bio,
         3: lambda r, s, ln: _read_inventory(r, s, ln, layout),
         8: _read_skills,
+        13: _read_factions,
     })
     present = {block['id'] for block in out['blocks']}
     missing = [b for b in REQUIRED_BLOCKS if b not in present]
@@ -367,7 +404,7 @@ def read_save(path: str) -> dict:
     decoded = out['decoded']
     return {'layout': layout, 'header': out['header'], 'blocks': out['blocks'],
             'info': decoded[1], 'bio': decoded[2], 'inventory': decoded[3],
-            'skills': decoded[8]}
+            'skills': decoded[8], 'factions': decoded[13]['factions']}
 
 
 def character_dirs(saves_dir: str) -> list[tuple[str, str]]:

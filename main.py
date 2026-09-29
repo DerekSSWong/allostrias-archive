@@ -95,6 +95,8 @@ def cmd_status(cfg: S.Settings, _args) -> int:
         for row in stash.summary(cfg.stash_db):
             if row['kind'] == 'reagents':
                 held = f'{row["materials"]} materials'
+            elif row['kind'] == 'formulas':
+                held = f'{row["blueprints"]} blueprints unlocked'
             else:
                 pages = f'{row["pages"]} page' + ('s' if row['pages'] != 1 else '')
                 held = f'{pages}, {row["items"]} items'

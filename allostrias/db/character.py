@@ -25,11 +25,12 @@ from ..archive.savecrypt import SaveError
 
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            'character.sql')
-SCHEMA_VERSION = '1'
+SCHEMA_VERSION = '2'
 
 # Emptied and refilled on every build, children first so the foreign keys never
 # dangle mid-transaction.
-TABLES = ('character_item', 'character_skill', 'character_read_error',
+TABLES = ('character_faction', 'character_item', 'character_skill',
+          'character_read_error',
           'character', 'character_meta')
 # Dropped and rebuilt when SCHEMA_VERSION moves. The view goes first: it
 # depends on two of the tables under it.
@@ -157,6 +158,13 @@ def refresh(cfg, profile_db: str = None) -> dict[str, int]:
                     'transmute_path, seed, component_path, relic_bonus_path, '
                     'augment_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                     items)
+                conn.executemany(
+                    'INSERT INTO character_faction (dir_name, faction_id, value, '
+                    'positive_boost, negative_boost, modified, unlocked) '
+                    'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [(dir_name, fid, f['value'], f['positive_boost'],
+                      f['negative_boost'], f['modified'], f['unlocked'])
+                     for fid, f in save['factions'].items()])
                 counts['skills'] += len(skills)
                 counts['items'] += sum(1 for row in items if row[3])
     finally:

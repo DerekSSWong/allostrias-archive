@@ -204,8 +204,9 @@ def read_reagents(path: str) -> dict:
             'items': items}
 
 
-def save_files(saves_dir: str) -> list[str]:
-    """Every shared-stash and crafting-material file in a save directory.
+def save_files(saves_dir: str, stems=('transfer', 'reagents')) -> list[str]:
+    """Every shared-stash and crafting-material file in a save directory (or
+    every file of `stems`: formulas.py reads the blueprint files the same way).
 
     Found by stem and extension SHAPE rather than by a list of the four
     extensions that exist today, so a save written by a future expansion era
@@ -213,7 +214,7 @@ def save_files(saves_dir: str) -> list[str]:
     behind (`transfer.gst.bak`) do not match the shape and are not read.
     """
     found = []
-    for stem in ('transfer', 'reagents'):
+    for stem in stems:
         for name in sorted(os.listdir(saves_dir)):
             root, ext = os.path.splitext(name)
             if root == stem and MODE_RE.match(ext.lstrip('.')):

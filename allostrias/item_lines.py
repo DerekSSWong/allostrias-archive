@@ -15,6 +15,7 @@ import collections
 import re
 
 from . import item_stats as I
+from .archive.seedroll import Roll
 
 # Stat fields the renderer never prints, with the game's own string for each (a
 # tags_ui entry). Moved here from affixes/build.py, which reads it from here.
@@ -129,6 +130,29 @@ def rolled(base_path, sources, roll):
         out += [(None, l) for l in I.resolve_pet_bonus(txt)]
         out += [(None, l) for l in I.resolve_pet_conversions(txt)]
     return [(k, l) for k, l in out + granted if l]
+
+
+def stored_roll(txt):
+    """A Roll holding a record's STORED values, for a record the game does not
+    roll -- a component, an augment. seedroll.compute would jitter them from a
+    seed they do not have. Every number on the record goes in; the renderer
+    prints only what it knows. tests/test_augments.py holds rolled() over this
+    to the renderer run on the record itself."""
+    fields = dict(l.split('=', 1) for l in txt.splitlines() if '=' in l)
+    stats = {}
+    for f, v in fields.items():
+        try:
+            n = float(v.split(';')[0])
+        except ValueError:
+            continue
+        if n:
+            stats[f] = n
+    conversions = [{'field': 'conversionPercentage' + m.group(1), 'in': fields[f],
+                    'out': fields['conversionOutType' + m.group(1)],
+                    'value': stats.get('conversionPercentage' + m.group(1), 100.0)}
+                   for f in fields for m in [re.match(r'^conversionInType(\d*)$', f)]
+                   if m and 'conversionOutType' + m.group(1) in fields]
+    return Roll(stats, {f: {'base': v} for f, v in stats.items()}, [], [], conversions)
 
 
 # ---- set bonuses -------------------------------------------------------------

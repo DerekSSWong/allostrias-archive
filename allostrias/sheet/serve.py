@@ -24,6 +24,7 @@ from . import assemble
 from . import build
 from ..affixes import build as affix_build
 from ..gearstash import build as stash_build
+from ..augments import build as aug_build
 from .. import settings as S
 from ..archive import gst
 from ..db import character, iagd, stash
@@ -58,6 +59,7 @@ def refresh():
         stash_errors.append(f'IAGD: {exc}')
     build.main()
     stash_build.main()
+    aug_build.main()
     assemble.main()
     b = json.load(open(os.path.join(BUNDLE, 'sheet.json')))
     return {
@@ -69,6 +71,7 @@ def refresh():
         'sheetSize': b['sheetSize'],
         'atlas': b['atlas'],
         'gearstash': json.load(open(os.path.join(stash_build.OUT, 'gearstash.json'))),
+        'augments': json.load(open(os.path.join(aug_build.OUT, 'augments.json'))),
         'stashErrors': stash_errors,
     }
 

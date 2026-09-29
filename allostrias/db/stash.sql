@@ -27,14 +27,15 @@ CREATE TABLE IF NOT EXISTS build_meta (
 -- recorded as the observation it is; no name is attached to a bit here.
 CREATE TABLE IF NOT EXISTS source_file (
     relpath      TEXT PRIMARY KEY,   -- transfer.gst, reagents.gst, ...
-    kind         TEXT NOT NULL,      -- transfer | reagents
+    kind         TEXT NOT NULL,      -- transfer | reagents | formulas
     mode         TEXT NOT NULL,      -- gst, bst, cst, dst, ...
     size         INTEGER NOT NULL,
     mtime_ns     INTEGER NOT NULL,
-    file_version INTEGER NOT NULL,   -- the outer framing version
+    -- NULL for formulas, which is plaintext: no cipher framing, no mod name.
+    file_version INTEGER,            -- the outer framing version
     version      INTEGER NOT NULL,   -- the block's own content version
-    expansion    INTEGER,            -- transfer only; NULL for reagents
-    mod_name     TEXT NOT NULL       -- '' for the main campaign
+    expansion    INTEGER,            -- transfer and formulas v3; NULL for reagents
+    mod_name     TEXT                -- '' for the main campaign
 );
 
 -- ---------------------------------------------------------------------------
@@ -107,3 +108,21 @@ CREATE TABLE IF NOT EXISTS reagent (
 );
 
 CREATE INDEX IF NOT EXISTS reagent_item_idx ON reagent(item_path);
+
+-- ---------------------------------------------------------------------------
+-- Unlocked blueprints
+
+-- One row per blueprint a formulas.<mode> file lists (archive/formulas.py).
+-- Every row IS an unlocked blueprint; a blueprint no file lists is not unlocked.
+-- `unread` is the crafting panel's "new" pip, not a lock.
+--
+-- ACCOUNT-WIDE, per mode: which files speak for a character is the mode's last
+-- letter against character.hardcore (t softcore, h hardcore). The older-era
+-- files are subsets of the newest on the one account read, so a character's set
+-- is the union over its core's files -- which also holds if they ever were not.
+CREATE TABLE IF NOT EXISTS formula (
+    mode           TEXT    NOT NULL,
+    blueprint_path TEXT    NOT NULL,
+    unread         INTEGER NOT NULL,
+    PRIMARY KEY (mode, blueprint_path)
+) WITHOUT ROWID;

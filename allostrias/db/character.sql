@@ -3,7 +3,7 @@
 --
 -- ⚠️ THESE TABLES ARE A MIRROR, inside a database that is otherwise not one.
 -- profile.sqlite is the one file in cache/ that is never dropped, because what
--- the user authors lives there; these four tables are the exception and are
+-- the user authors lives there; these tables are the exception and are
 -- emptied and refilled on EVERY launch, like the stash. A character deleted in
 -- the game leaves here on the next launch. That is the chosen behaviour, not
 -- an accident: nothing here is a record of what a character USED to be.
@@ -173,6 +173,26 @@ CREATE TABLE IF NOT EXISTS character_item (
 );
 
 CREATE INDEX IF NOT EXISTS character_item_base_idx ON character_item(base_path);
+
+-- Reputation with each faction, from block 13: one row per faction the save's
+-- slot table names (gdc.FACTION_SLOTS), every one of them, at whatever value.
+-- `faction_id` is the catalogue's faction.id. A vendor sells at a standing
+-- (vendor_stock.standing), and gamefactions.dbr says what value each standing
+-- starts at; the comparison is the page's, not stored.
+--
+-- The boosts are what a Writ or a Tonic of Reputation leaves behind. The two
+-- flag bytes keep GDStash's names; what the game does with them is not
+-- established, so nothing reads them.
+CREATE TABLE IF NOT EXISTS character_faction (
+    dir_name       TEXT NOT NULL REFERENCES character(dir_name) ON DELETE CASCADE,
+    faction_id     TEXT NOT NULL,
+    value          REAL NOT NULL,
+    positive_boost REAL NOT NULL,
+    negative_boost REAL NOT NULL,
+    modified       INTEGER NOT NULL,
+    unlocked       INTEGER NOT NULL,
+    PRIMARY KEY (dir_name, faction_id)
+) WITHOUT ROWID;
 
 -- What the character is actually WEARING: filled slots, and only the active
 -- weapon set. The rule lives here because getting it wrong is silent -- the

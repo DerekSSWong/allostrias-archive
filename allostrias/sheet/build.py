@@ -2313,6 +2313,10 @@ def main(profile_db=None, out_dir=None):
             'treeDropped': dropped, 'toggles': toggles, 'vctx': vctx,
             'excluded': excluded, 'refused': refused, 'contrib': C.rows,
             'petContrib': P.rows,
+            # Reputation per faction id, for the Augments & Components view's
+            # standing badges. Rounded as the game's faction panel prints it.
+            'factions': {r['faction_id']: round(r['value']) for r in pr.execute(
+                'select faction_id, value from character_faction where dir_name=?', (dn,))},
         })
         roots = sum(1 for s in tree if s['parent'] is None)
         print(f"  {ch['name']:12s} lvl {ch['level']:<4} {len(equipment)} worn  "

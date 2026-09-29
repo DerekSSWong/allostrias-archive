@@ -1,8 +1,9 @@
-"""Building cache/stash.sqlite from the .gst files in the save directory.
+"""Building cache/stash.sqlite from the .gst files in the save directory, and
+the plaintext formulas files beside them.
 
 REBUILT ON EVERY LAUNCH, unconditionally. The catalogue earns its staleness
 check because rebuilding it costs minutes; this costs a few milliseconds
-against five small files, and the files change every time the game is played.
+against a few small files, and the files change every time the game is played.
 A gate here would be more code than the work it avoided, and would introduce
 the one failure the catalogue's gate exists to prevent -- a cache that reports
 itself fresh while the thing it mirrors has moved.
@@ -16,14 +17,15 @@ write itself is a single transaction on top of that.
 import os
 
 from . import apply_schema, connect
-from ..archive import gst
+from ..archive import formulas, gst
 
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stash.sql')
-SCHEMA_VERSION = '1'
+SCHEMA_VERSION = '2'
 
 # Emptied and refilled on every build, children first so the foreign key from
 # stash_item to stash_page never dangles mid-transaction.
-TABLES = ('stash_item', 'stash_page', 'reagent', 'source_file', 'build_meta')
+TABLES = ('stash_item', 'stash_page', 'reagent', 'formula', 'source_file',
+          'build_meta')
 
 
 def _read_all(saves_dir: str) -> list[tuple[str, str, dict]]:
@@ -40,11 +42,16 @@ def _read_all(saves_dir: str) -> list[tuple[str, str, dict]]:
             else 'transfer'
         reader = gst.read_reagents if kind == 'reagents' else gst.read_transfer
         out.append((path, kind, reader(path)))
+    for path in gst.save_files(saves_dir, ('formulas',)):
+        out.append((path, 'formulas', formulas.read(path)))
     return out
 
 
 def _source_row(path: str, kind: str, parsed: dict) -> tuple:
     stat = os.stat(path)
+    if kind == 'formulas':
+        return (os.path.basename(path), kind, gst.mode_of(path), stat.st_size,
+                stat.st_mtime_ns, None, parsed['version'], parsed['expansion'], None)
     return (os.path.basename(path), kind, gst.mode_of(path), stat.st_size,
             stat.st_mtime_ns, parsed['file_version'], parsed['version'],
             parsed.get('expansion'), parsed['mod'])
@@ -85,7 +92,8 @@ def refresh(cfg) -> dict[str, int]:
             conn = connect(cfg.stash_db)
             apply_schema(conn, SCHEMA_PATH)
 
-        counts = {'files': len(parsed), 'pages': 0, 'items': 0, 'materials': 0}
+        counts = {'files': len(parsed), 'pages': 0, 'items': 0, 'materials': 0,
+                  'blueprints': 0}
         with conn:                               # one transaction, or none
             for table in TABLES:
                 conn.execute(f'DELETE FROM {table}')
@@ -105,6 +113,13 @@ def refresh(cfg) -> dict[str, int]:
                         'VALUES (?, ?, ?)',
                         [(mode, it['item'], it['count']) for it in data['items']])
                     counts['materials'] += len(data['items'])
+                    continue
+                if kind == 'formulas':
+                    conn.executemany(
+                        'INSERT INTO formula (mode, blueprint_path, unread) '
+                        'VALUES (?, ?, ?)',
+                        [(mode, bp, unread) for bp, unread in data['entries']])
+                    counts['blueprints'] += len(data['entries'])
                     continue
                 for page in data['pages']:
                     cursor = conn.execute(
@@ -149,6 +164,10 @@ def summary(path: str) -> list[dict]:
             if src['kind'] == 'reagents':
                 row['materials'] = conn.execute(
                     'SELECT count(*) FROM reagent WHERE mode = ?',
+                    (src['mode'],)).fetchone()[0]
+            elif src['kind'] == 'formulas':
+                row['blueprints'] = conn.execute(
+                    'SELECT count(*) FROM formula WHERE mode = ?',
                     (src['mode'],)).fetchone()[0]
             else:
                 row['pages'] = conn.execute(

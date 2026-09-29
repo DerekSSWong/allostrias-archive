@@ -13,6 +13,12 @@ RECIPES. A blueprint states its output twice and its inputs in two shapes:
     seven acceptable items for that one slot. The numbered slots never do.
     Flattening them would turn one requirement into seven.
 
+KNOWN BY DEFAULT. A blueprint the player never has to unlock sits in
+`craftingDefaultRecipes` on the crafting table's own UI record -- the ONLY record
+in the tree carrying that field. The blacksmiths' `defaultRecipes` is a
+different, smaller list with no component in it, so a search that stops at the
+merchants finds no default component recipe. There are 39.
+
 SETS. A set's bonuses are arrays indexed by piece count, and the index is
 RIGHT-ALIGNED -- the last entry always applies at the full set:
 
@@ -29,6 +35,8 @@ from ...archive import values as V
 CRAFTING_PREFIX = 'records/items/crafting/'
 LOOTSET_PREFIX = 'records/items/lootsets/'
 FORMULA_CLASS = 'ItemArtifactFormula'
+CRAFTING_TABLE = 'records/ui/inventor/craftingpanel/crafting_table.dbr'
+DEFAULTS_FIELD = 'craftingDefaultRecipes'
 
 BASE_SLOT = 'base'
 BASE_NAME, BASE_QTY = 'reagentBaseBaseName', 'reagentBaseQuantity'
@@ -45,6 +53,8 @@ def _extract_recipes(conn, db, item_ids) -> dict[str, int]:
     recipe_rows, reagent_rows = [], []
     tables = {row['path'] for row in conn.execute('SELECT path FROM loot_table')}
     alt_slots = 0
+    defaults = {p.lower() for p in V.non_default(db.read(CRAFTING_TABLE)).get(DEFAULTS_FIELD, [])
+                if isinstance(p, str) and p}
 
     for path, attrs in db.iter_records(CRAFTING_PREFIX):
         if V.first_str(attrs, 'Class') != FORMULA_CLASS:
@@ -66,6 +76,7 @@ def _extract_recipes(conn, db, item_ids) -> dict[str, int]:
             artifact if artifact in tables else None,
             V.first(kept, 'artifactCreationCost'),
             V.first(kept, 'artifactCreateQuantity'),
+            int(path in defaults),
         ))
 
         slots = [(BASE_SLOT, kept.get(BASE_NAME, []), V.first(kept, BASE_QTY))]
@@ -83,15 +94,22 @@ def _extract_recipes(conn, db, item_ids) -> dict[str, int]:
                                      item_ids.get(name.lower()), name.lower(),
                                      quantity))
 
+    # A default naming no blueprint here would drop out of `known` silently.
+    blueprints = {r[1] for r in recipe_rows}
+    unmatched = {p for p in defaults if item_ids.get(p) not in blueprints}
+    if unmatched:
+        raise ValueError(f'{DEFAULTS_FIELD} names {len(unmatched)} records that are '
+                         f'no blueprint: {sorted(unmatched)[:3]}')
     conn.executemany(
         'INSERT INTO recipe (id, blueprint_id, output_item_id, output_table, '
-        'cost, quantity) VALUES (?,?,?,?,?,?)', recipe_rows)
+        'cost, quantity, known) VALUES (?,?,?,?,?,?,?)', recipe_rows)
     conn.executemany(
         'INSERT OR IGNORE INTO recipe_reagent (recipe_id, slot, alternative, '
         'item_id, item_path, quantity) VALUES (?,?,?,?,?,?)', reagent_rows)
     return {'recipes': len(recipe_rows),
             'reagent rows': len(reagent_rows),
             'slots offering alternatives': alt_slots,
+            'known by default': sum(r[6] for r in recipe_rows),
             'recipes with a concrete output': sum(1 for r in recipe_rows if r[2]),
             'recipes whose output is a table': sum(1 for r in recipe_rows if r[3]),
             'recipes with NO resolvable output':

@@ -439,7 +439,10 @@ CREATE TABLE IF NOT EXISTS recipe (
     output_item_id INTEGER REFERENCES item(id),
     output_table   TEXT,          -- artifactName, when it is a loot table
     cost           INTEGER,
-    quantity       INTEGER
+    quantity       INTEGER,
+    -- 1 when the crafting table's craftingDefaultRecipes lists the blueprint:
+    -- craftable without unlocking it. 0 says nothing about how it IS unlocked.
+    known          INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS recipe_reagent (
