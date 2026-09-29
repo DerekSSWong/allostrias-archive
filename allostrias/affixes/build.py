@@ -568,14 +568,42 @@ def build(conn):
     }, stats
 
 
-def main(out_dir=None):
+def inputs(conn, cfg) -> str:
+    """Everything affixes.json is built from: this catalogue build (its
+    stamp), the code, and the archives read beside it. The text archives are
+    not in the catalogue's stamp, and the stat lines read their tags."""
+    meta = sorted(tuple(r) for r in conn.execute('SELECT key, value FROM build_meta'))
+    sources = sorted(tuple(r) for r in conn.execute('SELECT * FROM source_archive'))
+    archives = [(p, os.path.getsize(p), os.stat(p).st_mtime_ns)
+                for p in cfg.arz_paths + cfg.text_arc_paths]
+    return json.dumps([meta, sources, archives, catalogue.code_digest()])
+
+
+def main(out_dir=None, reuse=False):
+    """Build affixes.json. `reuse` keeps the existing one when it was built
+    from the same inputs: the Refresh server's startup, which spent 5 s
+    rebuilding a bundle no save can change. Gates never pass it."""
     out_dir = out_dir or OUT
     os.makedirs(out_dir, exist_ok=True)
-    conn = catalogue.connect(S.load().catalogue_db, create=False)
-    corpus, stats = build(conn)
+    cfg = S.load()
+    conn = catalogue.connect(cfg.catalogue_db, create=False)
     p = os.path.join(out_dir, 'affixes.json')
+    stamp_path = p + '.inputs'
+    now = inputs(conn, cfg)
+    if reuse and os.path.isfile(p) and os.path.isfile(stamp_path):
+        with open(stamp_path) as fh:
+            if fh.read() == now:
+                print(f'affixes.json built from the same inputs, reused -> {p}')
+                return
+    # Removed BEFORE the bundle is rewritten, so a write that dies halfway
+    # leaves no stamp vouching for it.
+    if os.path.exists(stamp_path):
+        os.remove(stamp_path)
+    corpus, stats = build(conn)
     with open(p, 'w') as fh:
         json.dump(corpus, fh, separators=(',', ':'))
+    with open(stamp_path, 'w') as fh:
+        fh.write(now)
     print('  '.join(f'{k} {v}' for k, v in stats.items()))
     print(f'{len(corpus["t"])} tags  {len(corpus["f"])} scored fields  '
           f'{os.path.getsize(p) / 1e6:.2f} MB -> {p}')

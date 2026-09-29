@@ -117,8 +117,9 @@ def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
     print(f'building once before serving…')
     # The affix corpus reads only the catalogue, so a save refresh never moves
-    # it: built once here, not on every Refresh.
-    affix_build.main()
+    # it: built once here, not on every Refresh -- and not even here when the
+    # catalogue, the code and the archives are what it was last built from.
+    affix_build.main(reuse=True)
     print(f"  {refresh()['seconds']}s")
     print(f'http://localhost:{port}')
     HTTPServer(('127.0.0.1', port), Handler).serve_forever()
