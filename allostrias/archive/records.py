@@ -73,10 +73,16 @@ class Records:
     way Database.read does: a missing record is a broken reference the sheet
     reports per slot ("base record missing"), not a crash. A caller that wants
     the raising behaviour should use Database directly.
+
+    Both reads are cached per path. The builds ask for the same records many
+    times over (Gear Stash reads each ~6.5x), and a record cannot change under
+    an open Database: its index is read once, at open.
     """
 
     def __init__(self, paths: list[str]):
         self.db = Database(paths)
+        self._text: dict[str, str | None] = {}
+        self._get: dict[str, dict[str, list[str]] | None] = {}
 
     def __enter__(self):
         return self
@@ -107,8 +113,14 @@ class Records:
         This renders from the raw attributes, which is the only way to get the
         bytes back.
         """
+        path = path.strip()
+        if path not in self._text:
+            self._text[path] = self._read_text(path)
+        return self._text[path]
+
+    def _read_text(self, path: str) -> str | None:
         try:
-            attrs = self.db.read(path.strip())
+            attrs = self.db.read(path)
         except ArzError:
             return None
         lines = []
@@ -122,10 +134,21 @@ class Records:
         return '\n'.join(lines) + '\n' if lines else None
 
     def get(self, path: str) -> dict[str, list[str]] | None:
+        """The record as {key: [str, ...]}, or None.
+
+        ⚠️ The dict is the cached one, shared with every later caller: never
+        edit it in place.
+        """
         if not path:
             return None
+        path = path.strip()
+        if path not in self._get:
+            self._get[path] = self._read_get(path)
+        return self._get[path]
+
+    def _read_get(self, path: str) -> dict[str, list[str]] | None:
         try:
-            attrs = self.db.read(path.strip())
+            attrs = self.db.read(path)
         except ArzError:
             return None
         out: dict[str, list[str]] = {}
