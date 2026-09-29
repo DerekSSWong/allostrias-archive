@@ -675,8 +675,11 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 .scard[data-r="Legendary"] .tile{border-color:#3E1063; box-shadow:inset 0 0 12px rgba(90,3,154,.55)}
 .scard[data-r="Epic"] .tile{border-color:#1E5C74; box-shadow:inset 0 0 12px rgba(57,171,207,.3)}
 .scard[data-r="Rare"] .tile{border-color:#1E5E24}
-/* Its own icon sheet: the stash holds far more items than any character wears. */
-.sico{background-image:var(--satlas)}
+/* Its own icon sheet, the stash holding far more items than any character
+   wears. Its rule is written into <style id="satlas"> by stashAtlas(), NOT
+   routed through a custom property: Chromium re-parses a var() value on every
+   element that uses it, and this one is a 1.4 MB data URI -- 3.5 s to open the
+   view, 6.7 s to switch to Atlas. */
 .agrade[data-g="U"] summary .g{color:var(--dim)}
 </style>
 
@@ -770,6 +773,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
   <!-- The Gear Stash view: the transfer stash and Item Assistant's collection.
        Personal ranks every item for the character on screen; Atlas lists them
        all, ungraded. -->
+  <style id="satlas"></style>
   <section class="panel affixview" id="stashview" hidden>
     <div class="hd ahd">
       <div class="amodebox"><span class="amodelbl" id="smodelbl" aria-hidden="true">Personal</span>
@@ -1523,9 +1527,12 @@ __AFFIX_JS__
   const sview = {rows: [{op: "AND", text: ""}], slots: new Set(), srcs: new Set(),
                  open: {}, mode: "personal", sig: null, got: null};
 
+  /* Rewritten only when a Refresh brings a new atlas: every write re-parses it. */
+  let satlasSet = null;
   function stashAtlas(){
-    const sv = $("stashview");
-    if (sv.style && sv.style.setProperty) sv.style.setProperty("--satlas", 'url("' + GST.atlas + '")');
+    if (satlasSet === GST.atlas) return;
+    $("satlas").textContent = '.sico{background-image:url("' + GST.atlas + '")}';
+    satlasSet = GST.atlas;
   }
   function sicon(i, box){
     const f = GST.frames[i];
