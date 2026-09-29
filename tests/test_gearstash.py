@@ -16,6 +16,8 @@ socketed into it.
      one card. Every copy's every number lies inside its merged line, and every
      range's ends were rolled by some copy. A crafting bonus not of one stat on
      every copy is taken out and named instead.
+  6. A card's required level is the game's "Required Player Level" on every
+     IAGD item (ReplicaItemRow). It is the one thing a component DOES move.
 
 Reads the live stash databases, which every launch refills; nothing here is a
 count typed in.
@@ -29,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from allostrias import settings as S                # noqa: E402
 from allostrias import item_lines                   # noqa: E402
 from allostrias.archive import seedroll             # noqa: E402
+from allostrias.db import iagd                      # noqa: E402
 from allostrias.gearstash import build as GB        # noqa: E402
 from allostrias.sheet import build as SB            # noqa: E402
 
@@ -120,6 +123,37 @@ def merged(ca, ix, cards):
     return bad
 
 
+_REQ = re.compile(r'Required Player Level: (\d+)')
+
+
+def required(cards):
+    """6: every IAGD card's lv is the level the game's tooltip requires."""
+    if not cfg.iagd:
+        print('UNCHECKED -- no IAGD configured, so no game tooltip to hold required levels to')
+        return []
+    game = {}
+    for pid, x in iagd._connect(cfg.iagd).execute(
+            'SELECT i.playeritemid, r.Text FROM ReplicaItemRow r '
+            'JOIN ReplicaItem2 i ON i.Id = r.replicaitemid WHERE r.Type = 20'):
+        m = _REQ.search(x)
+        if m:
+            game[pid] = int(m.group(1))
+    bad, n, raised = [], 0, 0
+    for r, c in cards:
+        if c['x'][0][0] != 'IAGD' or r['id'] not in game:
+            continue
+        n += 1
+        raised += bool(r['component_path']) and c['lv'] > GB.required_level(dict(r, component_path=None))
+        if c['lv'] != game[r['id']]:
+            bad.append(f"{c['n']}: requires level {c['lv']}, the game says {game[r['id']]}")
+    print(f'required level: {n} IAGD items against the game, {raised} raised by a component')
+    if not n:
+        bad.append('no IAGD item has a game tooltip to hold its required level to')
+    if not raised:
+        print('UNCOVERED -- no held component raises a required level')
+    return bad
+
+
 def main():
     ca = sqlite3.connect(os.path.join(CACHE, 'catalogue.sqlite'))
     ca.row_factory = sqlite3.Row
@@ -158,7 +192,7 @@ def main():
         bare = dict(r)
         bare['component_path'] = bare['augment_path'] = None
         again = GB.card(ca, ix, icons, *c['x'][0], bare)
-        if again != c:
+        if dict(again, lv=0) != dict(c, lv=0):
             bad.append(f"{c['n']}: its component/augment changed the card")
     if not socketed:
         print('UNCOVERED -- no held item carries a component or augment')
@@ -188,6 +222,7 @@ def main():
               f'stats. Lifting them is pinned in the backlog (the user moves one of each '
               f'into IAGD; test_seedroll_game.py then settles the roll).')
     bad += merged(ca, ix, cards)
+    bad += required(cards)
     if bad:
         print('\nFAIL')
         for b in bad[:25]:

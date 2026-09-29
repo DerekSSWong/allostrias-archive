@@ -206,6 +206,20 @@ def _face(ix, recs, paths, roll):
     return [[text, _verdict_key(ix, key)] for key, text in shown], grading(ix, recs, roll, shown)
 
 
+# Records whose levelRequirement the item's own requirement is the highest of.
+# Held to the game's "Required Player Level" line on every IAGD item by
+# tests/test_gearstash.py; a component raised it on one (Mark of the Traveler, 20
+# over its boots' 15). No augment is held, so that one is unverified.
+REQUIRING = ('base', 'prefix', 'suffix', 'component', 'augment')
+
+
+def required_level(r):
+    """The item's Required Player Level: the highest levelRequirement among what
+    it is made of, stats left off or not."""
+    return max(int(float((SB.rec(r[f'{k}_path']) or {}).get('levelRequirement', [0])[0]))
+               for k in REQUIRING if r[f'{k}_path'])
+
+
 def card(ca, ix, icons, source, where, r):
     """One item's card, or None when it is not equipment."""
     cls, recs, paths, roll = _roll(ca, r)
@@ -218,7 +232,7 @@ def card(ca, ix, icons, source, where, r):
     out = {
         'n': name, 'r': rarity, 'b': badge,
         'sl': AB.CLASS_TO_LABEL.get(cls['class'], cls['class']),
-        'lv': int(float((base.get('levelRequirement') or [0])[0])),
+        'lv': required_level(r),
         'x': [[source, where]], 'i': icons.want(SB.item_icon(base)),
     }
     set_path = (base.get('itemSetName') or [None])[0]
@@ -329,6 +343,9 @@ def merge(ca, ix, held_cards):
         rolls = [_roll(ca, r) for r, _ in members]
         kinds = [bonus_kind(roll) for _, _, _, roll in rolls]
         merged = dict(members[0][1], x=[c['x'][0] for _, c in members])
+        lvs = sorted({c['lv'] for _, c in members})
+        if len(lvs) > 1:
+            merged['lv'] = [lvs[0], lvs[-1]]
         if len(set(kinds)) == 1:
             faces = [(c['l'], c['g']) for _, c in members]
         else:

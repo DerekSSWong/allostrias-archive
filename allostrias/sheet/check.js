@@ -2133,6 +2133,10 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   const printed=scards().filter(h=>(cardAt(h)||{}).l);
   want(printed.length && printed.every(h=>displayed(cardAt(h).l.map(([t])=>t)).every(l=>h.includes(l))),
        'a card does not print its bundle lines');
+  const reqOf=it=>`Required Player Level: ${Array.isArray(it.lv) ? `[${it.lv[0]}–${it.lv[1]}]` : it.lv}</p>`;
+  want(scards().every(h=>{ const it=cardAt(h); return it && (!it.lv || h.includes(reqOf(it))); }),
+       'a stash card does not print its Required Player Level');
+  if (!G.items.some(it=>Array.isArray(it.lv))) uncovered.push('no merged stash card has copies of different required levels');
   const marks=[...get('slist')._html.matchAll(/<li><span class="vd"( data-v="(\w+)")?><\/span>/g)];
   want(marks.length && marks.some(m=>m[2]==='priority'), 'no stash card line wears the priority mark');
 

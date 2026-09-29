@@ -694,6 +694,7 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 .scard[data-r="Legendary"] .tile{border-color:#3E1063; box-shadow:inset 0 0 12px rgba(90,3,154,.55)}
 .scard[data-r="Epic"] .tile{border-color:#1E5C74; box-shadow:inset 0 0 12px rgba(57,171,207,.3)}
 .scard[data-r="Rare"] .tile{border-color:#1E5E24}
+.scard .sreq{margin:6px 0 0; font:12px Jura,system-ui,sans-serif; color:var(--dim)}
 /* Up to 1,898 cards: the browser lays out only those near the viewport, and
    holds each other at the median card's content height (310 px) until it has
    been seen, then at its own. 0.44 s -> under 0.1 s for Atlas. */
@@ -1654,12 +1655,19 @@ __AFFIX_JS__
     return `<div class="acard scard" data-i="${idx}" data-r="${esc(it.r || "Common")}">
       <div class="sh"><span class="tile">${sicon(it.i, 46)}</span><span>
         <span class="sn t-${esc(it.r || "Common")}">${badge({badge: it.b})}${h(it.n)}</span>
-        <span class="sm">${h(it.sl)}${it.lv ? " · lvl " + it.lv : ""} · ${
+        <span class="sm">${h(it.sl)} · ${
           it.x.length > 1 ? it.x.length + " held · " : ""}${h(keptIn(it))}</span>
         ${set ? `<span class="sm">${h(set.n)}</span>` : ""}</span></div>
       ${lines}${set ? `<div class="trule"></div><div class="sset"><b>${h(set.n)}</b>
         <span class="sm smem">${set.members.map(([n, held]) => held ? `<b>${h(n)}</b>` : h(n)).join(" · ")
-        }</span>${setTiersHtml(set, null, h)}</div>` : ""}</div>`;
+        }</span>${setTiersHtml(set, null, h)}</div>` : ""}${reqLine(it.lv)}</div>`;
+  }
+
+  /* The game's own line, where it prints it: after the stats, grants and set.
+     A merged card whose copies differ gives [lo, hi]. */
+  function reqLine(lv){
+    const v = Array.isArray(lv) ? `[${lv[0]}–${lv[1]}]` : lv;
+    return lv ? `<p class="sreq">Required Player Level: ${v}</p>` : "";
   }
 
   function renderStashSlots(){
