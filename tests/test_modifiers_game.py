@@ -22,9 +22,10 @@ from allostrias.db import iagd                      # noqa: E402
 
 cfg = S.load()
 
-# Pinned, (ours, the game's): a cosmetic modSpawnObjects modifier, for which we
-# print "Basic & Special Attack swapped" and the game prints no block. Kept until
-# the user decides; a change either way fails.
+# Pinned, (ours, the game's): a modSpawnObjects modifier, for which we print
+# "Basic & Special Attack swapped" and the game prints no block. KEPT on purpose
+# (user, 2026-09-29): the swapped pets' attacks really change. A change either
+# way fails.
 KNOWN = {
     'records/items/gearaccessories/necklaces/d303_necklace.dbr': ({'Reap Spirit'}, set()),
     'records/items/gearweapons/caster/d304_scepter.dbr': ({'Raise Skeletons'}, set()),
@@ -65,7 +66,7 @@ def main():
         elif got[0] != got[1]:
             bad.append(f"#{r['id']} {r['base_path']}: ours {sorted(got[0])} / game {sorted(got[1])}")
     for p in sorted(pinned):
-        print(f'KNOWN -- {p}: {sorted(KNOWN[p][0])} printed, the game prints no block')
+        print(f'KNOWN (kept by choice) -- {p}: {sorted(KNOWN[p][0])} printed, the game prints no block')
     print(f'{n} IAGD items with a skill modifier')
     assert n, 'no IAGD item carries a modifier -- the gate would pass on nothing'
     if bad:

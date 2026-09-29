@@ -10,6 +10,14 @@ const bundle = html.match(/<script id="bundle" type="application\/json">([\s\S]*
 const affixJson = html.match(/<script id="affixes" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const stashJson = html.match(/<script id="gearstash" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const code = html.match(/<script>\n([\s\S]*?)<\/script>/)[1];
+// A block of lines as the page prints them (the user's rule, 2026-09-29): a
+// granted skill's own lines lose the "X: " the data keeps, and its header bolds
+// the name. Escaped, as the page writes them.
+const escT=t=>String(t).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const displayed=lines=>{ let name=null; return lines.map(t=>{
+  if (t.startsWith('Grants: ')){ name=t.slice(8); return `Grants: <b>${escT(name)}</b>`; }
+  if (name!==null && t.startsWith(name+': ')) return escT(t.slice(name.length+2));
+  name=null; return escT(t); }); };
 
 class El {
   constructor(){ this._html=''; this._a={}; this.style={}; this.hidden=false; }
@@ -1159,7 +1167,9 @@ want(!/undefined|NaN|\[object/.test(tip._html), 'the tooltip rendered undefined/
       const setAt=h.indexOf('<div class="stier');
       if ((e.grants||[]).length){
         grants++;
-        const g=h.indexOf(esc_(e.grants[0]));
+        const g=h.indexOf(displayed(e.grants)[0]);
+        want(displayed(e.grants).every(l=>h.includes(l)) && !e.grants.slice(1).some(l=>h.includes(esc_(l))),
+             `${c.name}: ${e.n}'s granted skill does not print its lines without the skill name`);
         want(g>h.indexOf('</ul>') && (setAt<0 || g<setAt),
              `${c.name}: ${e.n}'s granted skill is not between its stats and its set`);
       }
@@ -2121,7 +2131,7 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   // Personal marks wanted lines.
   const cardAt=h=>G.items[Number((/^ data-i="(\d+)"/.exec(h)||[])[1])];
   const printed=scards().filter(h=>(cardAt(h)||{}).l);
-  want(printed.length && printed.every(h=>cardAt(h).l.every(([t])=>h.includes(esc(t)))),
+  want(printed.length && printed.every(h=>displayed(cardAt(h).l.map(([t])=>t)).every(l=>h.includes(l))),
        'a card does not print its bundle lines');
   const marks=[...get('slist')._html.matchAll(/<li><span class="vd"( data-v="(\w+)")?><\/span>/g)];
   want(marks.length && marks.some(m=>m[2]==='priority'), 'no stash card line wears the priority mark');
@@ -2131,7 +2141,7 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   const kept=it=>{ const n={}; for (const [s,a] of it.x){ const k=s+(a?' '+a:''); n[k]=(n[k]||0)+1; }
     return Object.entries(n).map(([k,c])=>c>1?`${k} ×${c}`:k).join(', '); };
   const setText=it=>{ const st=G.sets[it.set];
-    return st ? [st.n, ...st.members, ...st.tiers.flatMap(([,ls])=>ls), ...st.after] : []; };
+    return st ? [st.n, ...st.members.map(([n])=>n), ...st.tiers.flatMap(([,ls])=>ls), ...st.after] : []; };
   const lines=it=>[it.n, ...(it.l||[]).map(l=>l[0]), it.sl, kept(it), ...setText(it)].map(GSE.normalise);
   typed(0, 'fire resist');
   const hits=G.items.filter(it=>GSE.rowsMatch(lines(it), [{text:'fire resist'}], true));
@@ -2200,9 +2210,19 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   if (setCard>=0){
     const h=scards().find(h=>h.startsWith(` data-i="${setCard}"`))||'', st=G.sets[G.items[setCard].set];
     want(st.tiers.every(([k, ls])=>h.includes(`<i>(${k}) Set</i>`) && ls.every(l=>h.includes(esc(l))))
-         && st.after.every(l=>h.includes(esc(l))) && !h.includes(' off"'),
+         && displayed(st.after).every(l=>h.includes(l)) && !h.includes(' off"'),
          `${G.items[setCard].n}: its card does not print its whole set, undimmed`);
+    want(st.members.every(([n, held])=>h.includes(held ? `<b>${escT(n)}</b>` : escT(n))),
+         `${G.items[setCard].n}: its set members do not mark which are held`);
   } else uncovered.push('no stash item is a set piece');
+  // A granted skill's description prints as flavour text.
+  const descCard=G.items.findIndex(it=>(it.l||[]).some(([t],i,l)=>t.startsWith('Grants: ') && l[i+1] && /\.$/.test(l[i+1][0])));
+  // (which lines are descriptions at all is tests/test_granted_blocks.py's to prove)
+  if (descCard>=0){
+    const h=scards().find(h=>h.startsWith(` data-i="${descCard}"`))||'';
+    want(/<li class="gdesc">/.test(h), `${G.items[descCard].n}: its granted skill's description is not flavour text`);
+  } else uncovered.push('no stash item grants a skill with a description');
+  if (!G.sets.some(st=>st.members.some(([,held])=>held))) uncovered.push('no set member is held, so none is bold');
   // A merged card says how many copies it stands for.
   const multi=G.items.findIndex(it=>it.x.length>1);
   if (multi>=0){

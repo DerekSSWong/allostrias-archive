@@ -69,7 +69,13 @@ def diverged(txt):
             m = __import__('re').search(rf'^{link}=(\S+)', t, __import__('re').M)
             if m and len(texts) < 8:
                 todo.append(records.text(m.group(1)) or '')
-    return {f for t in texts for f in FIELD.findall(t) if port.diverges(f)}
+    found = {f for t in texts for f in FIELD.findall(t) if port.diverges(f)}
+    # itemSkillLevelEq diverges only as an equation; a plain level renders as gd-lib's.
+    if 'itemSkillLevelEq' in found and all(
+            __import__('re').fullmatch(r'\s*\d+(?:\.\d+)?\s*', v)
+            for t in texts for v in __import__('re').findall(r'^itemSkillLevelEq=(.*)$', t, __import__('re').M)):
+        found.discard('itemSkillLevelEq')
+    return found
 
 
 bad, compared, lines, skipped = [], 0, 0, __import__('collections').Counter()

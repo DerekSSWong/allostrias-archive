@@ -56,22 +56,33 @@ def skel(line):
     return s
 
 
-bad = []
+bad, scaling = [], 0
+windows = B.item_level_windows(recs, B.class_top_levels(conn))
 for a in recs:
     txt = I.read_rel(a['path'])
-    want = collections.Counter(skel(l) for l in I.effects_of(txt) if l)
-    # ...plus the lines the renderer lacks, which the build supplies.
+    # A granted skill's level can be an equation in the item's level: rendered
+    # at the low end of the card's item-level window (the skeleton ignores numbers).
+    win = windows.get((a['tag'], frozenset(a['slots'])))
+    want = collections.Counter(skel(l) for l in I.effects_of(txt, win[0] if win else None) if l)
+    # ...plus the lines the renderer lacks, which the build supplies: the
+    # supplement, and the note on a granted skill whose level scales.
     want.update(skel(B._supplement(f, a['stats'][f][0])) for f in B.SUPPLEMENT if f in a['stats'])
+    if win and I.granted_skill_level(txt, win[0]) != I.granted_skill_level(txt, win[1]):
+        scaling += 1
+        name = I.resolve_item_skill(txt, win[0])[0][len('Grants: '):]
+        want[skel(f'{name}: (skill level 1–2: scales with item level)')] += 1
     pet = a['stats'].get('petBonusName', (None,) * 4)[3]
     got = collections.Counter(
         skel(t) for _, t, _, _ in
-        B.display(txt, a['stats'], I.read_rel(pet) if pet else None, a['pet']))
+        B.display(txt, a['stats'], I.read_rel(pet) if pet else None, a['pet'], win))
     if want != got:
         bad.append(f"  {a['path']}: missing {dict(want - got)} extra {dict(got - want)}")
 for line in bad[:5]:
     print(line)
 assert not bad, f'{len(bad)} cards disagree with the tooltip renderer'
-print(f'  all {len(recs)} cards carry exactly the lines the renderer prints')
+print(f'  all {len(recs)} cards carry exactly the lines the renderer prints '
+      f'({scaling} with a granted skill that scales with item level)')
+assert scaling, 'no affix grants a skill whose level scales -- the note path is untested'
 
 # -- 1b. every line the sheet can score is on the card -----------------------
 # A scored line with nothing printed for it would be graded unseen, and its

@@ -39,7 +39,7 @@ DYN_WEIGHT = 'LootItemTable_DynWeight'
 EXCLUDED_ROOTS = ('records/sandbox/',)
 
 LOOT_FIELD = re.compile(r'^lootName\d+$')
-MEMBER_FIELD = re.compile(r'^randomizerName\d+$')
+MEMBER_FIELD = re.compile(r'^randomizerName(\d+)$')
 # Lowercase prefix/suffix = Magical tier; rare-prefixed = Rare tier. Both are
 # real and they mean different things; see the module docstring.
 POOL_FIELD = re.compile(
@@ -71,26 +71,35 @@ class Collector:
                           for row in conn.execute('SELECT id, path FROM affix')}
         self.item_class = {row['path']: row['class']
                            for row in conn.execute('SELECT path, class FROM item')}
-        self.pool_members: dict[str, set[str]] = {}
+        self.pool_members: dict[str, dict[str, tuple[int, int] | None]] = {}
         self.pairs: set[tuple[int, str, str]] = set()
+        self.levels: dict[int, tuple[int, int]] = {}
         self.tables = 0
         self.unresolved_base = 0
         self.unresolved_affix = 0
         self.excluded = 0
 
-    def _members(self, pool_path: str) -> set[str]:
-        """The affixes in one pool file. Memoised -- a pool is referenced by
-        many drop tables, so this is asked far more often than there are
-        pools."""
+    def _members(self, pool_path: str) -> dict[str, tuple[int, int] | None]:
+        """The affixes in one pool file, each with the item-level window its
+        entry rolls in (randomizerLevelMin/Max<N>), or None where the entry
+        states none. Memoised -- a pool is referenced by many drop tables, so
+        this is asked far more often than there are pools."""
         key = pool_path.lower()
         if key not in self.pool_members:
-            found = set()
+            found = {}
             if key in self.db:
                 attrs = V.non_default(self.db.read(key))
                 for field, values in attrs.items():
-                    if MEMBER_FIELD.match(field):
-                        found.update(v.lower() for v in values
-                                     if isinstance(v, str) and v)
+                    m = MEMBER_FIELD.match(field)
+                    if not m:
+                        continue
+                    lo = attrs.get(f'randomizerLevelMin{m.group(1)}')
+                    hi = attrs.get(f'randomizerLevelMax{m.group(1)}')
+                    # non_default() drops a 0, so a Min missing beside a Max is 0
+                    window = (int(float(lo[0])) if lo else 0, int(float(hi[0]))) if hi else None
+                    for v in values:
+                        if isinstance(v, str) and v:
+                            found[v.lower()] = window
             self.pool_members[key] = found
         return self.pool_members[key]
 
@@ -126,11 +135,14 @@ class Collector:
             for pool in values:
                 if not isinstance(pool, str) or not pool:
                     continue
-                for member in self._members(pool):
+                for member, window in self._members(pool).items():
                     affix_id = self.affix_ids.get(member)
                     if affix_id is None:
                         self.unresolved_affix += 1
                         continue
+                    if window:
+                        lo, hi = self.levels.get(affix_id, window)
+                        self.levels[affix_id] = (min(lo, window[0]), max(hi, window[1]))
                     for cls in classes:
                         self.pairs.add((affix_id, cls, tier))
 
@@ -139,11 +151,16 @@ class Collector:
         self.conn.executemany(
             'INSERT INTO affix_eligibility (affix_id, item_class, tier) '
             'VALUES (?,?,?)', sorted(self.pairs))
+        self.conn.execute('DELETE FROM affix_level')
+        self.conn.executemany(
+            'INSERT INTO affix_level (affix_id, level_min, level_max) VALUES (?,?,?)',
+            sorted((a, lo, hi) for a, (lo, hi) in self.levels.items()))
         self.conn.commit()
         reachable = len({p[0] for p in self.pairs})
         return {'drop tables walked': self.tables,
                 'eligibility pairs': len(self.pairs),
                 'affixes reachable': reachable,
+                'affixes with a level window': len(self.levels),
                 'affixes that never drop': len(self.affix_ids) - reachable,
                 'unresolved loot targets': self.unresolved_base,
                 'unresolved pool members': self.unresolved_affix,

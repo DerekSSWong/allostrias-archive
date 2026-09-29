@@ -1414,8 +1414,7 @@ def gather(pr, ca, dir_name, icons):
             'grants': [t for k, t in shown if k == 'granted'], 'attached': attached,
             'set': None, 'path': r['base_path'], 'badge': badge,
             'granted': (base.get('itemSkillName') or [None])[0],
-            'grantLv': (base.get('itemSkillLevel')
-                        or base.get('itemSkillLevelEq') or [None])[0],
+            'grantLv': granted_level(r['base_path']) if base.get('itemSkillName') else None,
             # The granted skill by NAME. It follows the same buffSkillName hop
             # the toggles do -- an aura's name is on its buff record, not on
             # the skill the item names -- so reuse skill_name rather than
@@ -1506,25 +1505,16 @@ def devotion_level(path, carrier, xp, stated):
     return level
 
 
-def granted_level(base):
-    """The level an ITEM grants its skill at: `itemSkillLevelEq` on the granting
-    record, 1 on a base item and 2 on its mythical upgrade.
+def granted_level(path):
+    """The level an ITEM grants its skill at: item_stats.granted_skill_level(),
+    the one reading of `itemSkillLevelEq` -- 1 on a base item, 2 on its mythical
+    upgrade, or an equation in the item's own level, rounded down.
 
-    That is the same rule gd-lib's `apply_skill_level` encodes, confirmed there
-    against a real tooltip, and the same number this page already prints in the
-    Equipment panel's "Grants" line -- the buff pane was the one place still
-    folding every granted aura in at level 1, so Mythical Runic Bracers'
-    Prismatic Shield read one row short of what the tooltip beside it claimed.
-
-    ⚠️ THE FIELD IS SOMETIMES AN EQUATION (`itemLevel/4+1`). Every one of those
-    in this dataset grants an ATTACK skill, which never reaches the buff pane;
-    an equation on a skill that does get here would need the item's own level
-    and is not guessed at.
+    The buff pane was once the one place folding every granted aura in at level
+    1, so Mythical Runic Bracers' Prismatic Shield read one row short of what
+    the tooltip beside it claimed.
     """
-    raw = (base.get('itemSkillLevel') or base.get('itemSkillLevelEq') or ['1'])[0]
-    if not re.fullmatch(r'\d+', raw.strip()):
-        raise SystemExit(f'itemSkillLevelEq={raw!r} is an equation, not a level')
-    return max(1, int(raw))
+    return item_stats.granted_skill_level(item_stats.read_rel(path) or '')
 
 
 def skills_and_toggles(ca, inv, devotion, plus_skill, plus_mastery, C, P, equipment, icons):
@@ -1658,7 +1648,7 @@ def skills_and_toggles(ca, inv, devotion, plus_skill, plus_mastery, C, P, equipm
         if not (cls in TOGGLE_CLASSES or holder_cls in TOGGLE_CLASSES):
             continue
         name = skill_name(ca, e['granted'], d)
-        lv = granted_level(rec(e['path']) or {})
+        lv = granted_level(e['path'])
         tid = f't{len(toggles)}'
         # ⚠️ CHANNEL 2, AND petBonusName IS ON THE SKILL, NOT ON THE BUFF IT
         # POINTS AT -- so this does not take the buffSkillName hop the stats

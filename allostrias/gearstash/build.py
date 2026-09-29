@@ -86,7 +86,8 @@ class Index:
     their line keys and sheet rows, and granted skills; and each set's block,
     once however many of its pieces are held."""
 
-    def __init__(self):
+    def __init__(self, held=frozenset()):
+        self.held = held                  # every base record held, to mark set members
         self.fr = AB.field_to_rows(SB.SHEET)
         self.fields, self.skills, self.sets = [], [], []
         self._f, self._k, self._s = {}, {}, {}
@@ -105,7 +106,7 @@ class Index:
 
     def set(self, path):
         """The set at `path` as the card prints it: name, pieces for the full set,
-        members, tiers and what follows them (item_lines.set_block)."""
+        members as [name, held?], tiers and what follows them (item_lines.set_block)."""
         if path not in self._s:
             srec = SB.rec(path) or {}
             tiers, after = item_lines.set_block(srec)
@@ -113,7 +114,7 @@ class Index:
             self.sets.append({
                 'n': SB.tag((srec.get('setName') or [None])[0]) or 'Set',
                 'total': item_lines.set_size(srec),
-                'members': [SB.item_display(SB.rec(m) or {}, m)[0]
+                'members': [[SB.item_display(SB.rec(m) or {}, m)[0], int(m in self.held)]
                             for m in srec.get('setMembers') or [] if m],
                 'tiers': tiers, 'after': after})
         return self._s[path]
@@ -365,10 +366,11 @@ def main(out_dir=None):
     ca = sqlite3.connect(os.path.join(S.ROOT, 'cache', 'catalogue.sqlite'))
     ca.row_factory = sqlite3.Row
     icons = SB.Icons(Textures('Items.arc'), Textures('UI.arc'))
-    ix = Index()
     each, skipped = [], 0
     iagd_db = os.path.join(S.ROOT, 'cache', 'stash_iagd.sqlite') if cfg.iagd else None
-    for source, where, r in held(os.path.join(S.ROOT, 'cache', 'stash.sqlite'), iagd_db):
+    rows = list(held(os.path.join(S.ROOT, 'cache', 'stash.sqlite'), iagd_db))
+    ix = Index(frozenset(r['base_path'] for _, _, r in rows))
+    for source, where, r in rows:
         c = card(ca, ix, icons, source, where, r)
         if c is None:
             skipped += 1

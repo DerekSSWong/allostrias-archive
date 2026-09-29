@@ -18,6 +18,7 @@ The line is "renders a stat" against "lays out a card", and it is thinner than
 the other boundaries in this repo -- when in doubt, a thing that would read
 differently on a different page belongs to that page.
 """
+import math
 import re
 
 from . import settings as S
@@ -158,6 +159,9 @@ DIVERGED = {
     r'^offensivePierceRatio(Min|Max)$': 'Armor Piercing had no line (shown on Physical weapons only)',
     r'^augment(Skill|Mastery)(Name|Level)[5-8]$': 'grants past the fourth were dropped',
     r'^racialBonusRace$': 'a second race was cut off; the game prints one line per race',
+    r'^projectileLaunchNumber$': 'a count of 1 had no line (the game prints it)',
+    # only when the value is an equation -- tests/test_item_stats.py checks that
+    r'^itemSkillLevelEq$': 'an equation in itemLevel was read as level 1',
 }
 _DIVERGED_RE = [re.compile(k) for k in DIVERGED]
 
@@ -892,10 +896,41 @@ def apply_skill_level(txt, level_idx):
     return '\n'.join(out) + '\n'
 
 
-def skill_level_index(txt):
-    """`itemSkillLevelEq` on the granting record, as a 0-based index."""
-    m = re.search(r'^itemSkillLevelEq=(\d+)', txt, re.M)
-    return max(int(m.group(1)) - 1, 0) if m else 0
+_LEVEL_EXPR = re.compile(r'^[\d.+\-*/() ]+$')
+
+
+def granted_skill_level(txt, item_level=None):
+    """The level a record grants its skill at: `itemSkillLevelEq`, a number or an
+    equation in the ITEM's level -- `itemLevel/4+1`, `(itemLevel*.25)+2`, five
+    spellings over 977 items and 471 affixes -- rounded DOWN.
+
+    Settled against the game (tests/test_granted_level_game.py): on every held
+    item where the level moves a number the game prints unscaled, floor matches
+    and ceil and level 1 each miss some. An item reads its own `itemLevel`; an affix has
+    none and MUST be handed the item's (⚠️ assumed, not yet game-checked -- see
+    TODO.md). An equation with no level to put in it raises: reading it as level
+    1 is what printed every one of those skills at level 1.
+    """
+    m = re.search(r'^itemSkillLevelEq=(.+)$', txt, re.M)
+    if not m:
+        return 1
+    raw = m.group(1).strip()
+    if re.fullmatch(r'\d+(?:\.\d+)?', raw):
+        return max(1, int(float(raw)))
+    if item_level is None:
+        own = re.search(r'^itemLevel=(\d+)', txt, re.M)
+        if not own:
+            raise ValueError(f'itemSkillLevelEq={raw!r} needs an item level and none was given')
+        item_level = int(own.group(1))
+    expr = re.sub(r'(?i)itemlevel', str(item_level), raw)
+    if not _LEVEL_EXPR.match(expr):
+        raise ValueError(f'itemSkillLevelEq={raw!r} is not arithmetic in itemLevel')
+    return max(1, math.floor(eval(expr, {'__builtins__': {}}, {})))
+
+
+def skill_level_index(txt, item_level=None):
+    """granted_skill_level() as a 0-based index into a skill's per-level arrays."""
+    return granted_skill_level(txt, item_level) - 1
 
 
 def supplement_shared_stats(txt, prefix, existing):
@@ -947,7 +982,7 @@ def resolve_pet_bonus(txt, level_idx=0):
     return lines
 
 
-def resolve_item_skill(txt):
+def resolve_item_skill(txt, item_level=None):
     """itemSkillName = a skill GRANTED to the player (usually an on-attack
     proc, e.g. 'Crafted' guns granting Fireball). Returns a list of display
     lines (empty if none): "Grants: X" plus that skill's OWN stat payload
@@ -973,7 +1008,7 @@ def resolve_item_skill(txt):
     skill_txt = read_rel(m.group(1))
     if skill_txt is None:
         return []
-    level_idx = skill_level_index(txt)
+    level_idx = skill_level_index(txt, item_level)
     skill_txt = apply_skill_level(skill_txt, level_idx)
     disp_m = re.search(r'^skillDisplayName=(\S+)', skill_txt, re.M)
     if not disp_m:
@@ -1356,17 +1391,13 @@ def format_skill_modifier_stats(txt, prefix):
     chance_m = re.search(r'^skillChanceWeight=([\d.]+)', txt, re.M)
     if chance_m:
         lines.append(f'{prefix}{_first_value(chance_m.group(1))}% Chance to be Used')
-    # ARCHIVE-ONLY (modifiers only, which test_item_stats does not compare): on a
-    # modifier the game prints "+N", a count of
-    # 1 included -- dropping it emptied Devastation's and two runes' blocks. A
-    # granted skill keeps gd-lib's rule: the game prints its count too, but at
-    # the skill's level, and an `itemSkillLevelEq` equation (itemLevel/4+1) is
-    # not evaluated here, so the count read would be level 1's.
+    # ARCHIVE-ONLY (see DIVERGED): the game prints the count, 1 included --
+    # dropping it emptied Devastation's and two runes' modifier blocks -- with a
+    # "+" on a modifier. A granted skill's count is at its level (granted_skill_level).
     proj_m = re.search(r'^projectileLaunchNumber=(\d+)', txt, re.M)
-    if proj_m and re.search(r'^Class=Skill_Modifier$', txt, re.M):
-        lines.append(f'{prefix}+{proj_m.group(1)} Projectile(s)')
-    elif proj_m and proj_m.group(1) != '1':
-        lines.append(f'{prefix}{proj_m.group(1)} Projectile(s)')
+    if proj_m:
+        plus = '+' if re.search(r'^Class=Skill_Modifier$', txt, re.M) else ''
+        lines.append(f'{prefix}{plus}{proj_m.group(1)} Projectile(s)')
     # offensiveSlow{Type}Min + offensiveSlow{Type}DurationMin combine into ONE
     # "{total} {label} over {duration} Seconds" line in the real tooltip
     # (total = value * duration), not two separate "{N} dmg" / "+{N}
@@ -1766,7 +1797,7 @@ EFFECT_BUILDERS = [
 ]
 
 
-def effects_of(txt):
+def effects_of(txt, item_level=None):
     """Every effect line a record grants, in one order, for every catalogue.
 
     Blank lines are NOT dropped here -- each caller already filters them on the
@@ -1774,7 +1805,8 @@ def effects_of(txt):
     started returning empties."""
     lines = []
     for _, fn, _ in EFFECT_BUILDERS:
-        lines += fn(txt)
+        # the granted skill's level may be an equation in the item's level
+        lines += fn(txt, item_level) if fn is resolve_item_skill else fn(txt)
     return lines
 
 

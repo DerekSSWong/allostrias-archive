@@ -227,6 +227,16 @@ CREATE TABLE IF NOT EXISTS affix_eligibility (
 CREATE INDEX IF NOT EXISTS affix_eligibility_class_idx
     ON affix_eligibility(item_class);
 
+-- The item levels an affix record rolls at: the widest randomizerLevelMin/Max
+-- window over every pool entry a drop table reaches it through. An affix's
+-- granted skill level can be an equation in the item's level, so this is the
+-- range the Affixes view shows it across.
+CREATE TABLE IF NOT EXISTS affix_level (
+    affix_id  INTEGER PRIMARY KEY REFERENCES affix(id) ON DELETE CASCADE,
+    level_min INTEGER NOT NULL,
+    level_max INTEGER NOT NULL
+);
+
 -- ---------------------------------------------------------------------------
 -- The drop graph: who can hand out which item.
 --

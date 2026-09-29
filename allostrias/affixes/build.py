@@ -328,14 +328,17 @@ def merge_band(lo_line, hi_line):
     na, nb = _NUM.findall(lo_line), _NUM.findall(hi_line)
     moving = sum(x != y for x, y in zip(na, nb))
     out = [a[0]]
-    for x, y, rest in zip(na, nb, a[1:]):
+    for i, (x, y, rest) in enumerate(zip(na, nb, a[1:])):
         if x == y:
             out.append(x)
         else:
             # '+3–5%', not '+3–+5%': a sign both ends share is printed once,
             # as the game's own range strings do ('-{lo}-{hi}% Skill Energy Cost').
             y = y[1:] if x[0] == y[0] and x[0] in '+-' else y
-            out.append(f'({x}–{y})' if moving > 1 else f'{x}–{y}')
+            # A number that is one end of a range is bracketed even alone:
+            # '1.5–(2.2–2.6) Seconds', never '1.5–2.2–2.6'.
+            in_range = rest in ('–', '-') or a[i] in ('–', '-')
+            out.append(f'({x}–{y})' if moving > 1 or in_range else f'{x}–{y}')
         out.append(rest)
     return ''.join(out)
 
@@ -364,7 +367,7 @@ SUPPLEMENT = IL.SUPPLEMENT
 _supplement = IL.supplement
 
 
-def display(txt, stats, pet_txt, pet_stats):
+def display(txt, stats, pet_txt, pet_stats, item_levels=None):
     """[(line key, text, hi, is_pet)] in the order the game prints them.
 
     Each builder of the ported tooltip renderer is run on its own fields, so
@@ -405,9 +408,26 @@ def display(txt, stats, pet_txt, pet_stats):
             for line in _banded_lines(_pet_line, f'{f}={val}\n', plo, phi):
                 out.append(('pet:' + line_key(f), line, phi.get(f), True))
     # A granted skill last, below the pet bonus, as the game prints it.
-    for line in I.resolve_item_skill(txt):
-        out.append(('itemSkill', line, None, False))
+    out += [('itemSkill', line, None, False) for line in granted_lines(txt, item_levels)]
     return out
+
+
+def granted_lines(txt, item_levels):
+    """An affix's granted skill across the item levels it rolls at. Its level
+    can be an equation in the level of the item the affix lands on (Frostborn's
+    Ice Spike is `(itemLevel*.25)+1`), and an affix card belongs to no item, so
+    the skill is shown at both ends, banded, with a note saying it scales."""
+    if not re.search(r'^itemSkillName=', txt, re.M):
+        return []
+    lo, hi = item_levels or (None, None)
+    at = lambda lv: I.granted_skill_level(txt, lv)
+    if lo is None or at(lo) == at(hi):
+        return I.resolve_item_skill(txt, lo)
+    a, b = I.resolve_item_skill(txt, lo), I.resolve_item_skill(txt, hi)
+    if len(a) != len(b):
+        raise ValueError(f'{a[0]}: lines appear or vanish between skill levels {at(lo)} and {at(hi)}')
+    return [merge_band(x, y) for x, y in zip(a, b)] + [
+        f'{a[0][len("Grants: "):]}: (skill level {at(lo)}–{at(hi)}: scales with item level)']
 
 
 def _fields_and_lines(txt, lo, hi):
@@ -442,7 +462,11 @@ def load(conn):
               AND EXISTS (SELECT 1 FROM affix_eligibility e WHERE e.affix_id=a.id)"""):
         recs[r['id']] = dict(path=r['path'], kind=r['kind'], tag=r['name_tag'],
                              name=r['name'], rarity=r['rarity'],
-                             level=r['level_req'] or 0, stats={}, pet={}, slots=set())
+                             level=r['level_req'] or 0, stats={}, pet={}, slots=set(),
+                             classes=set(), window=None)
+    for r in conn.execute('SELECT affix_id, level_min, level_max FROM affix_level'):
+        if r['affix_id'] in recs:
+            recs[r['affix_id']]['window'] = (r['level_min'], r['level_max'])
     for table, key in (('affix_stat', 'stats'), ('affix_pet_stat', 'pet')):
         for r in conn.execute(f'SELECT affix_id, field, idx, value, lo, hi, txt FROM {table}'):
             rec = recs.get(r['affix_id'])
@@ -453,7 +477,35 @@ def load(conn):
     for r in conn.execute('SELECT affix_id, item_class FROM affix_eligibility'):
         if r['affix_id'] in recs:
             recs[r['affix_id']]['slots'].add(CLASS_TO_LABEL[r['item_class']])
+            recs[r['affix_id']]['classes'].add(r['item_class'])
     return list(recs.values())
+
+
+def class_top_levels(conn):
+    """{item class: the highest itemLevel of any equipment of it}. A pool's
+    randomizerLevelMax is often 200-500, past any item that exists (100)."""
+    top = {}
+    for r in conn.execute('SELECT path, class FROM item WHERE is_equipment = 1'):
+        m = re.search(r'^itemLevel=(\d+)', I.read_rel(r['path']) or '', re.M)
+        if m:
+            top[r['class']] = max(top.get(r['class'], 0), int(m.group(1)))
+    return top
+
+
+def item_level_windows(affixes, top):
+    """{(tag, slot set): (lo, hi)}: the item levels a whole affix card rolls
+    at, its tiers together, each capped at the top item level of its classes."""
+    out = {}
+    for a in affixes:
+        if not a['window']:
+            continue
+        cap = max((top[c] for c in a['classes'] if c in top), default=None)
+        if cap is None:
+            raise ValueError(f"{a['path']}: no item of its classes has an itemLevel")
+        lo, hi = a['window'][0], min(a['window'][1], cap)
+        k = (a['tag'], frozenset(a['slots']))
+        out[k] = (min(out.get(k, (lo, hi))[0], lo), max(out.get(k, (lo, hi))[1], hi))
+    return out
 
 
 def build(conn):
@@ -463,12 +515,15 @@ def build(conn):
     field_ix = {}
     records, stats = [], collections.Counter()
 
-    for a in sorted(load(conn), key=lambda a: a['path']):
+    affixes = load(conn)
+    windows = item_level_windows(affixes, class_top_levels(conn))
+    for a in sorted(affixes, key=lambda a: a['path']):
         rows = line_rows(a['stats'], a['pet'])
         txt = I.read_rel(a['path'])
         pet_path = a['stats'].get('petBonusName', (None,) * 4)[3]
         pet_txt = I.read_rel(pet_path) if pet_path else None
-        shown = display(txt, a['stats'], pet_txt, a['pet'])
+        shown = display(txt, a['stats'], pet_txt, a['pet'],
+                        windows.get((a['tag'], frozenset(a['slots']))))
 
         scored = []
         for r in rows:

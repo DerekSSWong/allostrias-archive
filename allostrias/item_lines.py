@@ -102,6 +102,9 @@ def rolled(base_path, sources, roll):
     # Everything the renderer reads off the RECORD rather than off a number:
     # none of it rolls, so each source's own text is the input.
     granted = []
+    # An affix's skill level can be an equation in the level of the ITEM it sits on.
+    item_level = re.search(r'^itemLevel=(\d+)', base_txt, re.M)
+    item_level = int(item_level.group(1)) if item_level else None
     for which in ('base', 'prefix', 'suffix'):
         txt = texts.get(which)
         if not txt:
@@ -111,7 +114,7 @@ def rolled(base_path, sources, roll):
         racial = _only(txt, r'^racialBonus')
         if racial.strip():
             out += I.process_stats_fields(racial)
-        granted += [('granted', l) for l in I.resolve_item_skill(txt)]
+        granted += [('granted', l) for l in I.resolve_item_skill(txt, item_level)]
         for i in range(1, 9):
             name = re.search(rf'^augmentSkillName{i}=' + I.PATH, txt, re.M)
             if name:
