@@ -82,13 +82,14 @@ def _pet_stats(record):
 
 
 class Index:
-    """The interned tables the page's scorer reads: fields the sheet reads, their
-    line keys and sheet rows, and granted skills."""
+    """The interned tables the page reads: for the scorer, fields the sheet reads,
+    their line keys and sheet rows, and granted skills; and each set's block,
+    once however many of its pieces are held."""
 
     def __init__(self):
         self.fr = AB.field_to_rows(SB.SHEET)
-        self.fields, self.skills = [], []
-        self._f, self._k = {}, {}
+        self.fields, self.skills, self.sets = [], [], []
+        self._f, self._k, self._s = {}, {}, {}
 
     def field(self, key):
         if key not in self._f:
@@ -102,9 +103,24 @@ class Index:
             self.skills.append(key)
         return self._k[key]
 
+    def set(self, path):
+        """The set at `path` as the card prints it: name, pieces for the full set,
+        members, tiers and what follows them (item_lines.set_block)."""
+        if path not in self._s:
+            srec = SB.rec(path) or {}
+            tiers, after = item_lines.set_block(srec)
+            self._s[path] = len(self.sets)
+            self.sets.append({
+                'n': SB.tag((srec.get('setName') or [None])[0]) or 'Set',
+                'total': item_lines.set_size(srec),
+                'members': [SB.item_display(SB.rec(m) or {}, m)[0]
+                            for m in srec.get('setMembers') or [] if m],
+                'tiers': tiers, 'after': after})
+        return self._s[path]
+
     def tables(self):
         return {'f': self.fields, 'lk': [AB.line_key(f) for f in self.fields],
-                'fr': [self.fr[f] for f in self.fields], 'k': self.skills}
+                'fr': [self.fr[f] for f in self.fields], 'k': self.skills, 'sets': self.sets}
 
 
 def grant_key(key):
@@ -206,7 +222,7 @@ def card(ca, ix, icons, source, where, r):
     }
     set_path = (base.get('itemSetName') or [None])[0]
     if set_path:
-        out['set'] = SB.tag(((SB.rec(set_path) or {}).get('setName') or [None])[0])
+        out['set'] = ix.set(set_path)
     if roll.unmodeled:
         out['why'] = 'not replayed: ' + ', '.join(roll.unmodeled)
         return out
@@ -333,7 +349,7 @@ def merge(ca, ix, held_cards):
 def _verdict_key(ix, key):
     """The key the scorer's match() reports this line's verdict under, or 0: a
     stat line by its line key ('f' + line key), a grant by its skill slot."""
-    if not key:
+    if not key or key == 'granted':
         return 0
     if key.startswith(('skill:', 'mastery:')):
         return f'sk{ix.skill(grant_key(key))}'

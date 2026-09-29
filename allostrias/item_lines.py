@@ -11,6 +11,7 @@ print to it.
 Component and augment are NOT inputs. A caller that wants them shows them
 separately; the Gear Stash view leaves them off by the user's rule (2026-09-28).
 """
+import collections
 import re
 
 from . import item_stats as I
@@ -40,7 +41,9 @@ def rolled(base_path, sources, roll):
     roll was made from; `roll` is seedroll's result for them and must not be a
     refusal. `key` says what the line is, for a caller that grades it: a raw
     field name for a stat line, `conversion`/`conversion2`, `skill:<record>`,
-    `mastery:<record>`, or None for a line nobody grades (granted skill, pet).
+    `mastery:<record>`, `granted` for a granted skill's block, or None for a
+    line nobody grades (a pet bonus, a skill modifier). Granted skills come
+    last, every source's, as the game prints them.
     """
     if roll.unmodeled:
         raise ValueError('a refused roll has no lines: ' + ', '.join(roll.unmodeled))
@@ -98,6 +101,7 @@ def rolled(base_path, sources, roll):
 
     # Everything the renderer reads off the RECORD rather than off a number:
     # none of it rolls, so each source's own text is the input.
+    granted = []
     for which in ('base', 'prefix', 'suffix'):
         txt = texts.get(which)
         if not txt:
@@ -107,7 +111,7 @@ def rolled(base_path, sources, roll):
         racial = _only(txt, r'^racialBonus')
         if racial.strip():
             out += I.process_stats_fields(racial)
-        out += [(None, l) for l in I.resolve_item_skill(txt)]
+        granted += [('granted', l) for l in I.resolve_item_skill(txt)]
         for i in range(1, 9):
             name = re.search(rf'^augmentSkillName{i}=(\S+)', txt, re.M)
             if name:
@@ -121,4 +125,96 @@ def rolled(base_path, sources, roll):
         out += [(None, l) for l in I.resolve_skill_modifiers(txt)]
         out += [(None, l) for l in I.resolve_pet_bonus(txt)]
         out += [(None, l) for l in I.resolve_pet_conversions(txt)]
-    return [(k, l) for k, l in out if l]
+    return [(k, l) for k, l in out + granted if l]
+
+
+# ---- set bonuses -------------------------------------------------------------
+# ⚠️ THE TIER ENCODING IS RIGHT-ALIGNED AND THE RECORD NOWHERE SAYS SO. A set of M
+# members has M-1 tiers, (2) through (M), and a numeric field's `;` array fills the
+# LAST len(array) of them: a single value is the FULL-SET bonus, not the 2-piece.
+# Left-aligning gives an equally well-formed block with every bonus on the wrong
+# tier. A text field (a skill, a conversion type) has no array of its own: it is
+# live wherever the number beside it is, and full-set only when nothing is beside
+# it. tests/test_setbonus_game.py holds every tier to the game's own tooltips.
+_SET_META = {'templateName', 'FileDescription', 'setName', 'setDescription',
+             'setMembers', 'itemLevel', 'setSize'}
+_COMPANION = [(re.compile(r'^augmentSkillName(\d+)$'), 'augmentSkillLevel{}'),
+              (re.compile(r'^augmentMasteryName(\d+)$'), 'augmentMasteryLevel{}'),
+              (re.compile(r'^conversion(?:In|Out)Type(\d*)$'), 'conversionPercentage{}'),
+              (re.compile(r'^petBonusName()$'), 'petBonusLevel{}'),
+              (re.compile(r'^itemSkill(?:Name|AutoController)()$'), 'itemSkillLevel{}')]
+
+
+def _number(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def set_size(setrec):
+    """Pieces for the full set: `setSize` where the record has one (The Arcanum
+    lists 6 members and completes at 4, as the game's tiers show), else its members."""
+    size = (setrec.get('setSize') or [None])[0]
+    return int(float(size)) if size else len([m for m in setrec.get('setMembers') or [] if m])
+
+
+def set_tier(setrec, pieces):
+    """{field: value} a set grants with `pieces` of it worn -- every field, the
+    tiers below included. `setrec` is a record as sheet.build.rec() returns it."""
+    M = set_size(setrec)
+    if pieces < 2 or M < 2:
+        return {}
+    slot, out = min(pieces, M) - 2, {}
+    for f, arr in setrec.items():
+        if f in _SET_META or not arr or any(_number(v) is None for v in arr):
+            continue
+        first = (M - 1) - len(arr)
+        if first < 0:
+            # Guessing which end to trim is the mistake this decode exists to avoid,
+            # unless every value is the same (itemset_d115: 120 x4 over 3 tiers).
+            if len(set(arr)) > 1:
+                raise ValueError(f'{f} carries {len(arr)} values for a {M}-member set')
+            arr, first = arr[-(M - 1):], 0
+        if slot >= first and _number(arr[slot - first]):
+            out[f] = arr[slot - first]
+    for f, arr in setrec.items():
+        if f in _SET_META or not arr or f in out or all(_number(v) is not None for v in arr):
+            continue
+        comp = next((c.format(m.group(1)) for rx, c in _COMPANION for m in [rx.match(f)] if m), None)
+        if (comp in out) if comp and comp in setrec else pieces >= M:
+            out[f] = arr[0]
+    return out
+
+
+def _text(fields):
+    return ''.join(f'{f}={v}\n' for f, v in fields.items())
+
+
+def set_block(setrec):
+    """The set's bonuses as the game lists them: (tiers, after). `tiers` is
+    [(pieces, [line])], each with only what it ADDS over the tier below (the
+    arrays repeat a carried-over value on every tier); `after` is what the game
+    prints below the tiers, untiered: the set's skill modifiers, then the skill
+    the full set grants."""
+    M = set_size(setrec)
+    tiers, below = [], []
+    for n in range(2, M + 1):
+        txt = _text({f: v for f, v in set_tier(setrec, n).items() if not f.startswith('itemSkill')})
+        tier = set_tier(setrec, n)
+        lines = [l for name, fn, _ in I.EFFECT_BUILDERS
+                 if name not in ('item skill', 'skill modifiers') for l in fn(txt) if l]
+        lines += [supplement(f, float(tier[f])) for f in SUPPLEMENT if f in tier]
+        left, added = collections.Counter(below), []
+        for l in lines:
+            if left[l]:
+                left[l] -= 1
+            else:
+                added.append(l)
+        if added:
+            tiers.append((n, added))
+        below = lines
+    full = set_tier(setrec, M)
+    after = I.resolve_skill_modifiers(_text(full))
+    after += I.resolve_item_skill(_text({f: v for f, v in full.items() if f.startswith('itemSkill')}))
+    return tiers, [l for l in after if l]

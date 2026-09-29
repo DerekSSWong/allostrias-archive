@@ -1351,8 +1351,16 @@ def format_skill_modifier_stats(txt, prefix):
     chance_m = re.search(r'^skillChanceWeight=([\d.]+)', txt, re.M)
     if chance_m:
         lines.append(f'{prefix}{_first_value(chance_m.group(1))}% Chance to be Used')
+    # ARCHIVE-ONLY (modifiers only, which test_item_stats does not compare): on a
+    # modifier the game prints "+N", a count of
+    # 1 included -- dropping it emptied Devastation's and two runes' blocks. A
+    # granted skill keeps gd-lib's rule: the game prints its count too, but at
+    # the skill's level, and an `itemSkillLevelEq` equation (itemLevel/4+1) is
+    # not evaluated here, so the count read would be level 1's.
     proj_m = re.search(r'^projectileLaunchNumber=(\d+)', txt, re.M)
-    if proj_m and proj_m.group(1) != '1':
+    if proj_m and re.search(r'^Class=Skill_Modifier$', txt, re.M):
+        lines.append(f'{prefix}+{proj_m.group(1)} Projectile(s)')
+    elif proj_m and proj_m.group(1) != '1':
         lines.append(f'{prefix}{proj_m.group(1)} Projectile(s)')
     # offensiveSlow{Type}Min + offensiveSlow{Type}DurationMin combine into ONE
     # "{total} {label} over {duration} Seconds" line in the real tooltip
@@ -1578,13 +1586,13 @@ def resolve_skill_modifiers(txt):
     points at the real Skill_Modifier/Skill_Passive payload; a few (mostly
     cosmetic pet-model swaps, e.g. "Always summons Chaos Skeletal Mages")
     have no numeric payload at all and correctly yield nothing."""
-    lines = []
+    blocks = {}
     for i in range(1, 5):
         mod_name_m = re.search(rf'^modifiedSkillName{i}=(\S+)', txt, re.M)
         mod_mod_m = re.search(rf'^modifierSkillName{i}=(\S+)', txt, re.M)
         if not mod_name_m or not mod_mod_m:
             continue
-        target_name = skill_display_name(read_rel(mod_name_m.group(1)))
+        target_name = modified_skill_name(read_rel(mod_name_m.group(1)))
         if not target_name:
             continue
         mod_txt = read_rel(mod_mod_m.group(1))
@@ -1597,10 +1605,27 @@ def resolve_skill_modifiers(txt):
         # otherwise vanish along with its skill heading -- Krieg's Armament's
         # Reckless Power modifier is exactly that (resistance reduction and
         # nothing else), so one of the set's three modifier blocks was missing.
-        lines.extend(supplement_shared_stats(
+        block = blocks.setdefault(target_name, [])
+        # A transmuter's modifier joins its parent's block (see modified_skill_name);
+        # a line both already print is printed once.
+        block.extend(l for l in supplement_shared_stats(
             mod_txt, f'{target_name}: ',
-            format_skill_modifier_stats(mod_txt, f'{target_name}: ')))
-    return lines
+            format_skill_modifier_stats(mod_txt, f'{target_name}: ')) if l not in block)
+    return [l for b in blocks.values() for l in b]
+
+
+TAG_FAMILY = re.compile(r'^(tag(?:GDX\d+)?Class\d+SkillName\d+)([A-Z])$')
+
+
+def modified_skill_name(txt):
+    """The name a modifier's block is titled with. ARCHIVE-ONLY: a modifier on a TRANSMUTER is titled with the skill it transmutes -- the head
+    of its display-tag family, `...09C` -> `...09A` -- as the game prints it
+    ("Quick Jacks" -> Stun Jacks, "High Potency" -> Blackwater Cocktail). A
+    transmuter whose family head does not resolve gets no block, not its own name."""
+    if txt is None or not re.search(r'^Class=Skill_Transmuter$', txt, re.M):
+        return skill_display_name(txt)
+    m = TAG_FAMILY.match((re.search(r'^skillDisplayName=(\S+)', txt, re.M) or [None, ''])[1])
+    return clean_name(SKILL_TAGS.get(m.group(1) + 'A', '')) or None if m else None
 
 
 BASE_DAMAGE_RE = re.compile(r'^offensiveBase([A-Za-z]+)(Min|Max)=(-?[\d.]+)', re.M)

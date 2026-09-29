@@ -370,59 +370,17 @@ def class_title(masteries):
 
 
 def set_bonus(setrec, worn):
-    """The set's bonus at `worn` pieces: (stat values, [(skill path, level)]).
+    """The set's bonus at `worn` pieces: (stat values, [(skill path, level)], members).
 
-    ⚠️ THE TIER ENCODING IS RIGHT-ALIGNED AND THE RECORD NOWHERE SAYS SO. A set
-    with M members has M-1 bonus slots, (2) through (M), and a stat's
-    `;`-separated array fills the LAST len(array) of them. Left-aligning
-    produces an equally well-formed answer with every bonus on the wrong tier
-    and nothing looking broken -- see the Explorer's Garments decode that
-    established this against an in-game block.
-
-    A single value is therefore the FULL-SET bonus, not the 2-piece one.
-
-    ⚠️ ASSUMED, NOT CONFIRMED: non-numeric fields (a granted skill) carry no
-    array and are treated as full-set only, the same as a one-value stat. Every
-    set worn here is worn complete, so nothing in this data can tell that apart
-    from "active from 2 pieces"; check_sheet.js pins that.
+    The tier decode is item_lines.set_tier(), the one the tooltips print from and
+    tests/test_setbonus_game.py holds to the game: right-aligned arrays, a skill
+    live wherever its level is, `setSize` over the member count.
     """
-    # rec() has already split on ';', so every field is a list and its LENGTH
-    # is the number of tiers the bonus covers.
     members = [m for m in (setrec.get('setMembers') or []) if m]
-    M = len(members)
-    if worn < 2 or M < 2:
-        return {}, [], members
-    slot = worn - 2                      # 0-based index into tiers (2)..(M)
-    stats, skills = {}, []
-    for field, arr in setrec.items():
-        if not (wanted(field) and arr):
-            continue
-        first = (M - 1) - len(arr)       # right-aligned: covers the LAST len(arr)
-        if first < 0:
-            # More values than the set has tiers. Not a shape seen in any
-            # record here, and guessing which end to trim is exactly the
-            # mistake this decode exists to avoid -- so say so and stop.
-            raise SystemExit(
-                f'{field} carries {len(arr)} values for a {M}-member set '
-                f'({M - 1} tiers): the tier encoding is not what this assumes')
-        if slot < first:
-            continue
-        if slot - first >= len(arr):
-            # Unreachable with the right-aligned arithmetic above; if it fires,
-            # the alignment has been changed and is now reading off the end.
-            raise SystemExit(
-                f'{field}: tier {worn} reads index {slot - first} of {len(arr)} '
-                f'-- the tier alignment is wrong, see gate_setbonus.py')
-        try:
-            v = float(arr[slot - first])
-        except ValueError:
-            continue
-        if v:
-            stats[field] = stats.get(field, 0) + v
-    for i in range(1, 9):
-        n, l = setrec.get(f'augmentSkillName{i}'), setrec.get(f'augmentSkillLevel{i}')
-        if n and l and worn == M:        # see the assumption above
-            skills.append((n[0], int(float(l[0]))))
+    tier = item_lines.set_tier(setrec, worn)
+    stats = {f: float(v) for f, v in tier.items() if wanted(f)}
+    skills = [(tier[f'augmentSkillName{i}'], int(float(tier[f'augmentSkillLevel{i}'])))
+              for i in range(1, 9) if f'augmentSkillName{i}' in tier and f'augmentSkillLevel{i}' in tier]
     return stats, skills, members
 
 
@@ -1442,7 +1400,7 @@ def gather(pr, ca, dir_name, icons):
         # The tooltip prints what the stash cards print: item_lines.rolled(), the
         # composition test_seedroll_game.py holds to the game's own tooltips.
         # Its +skill lines (every source, not just the base) are the Skill
-        # modifiers block; the rest -- the granted skill included -- are lines.
+        # modifiers block, its granted skills their own; the rest are lines.
         paths = {k: r[f'{k}_path'] for k in ('base', 'prefix', 'suffix') if r[f'{k}_path']}
         shown = item_lines.rolled(r['base_path'], paths, roll) if not roll.unmodeled else []
         is_grant = lambda k: bool(k) and k.startswith(('skill:', 'mastery:'))
@@ -1452,7 +1410,8 @@ def gather(pr, ca, dir_name, icons):
             'slot': r['slot'], 'n': name, 'rarity': rarity, 'style': style,
             'affixes': affixes, 'slotLabel': slot_label,
             'icon': icons.want(icon), 'lv': int(float((base.get('levelRequirement') or [0])[0])),
-            'lines': [t for k, t in shown if not is_grant(k)], 'attached': attached,
+            'lines': [t for k, t in shown if not is_grant(k) and k != 'granted'],
+            'grants': [t for k, t in shown if k == 'granted'], 'attached': attached,
             'set': None, 'path': r['base_path'], 'badge': badge,
             'granted': (base.get('itemSkillName') or [None])[0],
             'grantLv': (base.get('itemSkillLevel')
@@ -1491,9 +1450,9 @@ def gather(pr, ca, dir_name, icons):
             C.add(f, v, label, kind='set')
         for sp, lv in skills:
             plus_skill[sp] = plus_skill.get(sp, 0) + lv
-        info = {'n': sname, 'worn': len(pieces), 'total': len(members),
-                'lines': stat_lines(stats, {})
-                         + [f'+{lv} {skill_name(ca, sp, rec(sp) or {})}' for sp, lv in skills],
+        tiers, after = item_lines.set_block(srec)
+        info = {'n': sname, 'worn': len(pieces), 'total': item_lines.set_size(srec),
+                'tiers': tiers, 'after': after,
                 'members': [{'n': item_display(rec(m) or {}, m)[0],
                              'worn': any(p['path'] == m for p in pieces)}
                             for m in members]}

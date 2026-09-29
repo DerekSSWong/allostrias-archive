@@ -397,9 +397,6 @@ def display(txt, stats, pet_txt, pet_stats):
         for line in _banded_lines(I.resolve_augment_skills, part, lo, hi):
             out.append((f'skill{i}', line, hi.get(f'augmentSkillLevel{i}'), False))
 
-    for line in I.resolve_item_skill(txt):
-        out.append(('itemSkill', line, None, False))
-
     if pet_txt is not None:
         plo = {f: s[1] for f, s in pet_stats.items() if s[1] is not None}
         phi = {f: s[2] for f, s in pet_stats.items() if s[2] is not None}
@@ -407,6 +404,9 @@ def display(txt, stats, pet_txt, pet_stats):
         for f, val in re.findall(r'^([A-Za-z0-9]+)=(-?[\d.]+)', pet_txt, re.M):
             for line in _banded_lines(_pet_line, f'{f}={val}\n', plo, phi):
                 out.append(('pet:' + line_key(f), line, phi.get(f), True))
+    # A granted skill last, below the pet bonus, as the game prints it.
+    for line in I.resolve_item_skill(txt):
+        out.append(('itemSkill', line, None, False))
     return out
 
 

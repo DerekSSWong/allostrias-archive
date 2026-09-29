@@ -541,6 +541,16 @@ __MASTERY_BARS__
 .tip .setpc{display:flex; justify-content:space-between; gap:var(--s2);
   font-size:12.5px; color:var(--faint)}
 .tip .setpc.on{color:var(--ink)}
+/* A set's tiers and a granted skill: the skill orange, as the game prints it. */
+.stier{margin-top:6px}
+.sset{margin-top:var(--s2); padding-top:var(--s2); border-top:1px solid var(--rule)}
+.sset > b{font:600 12.5px "Libertinus Serif",Georgia,serif; color:var(--gold)}
+.acard li.gh, .stier li.gh{color:var(--skill); font-weight:600}
+.stier > i{display:block; font:italic 12px "Libertinus Serif",Georgia,serif; color:var(--gold-dim)}
+.stier.off{opacity:.45}
+.stier ul, .tip ul.grant, .scard ul.grant{margin:0; padding:0; list-style:none}
+.tip .stier li, .tip ul.grant li{font-size:13px; color:var(--stat)}
+.stier li.gh, ul.grant li.gh{color:var(--skill); font-weight:600}
 .tip .setpc i{font-style:normal; color:var(--gold-dim)}
 .rule{height:3px; background:url("__DIVIDER__") center/100% 3px no-repeat; opacity:.85}
 .srcs{display:flex; flex-direction:column; gap:1px}
@@ -1334,7 +1344,7 @@ __AFFIX_JS__
         <span class="ak">${c.kind}</span><span class="al">${lv}</span>
 </div>
       <div class="as">${c.slots.map(hl).join(" · ")}</div>
-      <ul>${c.effects.map(e => `<li${e.pet ? ' class="pet"' : ""}>${
+      <ul>${c.effects.map(e => `<li${e.pet ? ' class="pet"' : e.text.startsWith("Grants: ") ? ' class="gh"' : ""}>${
         /* Personal: the sheet's verdict mark on every line it has one for --
            the gutter always, the image only where there is a verdict. */
         aview.mode === "atlas" ? "" : `<span class="vd"${e.v ? ` data-v="${e.v}"` : ""}></span>`
@@ -1584,9 +1594,15 @@ __AFFIX_JS__
   }
   function stashLines(it){
     if (!it._nl) it._nl = [it.n, ...(it.l || []).map(l => l[0]),
-                           it.sl, keptIn(it), it.set || ""]
+                           it.sl, keptIn(it), ...setText(it)]
       .map(l => GS.normalise(l));
     return it._nl;
+  }
+  /* A set piece's set block, every line of it: what the card prints is what a
+     search reaches, and what it highlights. */
+  function setText(it){
+    const s = GST.sets[it.set];
+    return s ? [s.n, ...s.members, ...s.tiers.flatMap(([, ls]) => ls), ...s.after] : [];
   }
   function stashMatches(it){
     if (sview.slots.size && !stashSlots(it).some(sl => sview.slots.has(sl))) return false;
@@ -1595,11 +1611,12 @@ __AFFIX_JS__
   }
 
   function scard(it, idx){
-    const rows = sliveRows(), h = t => hl(t, rows);
+    const rows = sliveRows(), h = t => hl(t, rows), set = GST.sets[it.set];
     const got = sview.mode === "atlas" ? null : ((sview.got[idx] || {}).v || {});
     const gutter = k => got ? `<span class="vd"${k && got[k] ? ` data-v="${got[k]}"` : ""}></span>` : "";
     const lines = it.l
-      ? `<ul>${it.l.map(([t, k]) => `<li>${gutter(k)}<span>${h(t)}</span></li>`).join("")}</ul>`
+      ? `<ul>${it.l.map(([t, k]) => `<li${t.startsWith("Grants: ") ? ' class="gh"' : ""}>${
+          gutter(k)}<span>${h(t)}</span></li>`).join("")}</ul>`
       : `<p class="note">Stats withheld: the seed replay does not model this item yet (${
           esc(it.why)}).</p>`;
     return `<div class="acard scard" data-i="${idx}" data-r="${esc(it.r || "Common")}">
@@ -1607,8 +1624,9 @@ __AFFIX_JS__
         <span class="sn t-${esc(it.r || "Common")}">${badge({badge: it.b})}${h(it.n)}</span>
         <span class="sm">${h(it.sl)}${it.lv ? " · lvl " + it.lv : ""} · ${
           it.x.length > 1 ? it.x.length + " held · " : ""}${h(keptIn(it))}</span>
-        ${it.set ? `<span class="sm">${h(it.set)}</span>` : ""}</span></div>
-      ${lines}</div>`;
+        ${set ? `<span class="sm">${h(set.n)}</span>` : ""}</span></div>
+      ${lines}${set ? `<div class="sset"><b>${h(set.n)}</b>
+        <span class="sm">${set.members.map(h).join(" · ")}</span>${setTiersHtml(set, null, h)}</div>` : ""}</div>`;
   }
 
   function renderStashSlots(){
@@ -2132,6 +2150,22 @@ __AFFIX_JS__
         rows.map(r => `<div class="${cls || "att"}">${r}</div>`).join("")}</div>`
     : "";
 
+  /* A granted skill's lines: "Grants: X" heads its block, the rest are X's. */
+  const grantHtml = lines => `<ul class="grant">${lines.map(l =>
+    `<li${l.startsWith("Grants: ") ? ' class="gh"' : ""}>${esc(l)}</li>`).join("")}</ul>`;
+  /* A set's tiers, "(N) Set" over what that tier adds, then what the full set
+     grants past its tiers. `worn` lights the tiers reached; null lights none
+     and dims none (the Gear Stash, where nothing is worn). */
+  function setTiersHtml(set, worn, h){
+    h = h || esc;
+    const dim = n => worn != null && worn < n ? " off" : "";
+    return set.tiers.map(([n, ls]) => `<div class="stier${dim(n)}"><i>(${n}) Set</i><ul>${
+        ls.map(l => `<li>${h(l)}</li>`).join("")}</ul></div>`).join("")
+      + (set.after.length ? `<div class="stier${dim(set.total)}"><ul>${
+        set.after.map(l => `<li${l.startsWith("Grants: ") ? ' class="gh"' : ""}>${h(l)}</li>`).join("")
+        }</ul></div>` : "");
+  }
+
   function itemTip(ch, e){
     if (!e) return "";
     const refused = ch.refused.find(r => r.name === e.n);
@@ -2143,12 +2177,12 @@ __AFFIX_JS__
         : `<p class="note">No stat line this sheet renders.</p>`}
       ${block("Skill modifiers", (e.mods || []).map(esc), "skl")}
       ${block("Completion bonus", (e.bonus || []).map(esc))}
+      ${(e.grants || []).length ? `<div class="rule"></div>${grantHtml(e.grants)}` : ""}
       ${e.set ? `<div class="rule"></div><div class="blk">
           <b>${esc(e.set.n)} &mdash; ${e.set.worn} of ${e.set.total}</b>
           ${e.set.members.map(m => `<div class="setpc${m.worn ? " on" : ""}"><span>${
             esc(m.n)}</span>${m.worn ? "<i>worn</i>" : ""}</div>`).join("")}
-          ${e.set.lines.length ? `<ul style="margin-top:6px">${
-            e.set.lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
+          ${setTiersHtml(e.set, e.set.worn)}
         </div>` : ""}
       ${e.attached.length ? `<div class="rule"></div>${e.attached.map(a =>
         `<div class="att">${esc(a.kind)}: ${esc(a.name)}</div>`).join("")}` : ""}

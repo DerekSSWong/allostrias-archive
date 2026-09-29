@@ -886,7 +886,7 @@ const RAW_NAME=/\.dbr$|\^|^[a-z0-9_]{6,}$/;
       want(e.set.members.filter(m=>m.worn).length===e.set.worn,
            `${c.name}: ${e.set.n} says ${e.set.worn} worn but marks `
            + `${e.set.members.filter(m=>m.worn).length} members`);
-      want(e.set.lines.length>0, `${c.name}: ${e.set.n} is active and lists no bonus`);
+      want(e.set.tiers.some(([n])=>n<=e.set.worn), `${c.name}: ${e.set.n} is active and lists no bonus`);
     }
     // every piece of one set must agree, and the bonus must reach the sheet ONCE
     for (const [nm, pieces] of byset){
@@ -904,17 +904,12 @@ const RAW_NAME=/\.dbr$|\^|^[a-z0-9_]{6,}$/;
   }
   want(sets>=3, `only ${sets} set pieces worn; the set path is going untested`);
 }
-// ⚠️ THE TIER ALIGNMENT IS NOT TESTABLE FROM HERE AND MUST NOT BE ASSUMED
-// TESTED. The only set worn is Daega's Oath -- 3 members, worn complete, every
-// array as long as the slot count -- and for that shape left- and
-// right-alignment produce IDENTICAL output. Flipping the decode passes
-// everything below. `gate_setbonus.py` is what actually pins the direction,
-// against Explorer's Garments; run it after any edit to set_bonus().
-// If a set with a SHORT array is ever worn, that becomes testable here too.
-for (const c of B.characters)
-  for (const e of c.equipment)
-    if (e.set) want(e.set.worn!==e.set.total || e.set.lines.length>=1,
-                    `${c.name}: a complete ${e.set.n} grants nothing`);
+// ⚠️ THE TIER ALIGNMENT IS NOT TESTABLE FROM HERE: tests/test_setbonus_game.py
+// holds every tier to the game's tooltips, and test_setbonus.py pins the direction.
+// The tooltip's set block is checked under "the detail tooltip" below.
+for (const c of B.characters) for (const e of c.equipment)
+  want(!(e.grants||[]).length || (e.grants[0].startsWith('Grants: ') && !e.lines.some(l=>e.grants.includes(l))),
+       `${c.name}: ${e.n}'s granted skill is not its own block`);
 
 // The other three blocks. Each must be absent rather than empty when it does
 // not apply -- an empty heading reads as a bonus that exists and is blank.
@@ -1145,6 +1140,49 @@ fire('pointerover', rAnchor);
 fire('pointerover', {id:'tip', closest(sel){ return sel.includes('#tip') ? this : null; }});
 want(tip.hidden===false, 'moving onto the tooltip closed it');
 want(!/undefined|NaN|\[object/.test(tip._html), 'the tooltip rendered undefined/NaN');
+// Every worn item's tooltip, every character, in the page's own slot order: a
+// granted skill below the item's own lines and above its set; the set with every
+// tier, the reached ones lit and the rest dimmed.
+{
+  const esc_=t=>String(t).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const pickC=i=>{ const el={id:'',dataset:{c:String(i)}}; el.closest=sel=>sel==='.pick'?el:null; fire('click', el); };
+  let grants=0, sets=0;
+  B.characters.forEach((c, ci)=>{
+    pickC(ci);
+    let n=0;
+    for (let i=0; i<64; i++){
+      fire('pointerover', anchor('.geo', {e:String(i)}));
+      if (tip.hidden || !tip._html) break;
+      const h=tip._html, e=c.equipment.find(x=>h.includes(`${esc_(x.n)}</h3>`));
+      n++;
+      if (!e){ want(false, `${c.name}: worn tooltip ${i} names no item`); continue; }
+      const setAt=h.indexOf('<div class="stier');
+      if ((e.grants||[]).length){
+        grants++;
+        const g=h.indexOf(esc_(e.grants[0]));
+        want(g>h.indexOf('</ul>') && (setAt<0 || g<setAt),
+             `${c.name}: ${e.n}'s granted skill is not between its stats and its set`);
+      }
+      if (e.set){
+        sets++;
+        for (const [k, ls] of e.set.tiers){
+          const at=h.indexOf(`<i>(${k}) Set</i>`), open=h.lastIndexOf('<div class="stier', at);
+          want(at>=0 && ls.every(l=>h.includes(esc_(l))), `${c.name}: ${e.n} does not print the (${k}) tier`);
+          want(h.slice(open, at).includes(' off')===(k>e.set.worn),
+               `${c.name}: ${e.set.n} (${k}) is ${k>e.set.worn?'lit':'dimmed'} at ${e.set.worn} worn`);
+        }
+      }
+    }
+    want(n===c.equipment.length, `${c.name}: ${n} worn tooltips for ${c.equipment.length} worn items`);
+  });
+  if (!grants) uncovered.push('no worn item grants a skill');
+  if (!sets) uncovered.push('no worn set piece');
+  if (!B.characters.some(c=>c.equipment.some(e=>e.set && e.set.tiers.some(([k])=>k>e.set.worn))))
+    uncovered.push('no set is worn short of complete, so no tooltip tier is dimmed');
+  pickC(B.characters.indexOf(opener));
+  fire('pointerover', rAnchor);          // back where the checks below expect it
+  fire('pointerover', {id:'tip', closest(sel){ return sel.includes('#tip') ? this : null; }});
+}
 // The stat tooltip carries contributions and nothing else -- there is no
 // blurb left to stand in for them, because a row with nothing feeding it now
 // opens no tooltip at all.
@@ -2092,7 +2130,9 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   const typed=(i,v)=>fire('input', {dataset:{si:String(i)}, value:v, tagName:'INPUT'});
   const kept=it=>{ const n={}; for (const [s,a] of it.x){ const k=s+(a?' '+a:''); n[k]=(n[k]||0)+1; }
     return Object.entries(n).map(([k,c])=>c>1?`${k} ×${c}`:k).join(', '); };
-  const lines=it=>[it.n, ...(it.l||[]).map(l=>l[0]), it.sl, kept(it), it.set||''].map(GSE.normalise);
+  const setText=it=>{ const st=G.sets[it.set];
+    return st ? [st.n, ...st.members, ...st.tiers.flatMap(([,ls])=>ls), ...st.after] : []; };
+  const lines=it=>[it.n, ...(it.l||[]).map(l=>l[0]), it.sl, kept(it), ...setText(it)].map(GSE.normalise);
   typed(0, 'fire resist');
   const hits=G.items.filter(it=>GSE.rowsMatch(lines(it), [{text:'fire resist'}], true));
   want(hits.length>0 && hits.length<G.items.length, `"fire resist" should narrow the stash, matched ${hits.length}`);
@@ -2155,6 +2195,14 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
        'the stash Atlas still shows grade groups');
   want(scards().length===G.items.length, `the stash Atlas renders ${scards().length} of ${G.items.length} items`);
   want(!/<span class="vd"/.test(get('slist')._html), 'an Atlas stash card wears a verdict gutter');
+  // A set piece's card prints its set: every tier and what follows them.
+  const setCard=G.items.findIndex(it=>G.sets[it.set] && G.sets[it.set].tiers.length);
+  if (setCard>=0){
+    const h=scards().find(h=>h.startsWith(` data-i="${setCard}"`))||'', st=G.sets[G.items[setCard].set];
+    want(st.tiers.every(([k, ls])=>h.includes(`<i>(${k}) Set</i>`) && ls.every(l=>h.includes(esc(l))))
+         && st.after.every(l=>h.includes(esc(l))) && !h.includes(' off"'),
+         `${G.items[setCard].n}: its card does not print its whole set, undimmed`);
+  } else uncovered.push('no stash item is a set piece');
   // A merged card says how many copies it stands for.
   const multi=G.items.findIndex(it=>it.x.length>1);
   if (multi>=0){

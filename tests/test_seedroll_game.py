@@ -104,7 +104,7 @@ def against_the_game():
         shown = item_lines.rolled(r['base_path'], sources(r), roll)
         have = collections.Counter(float(v) for _, x in game[r['id']] for v in NUM.findall(x))
         for key, line in shown:
-            if key is None:
+            if key is None or key == 'granted':
                 continue                    # read off the record, not rolled
             lines += 1
             for v in map(float, NUM.findall(line)):
