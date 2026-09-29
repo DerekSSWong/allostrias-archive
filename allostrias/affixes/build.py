@@ -483,13 +483,15 @@ def load(conn):
 
 def class_top_levels(conn):
     """{item class: the highest itemLevel of any equipment of it}. A pool's
-    randomizerLevelMax is often 200-500, past any item that exists (100)."""
-    top = {}
-    for r in conn.execute('SELECT path, class FROM item WHERE is_equipment = 1'):
-        m = re.search(r'^itemLevel=(\d+)', I.read_rel(r['path']) or '', re.M)
-        if m:
-            top[r['class']] = max(top.get(r['class'], 0), int(m.group(1)))
-    return top
+    randomizerLevelMax is often 200-500, past any item that exists (100).
+
+    From `item_stat`, not the records: reading all ~7,600 equipment records for
+    this one field cost 3.8 s of a 12.6 s build."""
+    return dict(conn.execute(
+        'SELECT i.class, MAX(CAST(s.num AS INTEGER)) FROM item i '
+        'JOIN item_stat s ON s.item_id = i.id '
+        "WHERE i.is_equipment = 1 AND s.field = 'itemLevel' AND s.idx = 0 "
+        'GROUP BY i.class').fetchall())
 
 
 def item_level_windows(affixes, top):
