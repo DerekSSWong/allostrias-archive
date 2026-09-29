@@ -2305,30 +2305,36 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
       want(displayed(it.l.map(([x])=>x)).every(l=>h.includes(l)), `${it.n}: its card does not print its lines`);
       want(h.includes(`${escT(it.t)} · ${escT(it.a)}`), `${it.n}: its card does not print its type and slot clause`);
       const bps=it.bp.map(b=>G.bps[b]);
-      for (const [f, st] of [...it.buy, ...bps.filter(b=>!b.k).flatMap(b=>b.buy)]){
+      // Craftable: a default recipe, or a blueprint the account has unlocked.
+      // Then the blueprint's source is not printed; otherwise it is.
+      const on=unlocked ? it.bp.some(b=>unlocked.includes(b)) : null;
+      const craftable=bps.length>0 && (bps.some(b=>b.k) || on===true);
+      for (const [f, st] of [...it.buy, ...(craftable ? [] : bps.flatMap(b=>b.buy))]){
         const have=oc.factions[f], ok=have>=need(st);
         ok ? met++ : unmet++;
         want(h.includes(`<b>${escT(G.factions[f])}</b> · ${st} <span class="${ok?'ok':'no'}">${n(have)} / ${n(need(st))}</span>`),
              `${it.n}: no ${ok?'met':'unmet'} ${G.factions[f]} · ${st} row at ${have}`);
       }
-      if (bps.some(b=>b.k)) want(h.includes('Blueprint: known by default'), `${it.n}: its default blueprint is not said`);
+      if (bps.length && !bps.some(b=>b.k)) on ? bpOn++ : bpOff++;
+      if (craftable) want(h.includes('<li class="ok">Craftable</li>') && !h.includes('Blueprint'),
+                          `${it.n}: craftable, but does not say only "Craftable"`);
       else if (bps.length){
-        const on=unlocked ? it.bp.some(b=>unlocked.includes(b)) : null;
         if (on===null) want(h.includes('no formulas file for this mode'), `${it.n}: an unknown blueprint state is not said`);
-        else { on ? bpOn++ : bpOff++;
-          want(h.includes(on ? '<li class="ok">Blueprint unlocked' : '<li class="no">Blueprint not unlocked'),
-               `${it.n}: its blueprint should read ${on?'unlocked':'not unlocked'}`); }
+        for (const b of bps){
+          if (b.drop) want(h.includes(b.drop[1].length ? 'Blueprint: drops from' : 'Blueprint: random drop') && !h.includes('Blueprint: quest reward'),
+                           `${it.n}: a dropped blueprint does not read "random drop" alone`);
+          else if (b.quest) want(h.includes('Blueprint: quest reward'), `${it.n}: its blueprint's quest reward is not said`);
+        }
       }
       const count=(it.own||[]).reduce((a,[,c])=>a+c,0);
       if (count) held++;
-      want(h.includes(count ? `Held: ${count}` : 'None held'), `${it.n}: its held count is not ${count}`);
+      want(count ? h.includes(`Held: ${count}`) : !h.includes('Held'), `${it.n}: its held count is not ${count || 'hidden'}`);
       const sources=it.buy.length+bps.length+(it.drop?1:0)+it.quest;
       if (!sources) want(h.includes('No source in the game data'), `${it.n}: has no source and does not say so`);
-      if (it.drop) want(h.includes(it.drop[1].length ? `Drops from ${it.drop[1].map(escT).join(', ')}` : '>Drops<'),
-                        `${it.n}: its drop row is not "${it.drop[1].length ? 'Drops from '+it.drop[1] : 'Drops'}"`);
+      if (it.drop) want(h.includes(it.drop[1].length ? `Drops from ${it.drop[1].map(escT).join(', ')}` : '>Random drop<'),
+                        `${it.n}: its drop row is not "${it.drop[1].length ? 'Drops from '+it.drop[1] : 'Random drop'}"`);
       if (it.quest) want(h.includes('>Quest reward<'), `${it.n}: its quest reward is not said`);
-      for (const b of bps.filter(b=>!b.k && b.quest))
-        want(h.includes('Blueprint: quest reward'), `${it.n}: its blueprint's quest reward is not said`);
+      want(!h.includes('Sold by'), `${it.n}: still says "Sold by"`);
       if (it.lv) want(h.includes(`Required Player Level: ${it.lv}</p>`), `${it.n}: no Required Player Level`);
     }
     fire('click', gstub('.achip', {gtype:t}));
@@ -2371,8 +2377,15 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   const atlas=get('glist')._html;
   want(get('gmodelbl')._html==='Atlas' && !/class="agrade"/.test(atlas), 'the augments Atlas still shows grade groups');
   want(gcards().length===G.items.length, `the augments Atlas renders ${gcards().length} of ${G.items.length}`);
-  want(!/<span class="vd"|class="(ok|no)"|Held: |None held|Blueprint (not )?unlocked/.test(atlas),
+  want(!/<span class="vd"|class="(ok|no)"|Held: /.test(atlas),
        'an Atlas card carries something of this character');
+  // Atlas: a default recipe is "Craftable"; every other blueprint shows its source.
+  for (const h of gcards()){
+    const it=cardAt(h), bps=it.bp.map(b=>G.bps[b]);
+    if (!bps.length) continue;
+    want(bps.some(b=>b.k) ? h.includes('<li>Craftable</li>') : h.includes('Blueprint') && !h.includes('Craftable'),
+         `Atlas: ${it.n}: craftable only when its blueprint is known by default`);
+  }
   fire('click', gstub('#gmode', {}));
   want(get('gmodelbl')._html==='Personal', 'the augments mode switch did not come back to Personal');
   console.log(`augments: ${G.items.length} cards, grades ${JSON.stringify(by)}; standings ${met} met / ${unmet} unmet, `

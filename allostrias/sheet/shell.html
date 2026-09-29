@@ -895,8 +895,9 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
      how that blueprint is had — sold, dropped, a quest reward, or known from the start — and whether
      it drops (naming who, when that is a few named foes) or is a quest reward. A
      source the game data does not hold is shown as missing, never guessed. Personal sets this
-     character's reputation against each standing needed, says whether the account has unlocked the
-     blueprint, and counts what is held in the materials tab, the transfer stash and Item Assistant.
+     character's reputation against each standing needed, says "Craftable" instead of the blueprint's
+     source once the account has unlocked it, and counts what is held in the materials tab, the
+     transfer stash and Item Assistant.
      Reputation is read from the save's faction block by GDStash's slot order.</p>
 </footer>
 
@@ -1933,7 +1934,7 @@ __AFFIX_JS__
   }
 
   /* "Drops", or who drops it when the build named them (few, all named). */
-  const dropText = (d, what = "") => d[1].length ? `${what}Drops from ${d[1].join(", ")}` : `${what}Drops`;
+  const dropText = d => d[1].length ? `Drops from ${d[1].join(", ")}` : "Random drop";
 
   /* A card's source rows: [text, extra html]. `text` is what search reads and
      what the card prints; the extra is Personal's, for this character. */
@@ -1945,30 +1946,33 @@ __AFFIX_JS__
       return ` <span class="${have >= need ? "ok" : "no"}">${have.toLocaleString("en-US")} / ${
         need.toLocaleString("en-US")}</span>`;
     };
-    const rows = it.buy.map(([f, s]) => [`Sold by ${facName(f)} · ${s}`, rep(f, s), facName(f)]);
+    const rows = it.buy.map(([f, s]) => [`${facName(f)} · ${s}`, rep(f, s), facName(f)]);
+    /* The user's rules (2026-09-29): a craftable item says "Craftable" and
+       nothing about its blueprint -- craftable is a default recipe, or (for a
+       character) a blueprint the account has unlocked. Otherwise the blueprint's
+       source: "random drop" whenever it drops, whatever else gives it. The
+       item's own vendor, drop and quest rows stay either way. */
     const bps = bpsOf(it);
     if (bps.length){
-      if (bps.some(b => b.k)) rows.push(["Blueprint: known by default", ""]);
-      else if (ch){
-        const u = bpUnlocked(ch, it);
-        rows.push(u === null ? ["Blueprint", ` <span class="unk">(no formulas file for this mode)</span>`]
-                  : [u ? "Blueprint unlocked" : "Blueprint not unlocked", "", null, u ? "ok" : "no"]);
-      }
-      for (const b of bps.filter(b => !b.k)){
-        for (const [f, s] of b.buy) rows.push([`Blueprint sold by ${facName(f)} · ${s}`, rep(f, s), facName(f)]);
-        if (b.drop) rows.push([b.drop[1].length ? `Blueprint drops from ${b.drop[1].join(", ")}` : "Blueprint drops", ""]);
-        if (b.quest) rows.push(["Blueprint: quest reward", ""]);
-        if (!b.buy.length && !b.drop && !b.quest) rows.push(["Blueprint source not in the game data", ""]);
+      const u = ch ? bpUnlocked(ch, it) : false;
+      if (bps.some(b => b.k) || u) rows.push(["Craftable", "", null, ch ? "ok" : null]);
+      else {
+        if (u === null) rows.push(["Blueprint", ` <span class="unk">(no formulas file for this mode)</span>`]);
+        for (const b of bps){
+          for (const [f, s] of b.buy) rows.push([`Blueprint: ${facName(f)} · ${s}`, rep(f, s), facName(f)]);
+          if (b.drop) rows.push([b.drop[1].length ? `Blueprint: drops from ${b.drop[1].join(", ")}`
+                                                  : "Blueprint: random drop", ""]);
+          else if (b.quest) rows.push(["Blueprint: quest reward", ""]);
+          if (!b.buy.length && !b.drop && !b.quest) rows.push(["Blueprint source not in the game data", ""]);
+        }
       }
     }
     if (it.drop) rows.push([dropText(it.drop), ""]);
     if (it.quest) rows.push(["Quest reward", ""]);
     if (!rows.length) rows.push(["No source in the game data", ""]);
-    if (ch){
-      const n = (it.own || []).reduce((a, [, c]) => a + c, 0);
-      rows.push([n ? `Held: ${n}` + (it.own.length ? " (" + it.own.map(([w, c]) =>
-                    it.own.length > 1 ? `${w} ${c}` : w).join(", ") + ")" : "") : "None held", ""]);
-    }
+    const n = ch ? (it.own || []).reduce((a, [, c]) => a + c, 0) : 0;
+    if (n) rows.push([`Held: ${n} (` + it.own.map(([w, c]) =>
+                        it.own.length > 1 ? `${w} ${c}` : w).join(", ") + ")", ""]);
     return rows;
   }
   function augLines(it){
