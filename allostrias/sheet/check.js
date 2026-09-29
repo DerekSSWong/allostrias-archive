@@ -2162,6 +2162,18 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
     want(get('stashn')._html===`${n} of ${G.items.length} items`, `${src}: the stash says "${get('stashn')._html}", expected ${n}`);
     fire('click', sstub('.achip', {src}));
   }
+  // A rarity chip keeps only that tier; a second one widens to both.
+  const rarN=rs=>G.items.filter(it=>rs.includes(it.r||'Common')).length;
+  for (const rar of ['Legendary', 'Epic', 'Rare']){
+    if (!rarN([rar])){ uncovered.push(`no stash item is ${rar}`); continue; }
+    fire('click', sstub('.achip', {rar}));
+    want(get('stashn')._html===`${rarN([rar])} of ${G.items.length} items`, `${rar}: the stash says "${get('stashn')._html}", expected ${rarN([rar])}`);
+    want(get('sslots')._html.includes(`data-rar="${rar}" aria-pressed="true"`), `the ${rar} chip is not shown pressed`);
+    fire('click', sstub('.achip', {rar}));
+  }
+  fire('click', sstub('.achip', {rar:'Legendary'})); fire('click', sstub('.achip', {rar:'Epic'}));
+  want(get('stashn')._html===`${rarN(['Legendary','Epic'])} of ${G.items.length} items`, `Legendary+Epic: the stash says "${get('stashn')._html}"`);
+  fire('click', sstub('#sclear', {}));
   // A coarse chip reaches every weapon it covers.
   fire('click', sstub('.achip', {sslot:'1H Weapon'}));
   const oneH=G.items.filter(it=>G.coarse[it.sl]==='1H Weapon').length;

@@ -1569,7 +1569,7 @@ __AFFIX_JS__
 
      Grading is kept until what it read changes, as the Affixes view's is. */
   let GST = JSON.parse($("gearstash").textContent);
-  const sview = {rows: [{op: "AND", text: ""}], slots: new Set(), srcs: new Set(),
+  const sview = {rows: [{op: "AND", text: ""}], slots: new Set(), srcs: new Set(), rars: new Set(),
                  open: {}, mode: "personal", sig: null, got: null};
 
   /* Rewritten only when a Refresh brings a new atlas: every write re-parses it. */
@@ -1638,6 +1638,7 @@ __AFFIX_JS__
   function stashMatches(it){
     if (sview.slots.size && !stashSlots(it).some(sl => sview.slots.has(sl))) return false;
     if (sview.srcs.size && !it.x.some(([s]) => sview.srcs.has(s))) return false;
+    if (sview.rars.size && !sview.rars.has(it.r || "Common")) return false;
     return GS.rowsMatch(stashLines(it), sliveRows(), true);
   }
 
@@ -1662,8 +1663,10 @@ __AFFIX_JS__
   }
 
   function renderStashSlots(){
-    const have = new Set(), srcs = new Set();
-    for (const it of GST.items){ stashSlots(it).forEach(sl => have.add(sl)); it.x.forEach(([s]) => srcs.add(s)); }
+    const have = new Set(), srcs = new Set(), rars = new Set();
+    for (const it of GST.items){
+      stashSlots(it).forEach(sl => have.add(sl)); it.x.forEach(([s]) => srcs.add(s)); rars.add(it.r || "Common");
+    }
     const chip = (attr, v, on) => `<button class="achip" type="button" data-${attr}="${esc(v)}" aria-pressed="${
       on}">${esc(v)}</button>`;
     const group = grp => {
@@ -1675,11 +1678,17 @@ __AFFIX_JS__
        masteries. Only the sources this bundle holds. */
     const source = `<div><div class="aslotlbl">Kept in</div><div class="aslotrow">${
       ["Transfer", "IAGD"].filter(v => srcs.has(v))
-        .map(v => chip("src", v, sview.srcs.has(v))).join("")}</div></div>`;
+        .map(v => chip("src", v, sview.srcs.has(v))).join("")}</div></div>`
+      + `<div><div class="aslotlbl">Rarity</div><div class="aslotrow">${
+      STASH_RARITIES.filter(v => rars.has(v))
+        .map(v => chip("rar", v, sview.rars.has(v))).join("")}</div></div>`;
     $("sslots").innerHTML = GST.slotGroups.map((entry, i) =>
       `<div class="aslotcol">${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}${
         i === 0 ? source : ""}</div>`).join("");
   }
+
+  /* The tiers a stash card can wear (build.py's `r`), best first. */
+  const STASH_RARITIES = ["Legendary", "Epic", "Rare", "Magical", "Common"];
 
   /* The slot order the chips are in, for the Atlas's sort. */
   function slotRank(){
@@ -1688,7 +1697,7 @@ __AFFIX_JS__
   }
 
   function renderStashList(){
-    const filtering = sliveRows().length || sview.slots.size || sview.srcs.size;
+    const filtering = sliveRows().length || sview.slots.size || sview.srcs.size || sview.rars.size;
     const all = GST.items.map((it, i) => [it, i]);
     const hits = all.filter(([it]) => stashMatches(it));
     const cards = list => `<div class="scards">${list.map(([it, i]) => scard(it, i)).join("")}</div>`;
@@ -1744,8 +1753,9 @@ __AFFIX_JS__
     }
     const chip = t.closest(".achip");
     if (chip){
-      const [set, v] = chip.dataset.src !== undefined
-        ? [sview.srcs, chip.dataset.src] : [sview.slots, chip.dataset.sslot];
+      const d = chip.dataset;
+      const [set, v] = d.src !== undefined ? [sview.srcs, d.src]
+                     : d.rar !== undefined ? [sview.rars, d.rar] : [sview.slots, d.sslot];
       set.has(v) ? set.delete(v) : set.add(v);
       renderStashSlots(); renderStashList(); return true;
     }
@@ -1754,7 +1764,7 @@ __AFFIX_JS__
       $("sterms").innerHTML = termsHtml(sview.rows, "si"); return true;
     }
     if (t.closest("#sclear")){
-      sview.rows = [{op: "AND", text: ""}]; sview.slots.clear(); sview.srcs.clear(); sview.open = {};
+      sview.rows = [{op: "AND", text: ""}]; sview.slots.clear(); sview.srcs.clear(); sview.rars.clear(); sview.open = {};
       $("sterms").innerHTML = termsHtml(sview.rows, "si");
       renderStashSlots(); renderStashList(); return true;
     }
