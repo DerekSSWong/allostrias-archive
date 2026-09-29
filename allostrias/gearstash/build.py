@@ -180,13 +180,43 @@ def held(st_db, iagd_db):
             yield 'IAGD', ' · '.join(tags), r
 
 
+class Replay:
+    """One item's seed replay: the records it rolls from -- a crafting bonus
+    among them, a relic's excepted -- the roll, and the lines it prints."""
+
+    def __init__(self, recs, paths, roll):
+        self.recs, self.paths, self.roll = recs, paths, roll
+        self._shown = None
+
+    def shown(self):
+        if self._shown is None:
+            self._shown = item_lines.rolled(self.paths['base'], self.paths, self.roll)
+        return self._shown
+
+
+# Replays by what decides them: the base's class, its records and the seed. The
+# Refresh server keeps them across clicks -- records cannot change under a
+# running process (archive/records.py) -- which took a warm build from 2.58 s to
+# 0.66 s. A card's SLOT NUMBERS are not here and must never be: its icon, its
+# fields, skills and set are indices into tables filled in item order, so they
+# move whenever any other held item does, and are assigned fresh every build.
+_REPLAYS: dict[tuple, Replay] = {}
+
+
 def _roll(ca, r):
-    """(class row, recs, paths, roll) for one held row: the records it rolls
-    from -- a crafting bonus among them, a relic's excepted -- and the roll."""
+    """(class row, Replay) for one held row. The class row is read fresh."""
     cls = ca.execute('SELECT class, is_equipment FROM item WHERE path = ?',
                      (r['base_path'],)).fetchone()
     if cls is None:
         raise SystemExit(f"{r['base_path']} is in no catalogue record: rebuild the catalogue")
+    key = (cls['class'], r['base_path'], r['prefix_path'], r['suffix_path'],
+           r['modifier_path'], r['seed'])
+    if key not in _REPLAYS:
+        _REPLAYS[key] = _replay(cls, r)
+    return cls, _REPLAYS[key]
+
+
+def _replay(cls, r):
     recs = {'base': SB.rec(r['base_path'])}
     paths = {'base': r['base_path']}
     for which in ('prefix', 'suffix'):
@@ -197,13 +227,19 @@ def _roll(ca, r):
         recs['modifier'] = SB.rec(r['modifier_path'])
     roll = seedroll.compute(recs['base'], r['seed'], recs.get('prefix'), recs.get('suffix'),
                             modifier=recs.get('modifier'))
-    return cls, recs, paths, roll
+    return Replay(recs, paths, roll)
 
 
-def _face(ix, recs, paths, roll):
+def _face(ix, recs, roll, shown):
     """[l, g]: a rolled item's lines with their verdict keys, and its grading."""
-    shown = item_lines.rolled(paths['base'], paths, roll)
     return [[text, _verdict_key(ix, key)] for key, text in shown], grading(ix, recs, roll, shown)
+
+
+def _face_uncrafted(ix, rp):
+    """_face with the crafting bonus's draws taken back out (without_bonus)."""
+    roll = without_bonus(rp.roll)
+    recs = {k: v for k, v in rp.recs.items() if k != 'modifier'}
+    return _face(ix, recs, roll, item_lines.rolled(rp.paths['base'], rp.paths, roll))
 
 
 # Records whose levelRequirement the item's own requirement is the highest of.
@@ -222,10 +258,10 @@ def required_level(r):
 
 def card(ca, ix, icons, source, where, r):
     """One item's card, or None when it is not equipment."""
-    cls, recs, paths, roll = _roll(ca, r)
+    cls, rp = _roll(ca, r)
     if not cls['is_equipment']:
         return None
-    base = recs['base']
+    base = rp.recs['base']
     pfx = SB.affix_of(ca, r['prefix_path'], 'prefix')
     sfx = SB.affix_of(ca, r['suffix_path'], 'suffix')
     name, rarity, _style, _base_name, badge = SB.item_display(base, r['base_path'], pfx, sfx)
@@ -238,10 +274,10 @@ def card(ca, ix, icons, source, where, r):
     set_path = (base.get('itemSetName') or [None])[0]
     if set_path:
         out['set'] = ix.set(set_path)
-    if roll.unmodeled:
-        out['why'] = 'not replayed: ' + ', '.join(roll.unmodeled)
+    if rp.roll.unmodeled:
+        out['why'] = 'not replayed: ' + ', '.join(rp.roll.unmodeled)
         return out
-    out['l'], out['g'] = _face(ix, recs, paths, roll)
+    out['l'], out['g'] = _face(ix, rp.recs, rp.roll, rp.shown())
     return out
 
 
@@ -340,8 +376,8 @@ def merge(ca, ix, held_cards):
         if len(members) == 1:
             out.append(members[0][1])
             continue
-        rolls = [_roll(ca, r) for r, _ in members]
-        kinds = [bonus_kind(roll) for _, _, _, roll in rolls]
+        replays = [_roll(ca, r)[1] for r, _ in members]
+        kinds = [bonus_kind(rp.roll) for rp in replays]
         merged = dict(members[0][1], x=[c['x'][0] for _, c in members])
         lvs = sorted({c['lv'] for _, c in members})
         if len(lvs) > 1:
@@ -349,8 +385,7 @@ def merge(ca, ix, held_cards):
         if len(set(kinds)) == 1:
             faces = [(c['l'], c['g']) for _, c in members]
         else:
-            faces = [_face(ix, {k: v for k, v in recs.items() if k != 'modifier'}, paths,
-                           without_bonus(roll)) for _, recs, paths, roll in rolls]
+            faces = [_face_uncrafted(ix, rp) for rp in replays]
         merged['l'] = merge_lines([l for l, _ in faces])
         merged['g'] = merge_grading(merged['n'], [g for _, g in faces])
         if len(set(kinds)) > 1:

@@ -81,19 +81,18 @@ def merged(ca, ix, cards):
         if m['n'] != name or m['x'] != [c['x'][0] for _, c in members]:
             bad.append(f'{name}: the merged card is not its {len(members)} copies')
             continue
-        rolls = [GB._roll(ca, r) for r, _ in members]
-        kinds = [GB.bonus_kind(roll) for *_, roll in rolls]
+        replays = [GB._roll(ca, r)[1] for r, _ in members]
+        kinds = [GB.bonus_kind(rp.roll) for rp in replays]
         if len(set(kinds)) == 1:
             copies = [c['l'] for _, c in members]
         else:
-            copies = [GB._face(ix, {w: v for w, v in recs.items() if w != 'modifier'}, paths,
-                               GB.without_bonus(roll))[0] for _, recs, paths, roll in rolls]
+            copies = [GB._face_uncrafted(ix, rp)[0] for rp in replays]
             n_kinds, crafted = len({x for x in kinds if x}), sum(1 for x in kinds if x)
             want = ('crafting bonus' if n_kinds == 1 else f'{n_kinds} different crafting bonuses') + (
                 f' on {crafted} of {len(members)} copies' if crafted < len(members) else '')
             if m['l'][-1] != [f'({want})', 0]:
                 bad.append(f'{name}: its crafting bonuses differ, yet it says {m["l"][-1][0]!r}')
-            only = {f for *_, roll in rolls for f, per in roll.parts.items()
+            only = {f for rp in replays for f, per in rp.roll.parts.items()
                     if set(per) == {'modifier'}}
             if {GB._verdict_key(ix, f) for f in only} & {kk for _, kk in m['l']}:
                 bad.append(f'{name}: a differing crafting bonus is still printed')
@@ -167,6 +166,20 @@ def main():
         c = GB.card(ca, ix, icons, source, where, r)
         if c is not None:
             cards.append((r, c))
+
+    # 0. The Refresh server's case: a second build in one process reuses every
+    # replay and must give the same cards. Fresh tables, so the slot numbers are
+    # assigned again from nothing, as on every click. A card that edited a shared
+    # replay would show up here too.
+    replayed = len(GB._REPLAYS)
+    ix2, icons2 = GB.Index(), NoArt()
+    again = [GB.card(ca, ix2, icons2, s, w, r)
+             for s, w, r in GB.held(os.path.join(CACHE, 'stash.sqlite'), iagd_db)]
+    if len(GB._REPLAYS) != replayed:
+        bad.append(f'the second build replayed {len(GB._REPLAYS) - replayed} items again')
+    if [c for c in again if c is not None] != [c for _, c in cards] or ix2.tables() != ix.tables():
+        bad.append('a build from cached replays differs from the first build')
+    print(f'second build from {replayed} cached replays: identical')
 
     # 1. equipment, both halves, nothing else
     equip = 0
