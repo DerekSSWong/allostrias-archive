@@ -39,9 +39,9 @@ from allostrias.archive import arc, arz
 from allostrias.archive import gdc, gst
 from allostrias.archive.savecrypt import SaveError
 from allostrias.db import catalogue, character, freeze, iagd, stash
-from allostrias.db.extract import (affixes, bonuses, factions, items, mi,
-                                   quests, recipes, shared_pass, skills,
-                                   vendors, zones)
+from allostrias.db.extract import (affixes, bonuses, factions, mi, quests,
+                                   recipes, shared_pass, skills, vendors,
+                                   zones)
 
 
 # Shown by `status` only. The tier is what the database stores; naming it is a
@@ -171,10 +171,11 @@ def cmd_rebuild(cfg: S.Settings, args) -> int:
         with arz.Database(cfg.arz_paths) as db:
             print(f'  records     {len(db)} '
                   f'({db.override_count} patched by an expansion)')
-            # `shared_pass` is where eligibility and drops run: both need the
-            # whole record tree, so one walk feeds both. See that module --
-            # this tuple is no longer the whole story.
-            for extractor in (items, affixes, bonuses, shared_pass, mi,
+            # `shared_pass` is where items, drops and eligibility run: all
+            # three need the whole record tree, so one walk feeds them. See
+            # that module -- this tuple is not the whole story. `bonuses`
+            # reads `item`, so it comes after.
+            for extractor in (affixes, shared_pass, bonuses, mi,
                               factions, recipes, quests, skills, vendors,
                               zones):
                 for label, count in extractor.extract(conn, db, tags).items():

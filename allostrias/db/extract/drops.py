@@ -95,7 +95,7 @@ class Collector:
         self.graph: dict[str, tuple[str, set[str], set[str]]] = {}
         self.monster: dict[str, tuple] = {}
 
-    def offer(self, path: str, kept: dict):
+    def offer(self, path: str, _attrs: dict, kept: dict):
         record_class = V.first_str(kept, 'Class') or ''
         direct = {v.lower() for f, vs in kept.items() if DIRECT_FIELD.match(f)
                   for v in vs if isinstance(v, str) and v.lower().startswith(ITEM_PREFIX)}

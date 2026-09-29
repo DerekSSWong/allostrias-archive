@@ -63,14 +63,17 @@ class Collector:
     equivalent because values.non_default() ALWAYS keeps `Class` -- it is the
     one field it will not drop, by design, precisely because every extractor
     keys off it. drops has always relied on that; this now does too.
+
+    ⚠️ `item` IS NOT FILLED UNTIL THE WALK ENDS -- items is a consumer of the
+    same pass. So `offer` only holds the DynWeight tables, and `finish`, which
+    runs after items', resolves their loot targets to classes.
     """
 
     def __init__(self, conn, db, _tags):
         self.conn, self.db = conn, db
         self.affix_ids = {row['path']: row['id']
                           for row in conn.execute('SELECT id, path FROM affix')}
-        self.item_class = {row['path']: row['class']
-                           for row in conn.execute('SELECT path, class FROM item')}
+        self.held: list[dict] = []
         self.pool_members: dict[str, dict[str, tuple[int, int] | None]] = {}
         self.pairs: set[tuple[int, str, str]] = set()
         self.levels: dict[int, tuple[int, int]] = {}
@@ -103,13 +106,15 @@ class Collector:
             self.pool_members[key] = found
         return self.pool_members[key]
 
-    def offer(self, path: str, kept: dict):
+    def offer(self, path: str, _attrs: dict, kept: dict):
         if V.first_str(kept, 'Class') != DYN_WEIGHT:
             return
         if path.startswith(EXCLUDED_ROOTS):
             self.excluded += 1
             return
+        self.held.append(kept)
 
+    def _resolve(self, kept: dict, item_class: dict[str, str]):
         classes = set()
         for field, values in kept.items():
             if not LOOT_FIELD.match(field):
@@ -117,7 +122,7 @@ class Collector:
             for value in values:
                 if not isinstance(value, str) or not value:
                     continue
-                found = self.item_class.get(value.lower())
+                found = item_class.get(value.lower())
                 if found:
                     classes.add(found)
                 else:
@@ -147,6 +152,10 @@ class Collector:
                         self.pairs.add((affix_id, cls, tier))
 
     def finish(self) -> dict[str, int]:
+        item_class = {row['path']: row['class']
+                      for row in self.conn.execute('SELECT path, class FROM item')}
+        for kept in self.held:
+            self._resolve(kept, item_class)
         self.conn.execute('DELETE FROM affix_eligibility')
         self.conn.executemany(
             'INSERT INTO affix_eligibility (affix_id, item_class, tier) '

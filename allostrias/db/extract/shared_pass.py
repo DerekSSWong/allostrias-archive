@@ -1,4 +1,4 @@
-"""One walk of the record tree, two consumers.
+"""One walk of the record tree, three consumers: items, drops, eligibility.
 
 WHY THIS MODULE EXISTS. `drops` and `eligibility` both need every record in
 the tree and neither can be narrowed to a prefix: a loot table can be anywhere
@@ -15,9 +15,10 @@ decompress almost instantly -- while everything expensive is needed. Record
 COUNT is not proportional to scan cost, and an estimate made from counts said
 this would save 5 s.
 
-So the saving here is real but it is bought with coupling: two modules that
-were independent now run inside a loop neither of them owns. Anything added
-here has to be worth that.
+So the saving here is real but it is bought with coupling: modules that
+were independent now run inside a loop none of them owns. Anything added
+here has to be worth that. `items` was: it needs 75,720 of the 82,448 records,
+and its own walk was 18.6 s of a 72 s build (2026-09-29).
 
 WHAT THIS MODULE MUST NOT BECOME. It is not a place to put extraction logic.
 Every rule about what a drop or an eligibility pair IS stays in its own
@@ -30,18 +31,23 @@ extract/vendors.py is the example.
 import time
 
 from ...archive import values as V
-from . import drops, eligibility
+from . import drops, eligibility, items
 
 
 def extract(conn, db, tags: dict[str, str]) -> dict[str, int | str]:
-    """Fill both modules' tables from a single pass.
+    """Fill all three modules' tables from a single pass.
 
-    The consumers are constructed BEFORE the walk because each reads the
-    catalogue as it exists now -- `item` and `affix`, filled by earlier
-    extractors -- and written after it, because neither can know its own
-    answer until every record has been offered.
+    Each consumer is offered every record, raw and non-default, and writes its
+    tables in `finish`, because none can know its answer until every record
+    has been offered.
+
+    ⚠️ ORDER. `item` does not exist until items' `finish` has run, and drops
+    and eligibility both resolve against it, so items finishes FIRST and no
+    consumer may read `item` before its own `finish`. `affix` is filled by an
+    earlier extractor and may be read at construction.
     """
-    consumers = [drops.Collector(conn, db, tags),
+    consumers = [items.Collector(conn, db, tags),
+                 drops.Collector(conn, db, tags),
                  eligibility.Collector(conn, db, tags)]
 
     start = time.perf_counter()
@@ -50,7 +56,7 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int | str]:
         # standalone eligibility recomputed it for the ~2,600 it kept.
         kept = V.non_default(attrs)
         for consumer in consumers:
-            consumer.offer(path, kept)
+            consumer.offer(path, attrs, kept)
     scan = time.perf_counter() - start
 
     # Timed per consumer and reported, not for tuning but because the build

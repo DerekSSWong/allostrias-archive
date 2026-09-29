@@ -128,7 +128,10 @@ scratch_conn = catalogue.connect(scratch)
 try:
     catalogue.apply_schema(scratch_conn)
     with A.Database(cfg.arz_paths) as db:
-        items.extract(scratch_conn, db, C.load_tags(cfg.text_arc_paths))
+        collector = items.Collector(scratch_conn, db, C.load_tags(cfg.text_arc_paths))
+        for path, attrs in db.iter_records():
+            collector.offer(path, attrs, V.non_default(attrs))
+        collector.finish()
     total_scratch = scratch_conn.execute(
         'SELECT count(*) FROM item').fetchone()[0]
     set_by_items = scratch_conn.execute(
@@ -138,7 +141,7 @@ finally:
     for suffix in ('', '-wal', '-shm'):
         if os.path.exists(scratch + suffix):
             os.remove(scratch + suffix)
-print(f'  items.extract alone: {total_scratch} items, {set_by_items} with is_mi set')
+print(f'  items alone: {total_scratch} items, {set_by_items} with is_mi set')
 assert set_by_items == 0, \
     'the item extractor set is_mi -- MI-ness is not in the item record'
 print('  no is_craftable / is_vendor column; is_mi left for extract/mi.py')

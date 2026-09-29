@@ -158,17 +158,28 @@ def quality_of(attrs: dict, tags: dict[str, str]) -> tuple[str | None, str | Non
     return tag, V.clean_name(tags.get(tag)) or None
 
 
-def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
-    """Fill `item` and `item_stat`. Returns counts for the build report."""
-    conn.execute('DELETE FROM item_stat')
-    conn.execute('DELETE FROM item')
+class Collector:
+    """items' part of the shared tree pass (extract/shared_pass.py).
 
-    item_rows, stat_rows = [], []
-    next_id = 1
-    skipped = 0
-    for path, attrs in db.iter_records():
+    It needs 75,720 of the 82,448 records, so a walk of its own read the whole
+    tree a second time: 18.6 s of a 72 s build.
+
+    ⚠️ `offer` reads the RAW attributes, not `kept`. `levelRequirement` is the
+    one field that tells them apart: 142 items store it as 0, which
+    non_default() would drop, turning `level_req` 0 into NULL. Everything else
+    read here survives non_default() unchanged -- stat_rows() applies it itself.
+
+    `finish` must run BEFORE any other consumer's: they read `item`.
+    """
+
+    def __init__(self, conn, _db, tags: dict[str, str]):
+        self.conn, self.tags = conn, tags
+        self.item_rows, self.stat_rows = [], []
+        self.skipped = 0
+
+    def offer(self, path: str, attrs: dict, _kept: dict):
         if path.startswith(NON_ITEM_PREFIXES):
-            continue
+            return
         record_class = V.first_str(attrs, 'Class') or ''
         try:
             is_equipment, family, slot = classify(record_class)
@@ -181,18 +192,18 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
             # means "not an item" and nothing more.
             if path.startswith(ITEM_PREFIX):
                 raise
-            skipped += 1
-            continue
+            self.skipped += 1
+            return
         if not (is_equipment or record_class in CARRIED_CLASSES):
-            skipped += 1
-            continue
+            self.skipped += 1
+            return
 
-        item_id = next_id
-        next_id += 1
+        tags = self.tags
+        item_id = len(self.item_rows) + 1
         tag = name_tag_of(attrs)
         style_tag, style = style_of(attrs, tags)
         quality_tag, quality = quality_of(attrs, tags)
-        item_rows.append((
+        self.item_rows.append((
             item_id,
             path,
             record_class,
@@ -218,27 +229,32 @@ def extract(conn, db, tags: dict[str, str]) -> dict[str, int]:
         record_rolls = is_equipment or record_class in R.ROLLING_CLASSES
         for row in V.stat_rows(attrs):
             if row.txt is not None:
-                stat_rows.append((item_id, row.field, row.idx, None, row.txt,
-                                  None, None, None))
+                self.stat_rows.append((item_id, row.field, row.idx, None, row.txt,
+                                       None, None, None))
                 continue
             lo, hi, status = R.band(row.field, row.num, R.BASE_JITTER,
                                     scale_pct, record_class,
                                     rolls=record_rolls)
-            stat_rows.append((item_id, row.field, row.idx, row.num, None,
-                              lo, hi, status))
+            self.stat_rows.append((item_id, row.field, row.idx, row.num, None,
+                                   lo, hi, status))
 
-    conn.executemany(
-        'INSERT INTO item (id, path, class, family, slot, folder, '
-        'is_equipment, name_tag, name, quality_tag, quality, style_tag, style, '
-        'classification, level_req, set_path) '
-        'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', item_rows)
-    conn.executemany(
-        'INSERT INTO item_stat (item_id, field, idx, num, txt, lo, hi, roll) '
-        'VALUES (?,?,?,?,?,?,?,?)', stat_rows)
-    conn.commit()
-    styled = sum(1 for row in item_rows if row[11] is not None)
-    unresolved = sum(1 for row in item_rows
-                     if row[11] is not None and row[12] is None)
-    return {'items': len(item_rows), 'stats': len(stat_rows),
-            'machinery skipped': skipped, 'with a style': styled,
-            'style tag resolving to nothing': unresolved}
+    def finish(self) -> dict[str, int]:
+        """Fill `item` and `item_stat`. Returns counts for the build report."""
+        conn, item_rows = self.conn, self.item_rows
+        conn.execute('DELETE FROM item_stat')
+        conn.execute('DELETE FROM item')
+        conn.executemany(
+            'INSERT INTO item (id, path, class, family, slot, folder, '
+            'is_equipment, name_tag, name, quality_tag, quality, style_tag, style, '
+            'classification, level_req, set_path) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', item_rows)
+        conn.executemany(
+            'INSERT INTO item_stat (item_id, field, idx, num, txt, lo, hi, roll) '
+            'VALUES (?,?,?,?,?,?,?,?)', self.stat_rows)
+        conn.commit()
+        styled = sum(1 for row in item_rows if row[11] is not None)
+        unresolved = sum(1 for row in item_rows
+                         if row[11] is not None and row[12] is None)
+        return {'items': len(item_rows), 'stats': len(self.stat_rows),
+                'machinery skipped': self.skipped, 'with a style': styled,
+                'style tag resolving to nothing': unresolved}
