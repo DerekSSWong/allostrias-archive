@@ -321,7 +321,8 @@ ADDITIONS = {
     'offensiveFumble': ('offensiveChaosModifier', 'conversionPercentage'),
     'defensiveElementalResistanceChance': ('defensiveProtectionModifier', None),
 }
-BASE_ONLY = {'offensivePercentCurrentLifeMin'}
+# Settled from base items only; an affix carrying one is REFUSED.
+BASE_ONLY = {'offensivePercentCurrentLifeMin', 'defensiveBonusProtection'}
 
 # The crafting bonus ROLLS (settled against the game 2026-09-28). It jitters with its
 # own lootRandomizerJitter and draws from the item's one stream, so leaving it out
@@ -389,6 +390,11 @@ FIXED = {
     'characterLightRadius', 'characterGlobalReqReduction', 'characterLevelReqReduction', 'characterModifierPoints',
     'defensiveProtection',      # armour: 0 draws
     'defensiveElementalResistanceChance',   # see ADDITIONS
+    # "+N Armor". The game's detail view prints no range for it where every
+    # rolled line has one, and all 229 draw positions, scaled or not, miss the
+    # game's 220 on a Mythical Ironlord Demolisher (seed 794794187, 2026-09-30).
+    # Settled on a base item only: see BASE_ONLY.
+    'defensiveBonusProtection',
 }
 
 STAT_PREFIXES = ('offensive', 'defensive', 'retaliation', 'character', 'skill', 'conversion',
@@ -782,7 +788,7 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
                     break
         elif is_concerning(f):
             unmodeled.append(f)
-    unmodeled += [f + ' [on an affix: placement unpinned]' for f in BASE_ONLY
+    unmodeled += [f + ' [on an affix: settled on base items only]' for f in BASE_ONLY
                   if f in p_values or f in s_values]
     unmodeled += _span_conflicts([values, p_values, s_values, m_values])
     # A crafting bonus is modelled for the stores its draws were pinned in and

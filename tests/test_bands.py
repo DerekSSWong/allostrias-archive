@@ -202,7 +202,6 @@ assert text_banded == 0, 'a text value was given a numeric band'
 # stat and have it silently join the no-band pile, which is the one outcome
 # that looks identical to working.
 UNMODELLED_STATS = {
-    'defensiveBonusProtection',
     'defensiveElementalResistanceChance',
     'defensiveFreezeChance',
     'defensivePhysicalChance',

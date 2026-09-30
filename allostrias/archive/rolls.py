@@ -222,6 +222,7 @@ FIXED = frozenset({
     'characterLightRadius', 'characterGlobalReqReduction',
     'characterLevelReqReduction', 'characterModifierPoints',
     'defensiveProtection',          # armour: 0 draws
+    'defensiveBonusProtection',     # "+N Armor": 0 draws, see seedroll.FIXED
     'defensiveBlock', 'defensiveBlockChance', 'blockAbsorption', 'blockRecoveryTime',
 })
 

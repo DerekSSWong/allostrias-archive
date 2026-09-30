@@ -12,10 +12,8 @@
       - prefixes: Thunderstruck (`offensiveStunModifier`), Draining
         (`offensiveManaBurnDrain`), Sapping (`offensivePercentCurrentLife` on an
         affix, `seedroll.BASE_ONLY`)
-      - Asterllonos, Star of the North / Stoneplate Waistguard / Ironlord
-        Demolisher (`defensiveBonusProtection`) -- a Mythical Ironlord
-        Demolisher is now held (IAGD #1924, 2026-09-29) and
-        `test_seedroll_game` fails on it until the field is settled -- Legion Warhammer
+      - `defensiveBonusProtection` on an affix (`seedroll.BASE_ONLY`; on a
+        base it is fixed, settled 2026-09-30), Legion Warhammer
         (`defensivePhysicalChance`), Maw of Despair (`retaliationSlowManaLeach`),
         Malkadarr's Dreadblade (`offensiveFreezeMax`), Frostguard Girdle
         (`defensiveProtectionChance`), Screams of the Aether (`retaliationFearMin`)

@@ -143,6 +143,22 @@ def placements(field, span):
     return out
 
 
+def base_only_is_refused():
+    """Every affix carrying a BASE_ONLY field is refused, on a bare base."""
+    ca = sqlite3.connect(os.path.join(S.ROOT, 'cache', 'catalogue.sqlite'))
+    bad = []
+    for field in seedroll.BASE_ONLY:
+        affixes = ca.execute(
+            'SELECT DISTINCT a.path FROM affix_stat s JOIN affix a ON a.id = s.affix_id '
+            'WHERE s.field = ?', (field,)).fetchall()
+        for (apath,) in affixes:
+            slot = {'prefix': rec(apath)} if '/prefix/' in apath else {'suffix': rec(apath)}
+            if not seedroll.compute({'Class': ['WeaponMelee_Mace2h']}, 1, **slot).unmodeled:
+                bad.append(f'{field}: {apath} rolls although BASE_ONLY says refuse')
+        print(f'{field}: BASE_ONLY, {len(affixes)} affix(es) refused')
+    return bad
+
+
 def additions_are_unpinned():
     ca = sqlite3.connect(os.path.join(S.ROOT, 'cache', 'catalogue.sqlite'))
     order, fixed = list(seedroll.ORDER), set(seedroll.FIXED)
@@ -170,9 +186,7 @@ def additions_are_unpinned():
                 slot = {'prefix': rec(apath)} if '/prefix/' in apath else {'suffix': rec(apath)}
                 bare = {'Class': ['WeaponMelee_Mace2h']}
                 if field in seedroll.BASE_ONLY:
-                    if not seedroll.compute(bare, 1, **slot).unmodeled:
-                        bad.append(f'{field}: {apath} rolls although BASE_ONLY says refuse')
-                    continue
+                    continue                # base_only_is_refused()
                 clash = dict(bare, **{inside[1]: ['10']})
                 if not any('placement unpinned' in u for u in seedroll.compute(clash, 1, **slot).unmodeled):
                     bad.append(f'{field}: {apath} on a base drawing {inside[1]} inside the span '
@@ -219,7 +233,7 @@ def additions_are_unpinned():
 
 
 def main():
-    bad = against_the_game() + additions_are_unpinned()
+    bad = against_the_game() + base_only_is_refused() + additions_are_unpinned()
     if bad:
         print(f'\nFAIL ({len(bad)})')
         for b in bad[:30]:
