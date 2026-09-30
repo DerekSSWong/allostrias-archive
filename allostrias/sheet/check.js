@@ -867,6 +867,26 @@ for (const c of B.characters)
   want(/<span class="nm t-[^"]*"><span class="sym"[^>]*><\/span>[^<]/.test(gear),
        'the badge is not to the left of the item name');
 }
+// A damage range pairs PER SOURCE: a record that sets only the Min is a fixed
+// amount, so every Min row must have its Max beside it, and no range row may
+// print a top below its bottom. Fields from the sheet's own range rows, on
+// both buckets.
+{
+  const pairs=B.sheet.flatMap(([,list])=>list.filter(r=>r.k==='range').map(r=>r.f));
+  for (const c of B.characters) for (const con of [c.contrib, c.petContrib||{}])
+    for (const [lo, hi] of pairs){
+      const key=r=>JSON.stringify([r[1], r[2], r[3], r[4]||null]);
+      const tops=(con[hi]||[]).map(key);
+      for (const r of con[lo]||[]){
+        const i=tops.indexOf(key(r));
+        want(i>=0, `${c.name}: ${r[1]} gives ${lo}=${r[0]} and no ${hi} -- the range reads low`);
+        if (i>=0) tops.splice(i, 1);
+      }
+    }
+  const backwards=[...sheet.matchAll(/>([\d,.]+)–([\d,.]+)</g)]
+    .filter(m=>parseFloat(m[1].replace(/,/g,''))>parseFloat(m[2].replace(/,/g,'')));
+  want(!backwards.length, `a range prints backwards: ${backwards.map(m=>m[1]+'–'+m[2]).join(', ')}`);
+}
 // The two double-rare states are UNREACHABLE in this bundle -- no worn item has
 // Rare on both sides -- so nothing above exercises them. Pin the precondition:
 // the day one drops, this fires and says that branch has gone live untested.

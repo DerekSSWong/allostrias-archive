@@ -182,11 +182,20 @@ class Contrib:
         destructuring and check.js's `r[3]` are untouched by its presence.
         """
         if not value or not wanted(field):
-            return
+            return False
         row = [round(float(value), 4), source, toggle, kind]
         if via:
             row.append(via)
         self.rows.setdefault(field, []).append(row)
+        return True
+
+    def add_record(self, stats, source, toggle=None, kind='item', via=None):
+        """One record's stats, whole: the only point where a damage range can
+        still be paired -- see paired(). True when anything was added."""
+        added = False
+        for f, v in paired(stats).items():
+            added = self.add(f, v, source, toggle, kind, via) or added
+        return added
 
 
 # ============================================================ pets ========
@@ -225,7 +234,7 @@ def pet_stats_at(P, target, index, source, toggle=None, kind='item'):
     d = rec(target)
     if not d:
         return False
-    added = False
+    stats = {}
     for f, vals in d.items():
         if not wanted(f):
             continue
@@ -233,15 +242,12 @@ def pet_stats_at(P, target, index, source, toggle=None, kind='item'):
             arr = [float(v) for v in vals]
         except ValueError:
             continue                          # a path or a tag, never a stat
-        v = arr[index] if index < len(arr) else arr[-1]
-        if v:
-            # `via` is the petbonus record the numbers were actually read from.
-            # A devotion node legitimately grants a stat to the player AND the
-            # same stat to pets from two DIFFERENT records, so the source path
-            # alone cannot tell the buckets apart.
-            P.add(f, v, source, toggle, kind=kind, via=target)
-            added = True
-    return added
+        stats[f] = arr[index] if index < len(arr) else arr[-1]
+    # `via` is the petbonus record the numbers were actually read from.
+    # A devotion node legitimately grants a stat to the player AND the
+    # same stat to pets from two DIFFERENT records, so the source path
+    # alone cannot tell the buckets apart.
+    return P.add_record(stats, source, toggle, kind=kind, via=target)
 
 
 def pet_target(path):
@@ -503,6 +509,23 @@ def R(label, f=None, k='sum', pct=False, verified=False, **kw):
 DMG = [('Physical', 'Physical'), ('Fire', 'Fire'), ('Cold', 'Cold'),
        ('Lightning', 'Lightning'), ('Acid', 'Poison'), ('Pierce', 'Pierce'),
        ('Vitality', 'Life'), ('Aether', 'Aether'), ('Chaos', 'Chaos')]
+
+# ⚠️ A DAMAGE MIN WITH NO MAX IS A FIXED AMOUNT, not a roll from Min to 0:
+# "+57 Acid Damage" is `offensivePoisonMin=57` and nothing else. Summed field by
+# field across records, the missing Max read as 0 and Nurgle's Fire Retaliation
+# printed 1,974-306. So each record's Max is filled from its own Min BEFORE
+# anything is summed -- the totals have already lost which Min was whose. GD
+# Lens's flat_damage() pairs per record for the same reason.
+RANGE_ROOTS = tuple(f'{fam}{s}' for fam in ('offensive', 'offensiveBase', 'retaliation')
+                    for _, s in DMG)
+
+
+def paired(stats):
+    out = dict(stats)
+    for root in RANGE_ROOTS:
+        if out.get(root + 'Min') and not out.get(root + 'Max'):
+            out[root + 'Max'] = out[root + 'Min']
+    return out
 
 # ============================================================ verdicts ====
 # ⚠️ EVERY NUMBER IN THIS BLOCK IS ASSERTED, NOT DERIVED.
@@ -1321,11 +1344,13 @@ def gather(pr, ca, dir_name, icons):
             # same affix apart in one tooltip.
             src = {'base': name, 'prefix': aff_src.get('prefix'),
                    'suffix': aff_src.get('suffix'), 'modifier': f'{name} · crafting bonus'}
+            by_part = {}
             for f, per in roll.parts.items():
                 for where, v in per.items():
-                    if v:
-                        C.add(f, v, src.get(where) or name,
-                              kind='crafting bonus' if where == 'modifier' else where)
+                    by_part.setdefault(where, {})[f] = v
+            for where, stats in by_part.items():
+                C.add_record(stats, src.get(where) or name,
+                             kind='crafting bonus' if where == 'modifier' else where)
 
         # Attachments are separate records and are fed in unrolled.
         attached = []
@@ -1358,8 +1383,9 @@ def gather(pr, ca, dir_name, icons):
                 att_src = label if kind in ('component', 'augment') else f'{name} · {label}'
                 # The crafting bonus is in the roll above, or not applied at all.
                 if col != 'modifier_path':
-                    for s in ca.execute(f'select field, {vc} v from {tbl}_stat where {idc}=?', (row['id'],)):
-                        C.add(s['field'], s['v'], att_src, kind=kind)
+                    C.add_record({s['field']: s['v'] for s in ca.execute(
+                        f'select field, {vc} v from {tbl}_stat where {idc}=?', (row['id'],))},
+                        att_src, kind=kind)
                 break
             # Channel 1, the attachment half: a component, augment or relic
             # bonus carrying petBonusName. Scalar, so index 0.
@@ -1448,8 +1474,7 @@ def gather(pr, ca, dir_name, icons):
         stats, skills, members = set_bonus(srec, len(pieces))
         sname = tag((srec.get('setName') or [None])[0]) or 'Set'
         label = f'set · {sname}'
-        for f, v in stats.items():
-            C.add(f, v, label, kind='set')
+        C.add_record(stats, label, kind='set')
         for sp, lv in skills:
             plus_skill[sp] = plus_skill.get(sp, 0) + lv
         tiers, after = item_lines.set_block(srec)
@@ -1549,7 +1574,7 @@ def skills_and_toggles(ca, inv, devotion, plus_skill, plus_mastery, C, P, equipm
         if not d:
             return False
         idx = max(0, eff - 1)
-        added = False
+        stats = {}
         for f, vals in d.items():
             if not wanted(f):
                 continue
@@ -1557,11 +1582,8 @@ def skills_and_toggles(ca, inv, devotion, plus_skill, plus_mastery, C, P, equipm
                 arr = [float(v) for v in vals]
             except ValueError:
                 continue                      # a path or a tag, never a stat
-            v = arr[idx] if idx < len(arr) else arr[-1]
-            if v:
-                C.add(f, v, source, toggle, kind='skill')
-                added = True
-        return added
+            stats[f] = arr[idx] if idx < len(arr) else arr[-1]
+        return C.add_record(stats, source, toggle, kind='skill')
 
     for path, lvl in sorted(inv.items()):
         s = ca.execute('select id, name, class, max_level from skill where path=?', (path,)).fetchone()

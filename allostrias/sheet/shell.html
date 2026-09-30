@@ -2346,7 +2346,9 @@ __AFFIX_JS__
         if (Array.isArray(v)) {
           /* A range row's magnitude is its whole span: the verdict only ever
              asks whether the row is fed at all and which type it is about. */
-          return line(name, ri, r, `${fmt(v[0])}–${fmt(v[1])}`, "",
+          /* A range whose ends meet is a fixed amount, printed as the game
+             prints one: "+306", not "306–306". */
+          return line(name, ri, r, v[0] === v[1] ? fmt(v[0]) : `${fmt(v[0])}–${fmt(v[1])}`, "",
                       shown(name, r, verdict(r, v[0] + v[1], ctx)));
         }
         /* Every row, always -- including the ones nothing feeds. A stat a
