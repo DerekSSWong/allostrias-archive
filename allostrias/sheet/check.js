@@ -2445,6 +2445,15 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
        'a reload did not return to the Gear Stash');
   reboot('nav5');
   want(get('mainview').hidden===false, 'a reload onto an unassigned button did not open on Character');
+  // ...and on the character last chosen, while their save is still here.
+  const other=B.characters.find(c=>c.dir!==opener.dir);
+  const onScreen=()=>(get('picker')._html.match(/aria-pressed="true">\s*<span class="cn">([^<]*)/)||[])[1];
+  global.window.localStorage.setItem('allostria.character', other.dir);
+  reboot('character');
+  want(onScreen()===escT(other.name), `a reload opened ${onScreen()}, not ${other.name} who was last chosen`);
+  global.window.localStorage.setItem('allostria.character', 'no such save');
+  reboot('character');
+  want(onScreen()===escT(opener.name), `a reload with a vanished save opened ${onScreen()}, not the opener`);
 }
 console.log(`characters ${B.characters.length}  sheet rows ${rows}  worn ${geo}  toggles ${tgs}`);
 console.log(`mastery tree: Nurgle ${nu.tree.length} skills, ${nu.tree.filter(s=>s.parent===null).length} roots, depths ${[...new Set(depths)].sort((a,b)=>a-b).join('/')}`);

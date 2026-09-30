@@ -2171,8 +2171,11 @@ __AFFIX_JS__
      off the toggled pet totals, so that difference now changes advice.
 
      A duration buff starts OFF because in game it would not be up. */
+  const CHAR_KEY = "allostria.character";
   function select(i){
     state.i = i;
+    // Remembered by save folder so a reload reopens them -- guarded like the verdicts.
+    try { window.localStorage.setItem(CHAR_KEY, CH[i].dir); } catch (e) {}
     state.on = new Set();
     for (const t of CH[i].toggles)
       if (t.kind === "toggle" || t.kind === "granted") state.on.add(t.id);
@@ -2764,7 +2767,13 @@ __AFFIX_JS__
     n + list.filter(r =>
       r.k === "attr" || r.k === "pool" || r.k === "ability" ||
       (r.f || []).some(f => c.contrib[f])).length, 0);
-  select(CH.reduce((best, c, i) => fedRows(c) > fedRows(CH[best]) ? i : best, 0));
+  /* The character last chosen, while their save is still here; otherwise the
+     one with the most to show. */
+  let savedDir = null;
+  try { savedDir = window.localStorage.getItem(CHAR_KEY); } catch (e) {}
+  const kept = CH.findIndex(c => c.dir === savedDir);
+  select(kept >= 0 ? kept
+         : CH.reduce((best, c, i) => fedRows(c) > fedRows(CH[best]) ? i : best, 0));
 
   /* The refresh button only means anything when a local process is serving this
      page; it asks that process to re-read the saves into profile.sqlite and hand
