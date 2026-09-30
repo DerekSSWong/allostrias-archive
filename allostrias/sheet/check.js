@@ -1580,6 +1580,8 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
   want(mv.hidden===false, 'the character view starts hidden');
   fire('click', nav('affixes'));
   want(mv.hidden===true, 'choosing another section did not hide the character view');
+  want(global.window.localStorage.getItem('allostria.view')==='affixes',
+       'the chosen section was not stored for a reload');
   fire('click', nav('character'));
   want(mv.hidden===false, 'choosing Character did not bring the character view back');
 }
@@ -2293,7 +2295,7 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   // a card in. Each card prints its lines, its slot clause and its sources.
   const oc=B.characters.find(c=>c.name===opener.name)||opener;
   const core=oc.hardcore ? 'h' : 't', unlocked=G.unlocked[core];
-  let met=0, unmet=0, bpOn=0, bpOff=0, held=0, seen=0;
+  let met=0, unmet=0, bpOn=0, bpOff=0, held=0, seen=0, dropQuest=0;
   for (const t of ['Augment','Component','Rune']){
     fire('click', gstub('.achip', {gtype:t}));
     const total=G.items.filter(it=>it.t===t).length;
@@ -2333,7 +2335,9 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
       if (!sources) want(h.includes('No source in the game data'), `${it.n}: has no source and does not say so`);
       if (it.drop) want(h.includes(it.drop[1].length ? `Drops from ${it.drop[1].map(escT).join(', ')}` : '>Random drop<'),
                         `${it.n}: its drop row is not "${it.drop[1].length ? 'Drops from '+it.drop[1] : 'Random drop'}"`);
-      if (it.quest) want(h.includes('>Quest reward<'), `${it.n}: its quest reward is not said`);
+      if (it.drop && it.quest){ dropQuest++;
+        want(!h.includes('>Quest reward<'), `${it.n}: drops, but still says "Quest reward"`); }
+      else if (it.quest) want(h.includes('>Quest reward<'), `${it.n}: its quest reward is not said`);
       want(!h.includes('Sold by'), `${it.n}: still says "Sold by"`);
       if (it.lv) want(h.includes(`Required Player Level: ${it.lv}</p>`), `${it.n}: no Required Player Level`);
     }
@@ -2344,6 +2348,7 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   if (!unmet) uncovered.push(`${opener.name} meets every faction standing, so no unmet row is drawn`);
   if (!bpOn || !bpOff) uncovered.push(`the account has ${bpOn?'every':'no'} blueprint these need`);
   if (!held) uncovered.push('nothing here is held');
+  if (!dropQuest) uncovered.push('no card both drops and is a quest reward');
   if (!G.items.some(it=>!it.buy.length && !it.bp.length && !it.drop && !it.quest)) uncovered.push('every card has a source');
   if (!G.items.some(it=>it.drop && it.drop[1].length)) uncovered.push('no card names who drops it');
 
@@ -2403,6 +2408,23 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   want(got && got.name==='tagsgdx3_uimain.txt', `the download is named ${got&&got.name}`);
   const text=got ? await got.blob.text() : '';
   want(text===globalThis.__filter.text, 'the downloaded file is not the filter the scorer rendered');
+}
+// A reload lands on the section last chosen: the same code booted again on
+// fresh stub elements, over the storage the first boot wrote. An unassigned
+// button is not a section and must open on Character.
+{
+  const reboot=v=>{
+    global.window.localStorage.setItem('allostria.view', v);
+    for (const k of Object.keys(els))
+      if (!['bundle','affixes','gearstash','augments'].includes(k)) delete els[k];
+    for (const k of Object.keys(handlers)) delete handlers[k];
+    new Function(code)();
+  };
+  reboot('stash');
+  want(get('stashview').hidden===false && get('mainview').hidden===true,
+       'a reload did not return to the Gear Stash');
+  reboot('nav5');
+  want(get('mainview').hidden===false, 'a reload onto an unassigned button did not open on Character');
 }
 console.log(`characters ${B.characters.length}  sheet rows ${rows}  worn ${geo}  toggles ${tgs}`);
 console.log(`mastery tree: Nurgle ${nu.tree.length} skills, ${nu.tree.filter(s=>s.parent===null).length} roots, depths ${[...new Set(depths)].sort((a,b)=>a-b).join('/')}`);

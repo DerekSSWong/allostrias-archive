@@ -1951,7 +1951,8 @@ __AFFIX_JS__
        nothing about its blueprint -- craftable is a default recipe, or (for a
        character) a blueprint the account has unlocked. Otherwise the blueprint's
        source: "random drop" whenever it drops, whatever else gives it. The
-       item's own vendor, drop and quest rows stay either way. */
+       item's own rows stay either way, under the same rule: a drop hides its
+       quest reward. */
     const bps = bpsOf(it);
     if (bps.length){
       const u = ch ? bpUnlocked(ch, it) : false;
@@ -1968,7 +1969,7 @@ __AFFIX_JS__
       }
     }
     if (it.drop) rows.push([dropText(it.drop), ""]);
-    if (it.quest) rows.push(["Quest reward", ""]);
+    else if (it.quest) rows.push(["Quest reward", ""]);
     if (!rows.length) rows.push(["No source in the game data", ""]);
     const n = ch ? (it.own || []).reduce((a, [, c]) => a + c, 0) : 0;
     if (n) rows.push([`Held: ${n} (` + it.own.map(([w, c]) =>
@@ -2694,12 +2695,13 @@ __AFFIX_JS__
   /* Which view the navigation bar has selected. Character is the page as it
      has always been; any other button hides it, leaving the drawer, the
      character bar and the navigation bar. The marker follows aria-current. */
+  const VIEWS = {character: "mainview", affixes: "affixview", stash: "stashview", augments: "augview"};
+  const VIEW_KEY = "allostria.view";
   function setView(view){
     state.view = view;
-    $("mainview").hidden = view !== "character";
-    $("affixview").hidden = view !== "affixes";
-    $("stashview").hidden = view !== "stash";
-    $("augview").hidden = view !== "augments";
+    for (const [v, id] of Object.entries(VIEWS)) $(id).hidden = v !== view;
+    // Remembered so a reload lands here -- guarded like the verdicts.
+    try { window.localStorage.setItem(VIEW_KEY, view); } catch (e) {}
     if (view === "affixes") renderAffixes();
     if (view === "stash") renderStash();
     if (view === "augments") renderAug();
@@ -2820,5 +2822,10 @@ __AFFIX_JS__
     .join(", ");
 
   render();
+  /* Only a real section is restored: an unassigned button stored by an older
+     page, or anything else, opens on Character. */
+  let saved = null;
+  try { saved = window.localStorage.getItem(VIEW_KEY); } catch (e) {}
+  if (saved && Object.hasOwn(VIEWS, saved) && saved !== "character") setView(saved);
 })();
 </script>
