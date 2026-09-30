@@ -9,16 +9,25 @@
       one is ever held. Move it into Item Assistant and relaunch:
       `tests/test_seedroll_game.py` reads the game's own tooltip from there.
       Until then such an item shows in the Gear Stash with its stats withheld.
-      - prefixes: Thunderstruck (`offensiveStunModifier`), Draining
+      Where you'd get the most for the least effort:
+      1. Craft any blueprint item and pick a resistance bonus. That should pin
+         where defence bonuses sit in the roll order, which covers most of the
+         42 refused bonuses in one go.
+      2. Do the same with a damage bonus, which covers the rest.
+      3. Buy a Legion Warhammer from a faction vendor.
+      - affixes: Thunderstruck and of the Wind (`offensiveStunModifier`), of
+        the Swamp (`offensiveSlowDefensiveReductionMin`), Draining
         (`offensiveManaBurnDrain`), Sapping (`offensivePercentCurrentLife` on an
-        affix, `seedroll.BASE_ONLY`)
-      - `defensiveBonusProtection` on an affix (`seedroll.BASE_ONLY`; on a
-        base it is fixed, settled 2026-09-30), Legion Warhammer
+        affix, `seedroll.BASE_ONLY`), of Fortification / of the Mountain / of
+        the Tortoise (`defensiveBonusProtection` on an affix,
+        `seedroll.BASE_ONLY`; on a base it is fixed, settled 2026-09-30)
+      - items: Legion Warhammer
         (`defensivePhysicalChance`), Maw of Despair (`retaliationSlowManaLeach`),
         Malkadarr's Dreadblade (`offensiveFreezeMax`), Frostguard Girdle
         (`defensiveProtectionChance`), Screams of the Aether (`retaliationFearMin`)
-      - a crafting bonus with a damage, defence or retaliation field, or one
-        sharing a field with an affix (`seedroll.MODIFIER_KINDS`)
+      - crafting bonuses: 42 of the 69 are refused -- every resistance, damage,
+        Armor-percent, block and duration bonus; only Char ones roll
+        (`seedroll.MODIFIER_KINDS`). Also one sharing a field with an affix.
 
 - [ ] Settle which item level an AFFIX's granted skill uses. An affix record
       has no `itemLevel`, so `item_stats.granted_skill_level()` hands it the
