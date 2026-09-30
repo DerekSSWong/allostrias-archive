@@ -42,8 +42,9 @@ def rolled(base_path, sources, roll):
     roll was made from; `roll` is seedroll's result for them and must not be a
     refusal. `key` says what the line is, for a caller that grades it: a raw
     field name for a stat line, `conversion`/`conversion2`, `skill:<record>`,
-    `mastery:<record>`, `granted` for a granted skill's block, or None for a
-    line nobody grades (a pet bonus, a skill modifier). Granted skills come
+    `mastery:<record>`, `pet:<field>` for a pet bonus line (the key the
+    scorer's pet rows read), `granted` for a granted skill's block, or None
+    for a line nobody grades (a skill modifier). Granted skills come
     last, every source's, as the game prints them.
     """
     if roll.unmodeled:
@@ -127,7 +128,7 @@ def rolled(base_path, sources, roll):
                 out += [('mastery:' + name.group(1), l) for l in I.resolve_augment_mastery(part)]
         out += [(None, l) for l in I.augment_all_skills(txt)]
         out += [(None, l) for l in I.resolve_skill_modifiers(txt)]
-        out += [(None, l) for l in I.resolve_pet_bonus(txt)]
+        out += [('pet:' + f, l) for f, l in I.pet_bonus_lines(txt)]
         out += [(None, l) for l in I.resolve_pet_conversions(txt)]
     return [(k, l) for k, l in out + granted if l]
 

@@ -105,6 +105,17 @@ print('sources, card by card, as the catalogue answers them:')
 for k, v in sorted(routes.items()):
     print(f'  {v:4} {k[0]:10} {k[1]}')
 
+# WHAT IS GRADED IS MARKED. The grade counts every field in g[1], and the page
+# marks a line only through the key the line carries -- a pet bonus line keyed
+# None was scored `avoid` and painted nothing. So every graded field's line key
+# must be a line on the same card.
+unmarked = [(c['n'], B['lk'][fi]) for c in cards for fi, *_ in c['g'][1]
+            if 'f' + B['lk'][fi] not in {k for _, k in c['l']}]
+assert not unmarked, f'{len(unmarked)} graded fields no line can mark: {unmarked[:5]}'
+pets = sum(1 for c in cards for fi, *_ in c['g'][1] if B['f'][fi].startswith('pet:'))
+assert pets, 'no card grades a pet field -- the pet half of the rule is unexercised'
+print(f'graded fields all markable; {pets} of them pet fields')
+
 # Every standing a vendor sells at is one gamefactions.dbr prices.
 standings = {n for n, _ in B['standings']}
 assert {s for c in cards for _, s in c['buy']} | {s for b in B['bps'] for _, s in b['buy']} <= standings

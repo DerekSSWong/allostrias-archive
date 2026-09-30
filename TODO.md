@@ -49,3 +49,10 @@
       the pet-bonus field and the skill-reference fields of any record carrying
       them, resolved against `item` in `finish` as `eligibility` does. Not worth
       the coupling `shared_pass.py` warns about unless suite time matters.
+
+- [ ] Model the pet-bonus roll. Some items roll their `petBonusName` values
+      with the seed (Pet All Damage +163% in game where the record says 200;
+      Pet OA 6% where it says 5), and `item_lines` prints the stored value.
+      17 lines on 7 IAGD items disagree; the rest match. IAGD holds pet lines
+      as ReplicaItemRow type 71: add 71 to `ROWS` in
+      `tests/test_seedroll_game.py` and drop its `pet:` skip once fixed.

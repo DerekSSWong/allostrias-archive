@@ -957,6 +957,12 @@ def supplement_shared_stats(txt, prefix, existing):
 
 
 def resolve_pet_bonus(txt, level_idx=0):
+    return [l for _, l in pet_bonus_lines(txt, level_idx)]
+
+
+def pet_bonus_lines(txt, level_idx=0):
+    """resolve_pet_bonus() as [(field, line)]: which pet field each line prints,
+    for a caller that grades it."""
     m = re.search(r'^petBonusName=' + PATH, txt, re.M)
     if not m:
         return []
@@ -974,11 +980,11 @@ def resolve_pet_bonus(txt, level_idx=0):
     for field, val in re.findall(r'^([A-Za-z0-9]+)=(-?[\d.]+)', link_txt, re.M):
         shared = process_stats(f'{field}={val}\n')
         if shared:
-            lines += [f'{PET_PREFIX}{l}' for l in shared]
+            lines += [(field, f'{PET_PREFIX}{l}') for l in shared]
         elif field in PET_FIELD_MAP:
             label, is_pct = PET_FIELD_MAP[field]
             sign = '' if val.startswith('-') else '+'
-            lines.append(f"{PET_PREFIX}{sign}{_fmt_num(val)}{'%' if is_pct else ''} {label}")
+            lines.append((field, f"{PET_PREFIX}{sign}{_fmt_num(val)}{'%' if is_pct else ''} {label}"))
     return lines
 
 
