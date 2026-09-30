@@ -15,6 +15,7 @@ import collections
 import re
 
 from . import item_stats as I
+from .archive import seedroll
 from .archive.seedroll import Roll
 
 # Stat fields the renderer never prints, with the game's own string for each (a
@@ -51,16 +52,11 @@ def rolled(base_path, sources, roll):
         raise ValueError('a refused roll has no lines: ' + ', '.join(roll.unmodeled))
     texts = {k: I.read_rel(p) or '' for k, p in sources.items()}
     base_txt = texts['base']
+    # A record the game does not roll (stored_roll) has no seed, and its pet
+    # bonus prints as stored.
+    pets = pet_rolls(sources, roll.seed) if roll.seed is not None else {}
 
-    nums = {k: v for k, v in roll.stats.items() if isinstance(v, (int, float))}
-    # seedroll emits a range's Max even where the record carries only a Min;
-    # a Max equal to its Min would print "+306-306" for the game's "+306".
-    nums = {k: v for k, v in nums.items()
-            if not (k.endswith('Max') and nums.get(k[:-3] + 'Min') == v)}
-    # A proc split off above carries its own Chance; the echoed Chance must not
-    # gate what is left of the field on the merged line.
-    for p in roll.proc_lines:
-        nums.pop(p['field'] + 'Chance', None)
+    nums = _numbers(roll)
     head = ''.join(l + '\n' for l in base_txt.splitlines()
                    if l.startswith(('Class=', 'characterBaseAttackSpeedTag=')))
     synthetic = head + ''.join(f'{k}={v:g}\n' for k, v in sorted(nums.items()))
@@ -92,14 +88,7 @@ def rolled(base_path, sources, roll):
                 txt += f"{f}DurationMin={p['duration']:g}\n"
         out += I.process_stats_fields(txt)
 
-    # Every conversion pair the roll made -- a base and an affix converting
-    # different types are two lines -- at the rolled float, printed as the game
-    # prints it: 16.57 reads "17%".
-    for c in roll.conversions:
-        sfx = c['field'][len('conversionPercentage'):]
-        conv = (f"conversionInType={c['in']}\nconversionOutType={c['out']}\n"
-                f"conversionPercentage={c['value']:.0f}\n")
-        out += [('conversion' + sfx, l) for l in I.extract_conversions(conv, '')]
+    out += _conversions(roll, '')
 
     # Everything the renderer reads off the RECORD rather than off a number:
     # none of it rolls, so each source's own text is the input.
@@ -128,9 +117,62 @@ def rolled(base_path, sources, roll):
                 out += [('mastery:' + name.group(1), l) for l in I.resolve_augment_mastery(part)]
         out += [(None, l) for l in I.augment_all_skills(txt)]
         out += [(None, l) for l in I.resolve_skill_modifiers(txt)]
-        out += [('pet:' + f, l) for f, l in I.pet_bonus_lines(txt)]
-        out += [(None, l) for l in I.resolve_pet_conversions(txt)]
+        if which in pets:
+            pet = pets[which]
+            out += [('pet:' + f, l) for f, l in I.pet_lines(
+                ''.join(f'{k}={v:g}\n' for k, v in sorted(_numbers(pet).items())))]
+            out += [(None, l) for _, l in _conversions(pet, I.PET_PREFIX)]
+        else:
+            out += [('pet:' + f, l) for f, l in I.pet_bonus_lines(txt)]
+            out += [(None, l) for l in I.resolve_pet_conversions(txt)]
     return [(k, l) for k, l in out + granted if l]
+
+
+def pet_rolls(sources, seed):
+    """{which: Roll} for each source in `sources` whose record names a pet bonus,
+    rolled for an item of `seed` (seedroll.roll_pet). A refused pet roll raises:
+    tests/test_seedroll_game.py holds every pet record in the game to rolling."""
+    out = {}
+    for which, path in sources.items():
+        carrier = I.read_rec(path) or {}
+        pet_path = (carrier.get('petBonusName') or [None])[0]
+        if not pet_path:
+            continue
+        pet = I.read_rec(pet_path)
+        if pet is None:
+            raise ValueError(f'{path}: petBonusName {pet_path} is in no archive')
+        roll = seedroll.roll_pet(pet, seed, None if which == 'base' else carrier)
+        if roll.unmodeled:
+            raise ValueError(f'{pet_path}: pet roll refused: ' + ', '.join(roll.unmodeled))
+        out[which] = roll
+    return out
+
+
+def _numbers(roll):
+    """A roll's numeric stats as the renderer should see them."""
+    nums = {k: v for k, v in roll.stats.items() if isinstance(v, (int, float))}
+    # seedroll emits a range's Max even where the record carries only a Min;
+    # a Max equal to its Min would print "+306-306" for the game's "+306".
+    nums = {k: v for k, v in nums.items()
+            if not (k.endswith('Max') and nums.get(k[:-3] + 'Min') == v)}
+    # A proc seedroll split off carries its own Chance; the echoed Chance must not
+    # gate what is left of the field on the merged line.
+    for p in roll.proc_lines:
+        nums.pop(p['field'] + 'Chance', None)
+    return nums
+
+
+def _conversions(roll, prefix):
+    """Every conversion pair the roll made -- a base and an affix converting
+    different types are two lines -- at the rolled float, printed as the game
+    prints it: 16.57 reads "17%"."""
+    out = []
+    for c in roll.conversions:
+        sfx = c['field'][len('conversionPercentage'):]
+        conv = (f"conversionInType={c['in']}\nconversionOutType={c['out']}\n"
+                f"conversionPercentage={c['value']:.0f}\n")
+        out += [('conversion' + sfx, l) for l in I.extract_conversions(conv, prefix)]
+    return out
 
 
 def stored_roll(txt):

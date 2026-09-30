@@ -50,9 +50,11 @@
       them, resolved against `item` in `finish` as `eligibility` does. Not worth
       the coupling `shared_pass.py` warns about unless suite time matters.
 
-- [ ] Model the pet-bonus roll. Some items roll their `petBonusName` values
-      with the seed (Pet All Damage +163% in game where the record says 200;
-      Pet OA 6% where it says 5), and `item_lines` prints the stored value.
-      17 lines on 7 IAGD items disagree; the rest match. IAGD holds pet lines
-      as ReplicaItemRow type 71: add 71 to `ROWS` in
-      `tests/test_seedroll_game.py` and drop its `pet:` skip once fixed.
+- [ ] Fix three renderer gaps on items newly held in Item Assistant (2026-09-30);
+      `tests/test_seedroll_game.py` fails five lines on them. None is a pet line.
+      - #1979 `a11_sword002`: racial bonuses print 10/15 where the game shows
+        one "+25% Damage to Aetherials" line.
+      - #1990 `a12_blunt001`: "10% Chance of +504 Burn dmg over 3 Seconds" --
+        the game prints no 3.
+      - #2015 `a11_torso001`: "12% Reduction to Attribute Requirements" has no
+        line.

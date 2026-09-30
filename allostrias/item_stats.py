@@ -149,6 +149,8 @@ DIVERGED = {
     r'^character\w+ReqReduction$': 'attribute requirement reductions had no line',
     r'^skill(ProjectileSpeedModifier|ComboChargeSpendReduction)$': 'no line',
     r'^defensive[A-Za-z]+Duration$': '"Reduction in X Duration" had no line',
+    r'^defensiveConvert$': 'Reduced Mind Control Duration had no line',
+    r'^petBonusName$': 'a pet bonus rendered field by field: lost ranges, durations, and the stat order',
     r'^(offensive|retaliation)(Stun|Knockdown|Freeze|Petrify|Sleep|Trap|Confusion|Fear)(Min|Max|Chance)$':
         'crowd-control procs had no line',
     r'^offensive(Slow)?(Fumble|TotalSpeed|AttackSpeed|PhysicalReductionPercent)(Min|DurationMin|Chance)$':
@@ -228,8 +230,8 @@ MISC_FIELD_MAP = {
     'defensivePoisonDuration': ('Reduction in Poison Duration', True),
     # "All Damage" (not just "Damage") -- confirmed via tags_ui.txt:
     # `tagDamageModifierTotalDamage={%+.0f0}% {^E}to All Damage` (the
-    # game's own text also prepends "to", but every other MISC_FIELD_MAP/
-    # PET_FIELD_MAP label uses the bare-label + generic sign/percent
+    # game's own text also prepends "to", but every other MISC_FIELD_MAP
+    # label uses the bare-label + generic sign/percent
     # convention with no "to", so this only changes the label itself, not
     # the surrounding sentence structure, to stay consistent with every
     # other stat line here).
@@ -245,8 +247,8 @@ MISC_FIELD_MAP = {
     'defensiveDisruptionProjectile': ('Deflect Chance', True),
     'skillCooldownReduction': ('Cooldown Reduction', True),
     'characterLightRadius': ('Light Radius', False),
-    # These 4 resistance names were already correctly mapped for the PET_FIELD_MAP
-    # context below but never for a plain item's own top-level stats (user-flagged
+    # These 4 resistance names were already correctly mapped for the pet
+    # context but never for a plain item's own top-level stats (user-flagged
     # via "Bloodbound Helm"/"Frostplume Mantle": defensiveElementalResistance/
     # defensiveStun on their own base records rendered nothing at all). Not
     # caught by TYPE_FIELD_RE below because the raw field name itself
@@ -292,6 +294,9 @@ MISC_FIELD_MAP = {
     # user-flagged via "Bysmiel-Sect Legguards": defensiveTrap=40 rendered
     # nothing at all (its whole "32/48% Entrapment Resistance" line missing).
     'defensiveTrap': ('Entrapment Resist', True),
+    # ARCHIVE-ONLY (see DIVERGED). tags_ui `DefenseConvert`, "Reduced Mind
+    # Control Duration", labelled as its Stun/Freeze/Trap neighbours are.
+    'defensiveConvert': ('Mind Control Resist', True),
     # Eight fields that were entirely unhandled, so 86 items rendered with fewer
     # effect lines than they should. Labels confirmed against tags_ui.txt:
     #   DefensePetrifyNegative        -> Petrify Resistance
@@ -805,70 +810,8 @@ def _chance_of(txt, stem):
 
 
 # ------------------------------------------------------------------- pets ---
-# tagCharStatsPet* confirms the field-name-to-label mapping for the linked
-# petbonus.tpl file's fields (same raw field names as normal stats, but the
-# WHOLE file means "applies to your pet", not the player).
-PET_FIELD_MAP = {
-    'characterOffensiveAbilityModifier': ('Offensive Ability', True),
-    'characterDefensiveAbilityModifier': ('Defensive Ability', True),
-    'characterAttackSpeedModifier': ('Attack Speed', True),
-    # "Health," not "Life" -- tagCharStatsPetHealth's own display text is
-    # "Life", but the user's pasted real item tooltip for "Bysmiel-Sect
-    # Legguards"' pet bonus showed "+5/+7% Health" instead, and this exact
-    # field is ALSO already labeled "Health" for the base-item (non-pet)
-    # context in MISC_FIELD_MAP above -- keeping the two consistent, and
-    # trusting the pasted floating-tooltip text over the shorter
-    # character-sheet tag where they disagree (same kind of split as the
-    # Entrapment/Trap naming above).
-    'characterLifeModifier': ('Health', True),
-    'characterTotalSpeedModifier': ('Total Speed', True),
-    # "All Damage" (not just "Damage") -- confirmed via tags_ui.txt:
-    # `tagDamageModifierTotalDamage={%+.0f0}% {^E}to All Damage` (the
-    # game's own text also prepends "to", but every other MISC_FIELD_MAP/
-    # PET_FIELD_MAP label uses the bare-label + generic sign/percent
-    # convention with no "to", so this only changes the label itself, not
-    # the surrounding sentence structure, to stay consistent with every
-    # other stat line here).
-    'offensiveTotalDamageModifier': ('All Damage', True),
-    'defensiveProtectionModifier': ('Armor', True),
-    'offensiveCritDamageModifier': ('Critical Damage', True),
-    # Same fix as MISC_FIELD_MAP's resist entries above -- these are
-    # percentages in-game too (same raw field names, same mechanic, just
-    # applied to the pet instead of the player).
-    'defensiveAether': ('Aether Resist', True),
-    'defensiveChaos': ('Chaos Resist', True),
-    'defensivePoison': ('Poison/Acid Resist', True),
-    'defensiveBleeding': ('Bleeding Resist', True),
-    'defensivePierce': ('Pierce Resist', True),
-    'defensiveLife': ('Vitality Resist', True),
-    'defensiveFreeze': ('Freeze Resist', True),
-    'defensiveStun': ('Stun Resist', True),
-    'defensiveElementalResistance': ('Elemental Resist', True),
-    'defensiveTotalSpeedResistance': ('Slow Resist', True),
-    # Same field/fix as MISC_FIELD_MAP's 'defensiveTrap' above -- user-
-    # flagged via "Bysmiel-Sect Legguards"' own petBonusName file, which
-    # carries defensiveTrap=40 in addition to (separately from) the base
-    # item's own defensiveTrap=40 -- both were silently dropped before.
-    'defensiveTrap': ('Entrapment Resist', True),
-    'offensiveSlowBleedingMin': ('Bleeding dmg', False),
-    'offensiveSlowBleedingDurationMin': ('Bleed Duration', False),
-    'offensiveElementalMin': ('Elemental dmg', False),
-    'offensiveChaosMin': ('Chaos dmg', False),
-    'offensiveChaosModifier': ('Chaos dmg', True),
-    'offensiveAetherModifier': ('Aether dmg', True),
-    'offensiveSlowPoisonModifier': ('Poison dmg', True),
-    # PET_FIELD_MAP only covers whichever field/type combos some earlier
-    # item happened to need -- unlike process_stats()'s generic DAMAGE_TYPES
-    # loop, this map has no fallback, so any untried combo silently vanishes.
-    # These two -- user-flagged via "Mortality" (relic)'s granted skill's
-    # own nested pet bonus, which carries offensiveLifeMin=33/
-    # offensiveLifeModifier=125 alongside the already-covered CritDamage/
-    # TotalDamage fields -- were missing outright.
-    'offensiveLifeMin': ('Vitality dmg', False),
-    'offensiveLifeModifier': ('Vitality dmg', True),
-}
-
-
+# A petbonus.tpl record carries ordinary stat fields; the WHOLE record means
+# "applies to your pet". It renders through process_stats() like any other.
 PET_PREFIX = 'Pet: '
 
 
@@ -969,23 +912,17 @@ def pet_bonus_lines(txt, level_idx=0):
     link_txt = read_rel(m.group(1))
     if link_txt is None:
         return []
-    link_txt = apply_skill_level(link_txt, level_idx)
-    # PET_FIELD_MAP is a small hand-built map; process_stats() knows the whole
-    # stat vocabulary. Ask the shared engine FIELD BY FIELD and fall back to the
-    # pet map only where it has nothing -- a wholesale swap would add 287 lines
-    # across 199 pet records but silently reword 29 existing ones (flat DoT
-    # damage renders as "+6 Bleeding dmg over 3 Seconds" there, "+6 Bleeding dmg"
-    # here), and a phrasing change is not a fix.
-    lines = []
-    for field, val in re.findall(r'^([A-Za-z0-9]+)=(-?[\d.]+)', link_txt, re.M):
-        shared = process_stats(f'{field}={val}\n')
-        if shared:
-            lines += [(field, f'{PET_PREFIX}{l}') for l in shared]
-        elif field in PET_FIELD_MAP:
-            label, is_pct = PET_FIELD_MAP[field]
-            sign = '' if val.startswith('-') else '+'
-            lines.append((field, f"{PET_PREFIX}{sign}{_fmt_num(val)}{'%' if is_pct else ''} {label}"))
-    return lines
+    return pet_lines(apply_skill_level(link_txt, level_idx))
+
+
+def pet_lines(pet_txt):
+    """[(field, line)] for a pet bonus record's own text, stored or rolled.
+
+    The WHOLE text in one process_stats() pass, never field by field: its
+    combined-sentence passes need both halves of a pair, and one field at a time
+    printed "+12 Poison dmg" and "+5 Poison Duration" for the game's "60 Poison
+    Damage over 5 Seconds", dropped a range's Max, and a line's Chance."""
+    return [(f, PET_PREFIX + l) for f, l in process_stats_fields(pet_txt)]
 
 
 def resolve_item_skill(txt, item_level=None):
@@ -1074,6 +1011,11 @@ def read_rel(relpath):
     merely the same data.
     """
     return _records.text(relpath)
+
+
+def read_rec(relpath):
+    """read_rel() as {field: [values]}, the shape seedroll reads, or None."""
+    return _records.get(relpath)
 
 
 def skill_display_name(txt):
@@ -1173,7 +1115,7 @@ MOD_STAT_RE = re.compile(r'^offensive(Slow)?([A-Za-z]+?)(Min|Max|Modifier|Durati
 # characterAttackSpeedModifier/MaxModifier -- no damage/conversion fields at
 # all -- so the whole section rendered as empty and silently vanished,
 # indistinguishable from the genuine "cosmetic pet-swap, no payload" case
-# the modSpawnObjects fallback below is for). Labels match PET_FIELD_MAP's
+# the modSpawnObjects fallback below is for). Labels match MISC_FIELD_MAP's
 # existing conventions for the same field names where they overlap.
 MOD_EXTRA_FIELD_MAP = {
     'characterAttackSpeedModifier': ('Attack Speed', True),
@@ -1202,7 +1144,7 @@ MOD_EXTRA_FIELD_MAP = {
 # "Gargoyle Visage": its "Bloody Pox" modifier, head_b207_bloodypox.dbr, is
 # ENTIRELY defensiveBleeding=-12/defensiveLife=-12 with no offensive/
 # conversion fields at all, so the whole section rendered empty). Labels
-# match PET_FIELD_MAP's resist-field conventions.
+# match MISC_FIELD_MAP's resist-field conventions.
 MOD_DEFENSIVE_FIELD_MAP = {
     'defensiveBleeding': 'Bleeding Resist',
     'defensiveLife': 'Vitality Resist',
@@ -1252,14 +1194,9 @@ def extract_conversions(txt, prefix):
 
 
 def resolve_pet_conversions(txt):
-    """The item's own petBonusName file can ALSO carry conversionInType/Out/
-    Percentage fields (e.g. Harbinger's Void Blade's petBonus: Physical+Life
-    -> Chaos at 100% each) that resolve_pet_bonus() doesn't look for (it
-    was written for Augments/Components, which never carry conversion
-    fields) -- its PET_FIELD_MAP only covers plain stat fields. This adds
-    just the conversion lines as a supplement, so both together cover the
-    full petBonusName payload without double-counting the stat fields
-    resolve_pet_bonus() already handles."""
+    """The conversion lines of the record petBonusName names (Harbinger's Void
+    Blade's: Physical+Life -> Chaos at 100% each). process_stats() prints no
+    conversion, so resolve_pet_bonus() has none and this adds them."""
     m = re.search(r'^petBonusName=' + PATH, txt, re.M)
     if not m:
         return []

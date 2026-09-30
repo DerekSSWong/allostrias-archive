@@ -404,9 +404,8 @@ def display(txt, stats, pet_txt, pet_stats, item_levels=None):
         plo = {f: s[1] for f, s in pet_stats.items() if s[1] is not None}
         phi = {f: s[2] for f, s in pet_stats.items() if s[2] is not None}
         pet_txt = I.apply_skill_level(pet_txt, 0)
-        for f, val in re.findall(r'^([A-Za-z0-9]+)=(-?[\d.]+)', pet_txt, re.M):
-            for line in _banded_lines(_pet_line, f'{f}={val}\n', plo, phi):
-                out.append(('pet:' + line_key(f), line, phi.get(f), True))
+        for f, line in zip(*_fields_and_lines(pet_txt, plo, phi, I.pet_lines)):
+            out.append(('pet:' + line_key(f), line, phi.get(f), True))
     # A granted skill last, below the pet bonus, as the game prints it.
     out += [('itemSkill', line, None, False) for line in granted_lines(txt, item_levels)]
     return out
@@ -430,25 +429,12 @@ def granted_lines(txt, item_levels):
         f'{a[0][len("Grants: "):]}: (skill level {at(lo)}–{at(hi)}: scales with item level)']
 
 
-def _fields_and_lines(txt, lo, hi):
-    a = I.process_stats_fields(_with_values(txt, lo))
-    b = I.process_stats_fields(_with_values(txt, hi))
+def _fields_and_lines(txt, lo, hi, render=I.process_stats_fields):
+    a = render(_with_values(txt, lo))
+    b = render(_with_values(txt, hi))
     if [f for f, _ in a] != [f for f, _ in b]:
         raise ValueError('stat lines differ between the low and the high roll')
     return [f for f, _ in a], [merge_band(x, y) for (_, x), (_, y) in zip(a, b)]
-
-
-def _pet_line(txt):
-    """resolve_pet_bonus()'s per-field rule, on one field of the pet record."""
-    field, _, val = txt.strip().partition('=')
-    shared = I.process_stats(txt)
-    if shared:
-        return [I.PET_PREFIX + l for l in shared]
-    if field in I.PET_FIELD_MAP:
-        label, is_pct = I.PET_FIELD_MAP[field]
-        sign = '' if val.startswith('-') else '+'
-        return [f"{I.PET_PREFIX}{sign}{I._fmt_num(val)}{'%' if is_pct else ''} {label}"]
-    return []
 
 
 # ------------------------------------------------------------- assemble --

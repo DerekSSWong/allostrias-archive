@@ -4,7 +4,7 @@
 Item Assistant keeps, for every item it holds, the tooltip the game itself
 rendered (`ReplicaItemRow`, colour codes and all). That is the one oracle here
 that is not a port of this code, so it is what settled the corrections in
-seedroll.CORRECTIONS / ADDITIONS and item_lines.py. Three checks:
+seedroll.CORRECTIONS / ADDITIONS, seedroll.roll_pet and item_lines.py. Checks:
 
   1. Every item IAGD holds ROLLS -- a refusal is a gap to close, not a result.
   2. Every number on its rolled lines (item_lines.rolled, the lines the Gear
@@ -12,7 +12,10 @@ seedroll.CORRECTIONS / ADDITIONS and item_lines.py. Three checks:
      by one line is not available to the next. And the REVERSE: every line of
      the game's tooltip has its numbers on ours, so a line the renderer does not
      print fails here too (399 did, on 333 items, before 2026-09-28).
-  3. Each ADDITION is placed but not pinned. For every record in the catalogue
+  3. Every pet bonus record an item or affix names rolls (item_lines.pet_rolls
+     raises on a refusal), and the two items whose base AND affix each name
+     one match the game, pinned from in-game tooltips.
+  4. Each ADDITION is placed but not pinned. For every record in the catalogue
      that carries the field, every placement inside its span must roll the same
      numbers over a spread of seeds; a record that could tell them apart fails
      here instead of rolling on a guess.
@@ -22,7 +25,7 @@ record's numbers into the item's lines, and those records are not rolled. A
 crafting bonus IS rolled (seedroll.MODIFIER_KINDS), so crafted items are in.
 
 ⚠️ SKIPS LOUDLY WHEN IAGD IS NOT CONFIGURED, exit 0, like every oracle gate here:
-check 3 still runs, 1 and 2 print UNCHECKED.
+checks 3 and 4 still run, 1 and 2 print UNCHECKED.
 """
 import collections
 import os
@@ -41,10 +44,10 @@ cfg = S.load()
 RECORDS = Records(cfg.arz_paths)
 NUM = re.compile(r'\d+(?:\.\d+)?')
 # Rows of the game's tooltip that carry the item's own numbers: base damage,
-# armour and block (18), stat lines (19), "+N to <skill>" (81). The tooltip's
-# "Granted Skills" header (36) starts the granted skill's own block, whose
-# numbers are the skill's, so reading stops there.
-ROWS, STOP = (18, 19, 81), 36
+# armour and block (18), stat lines (19), pet bonus lines (71), "+N to <skill>"
+# (81). The tooltip's "Granted Skills" header (36) starts the granted skill's own
+# block, whose numbers are the skill's, so reading stops there.
+ROWS, STOP = (18, 19, 71, 81), 36
 
 
 def rec(path):
@@ -87,7 +90,7 @@ def against_the_game():
     items = st.execute('SELECT * FROM iagd_item').fetchall()
     assert items, 'no IAGD items -- the gate would pass on nothing'
 
-    bad, compared, attached, lines, crafted, pet_skipped = [], 0, 0, 0, 0, 0
+    bad, compared, attached, lines, crafted, pets = [], 0, 0, 0, 0, collections.Counter()
     for r in items:
         roll = roll_of(r)
         if roll.unmodeled:
@@ -101,17 +104,12 @@ def against_the_game():
             continue
         compared += 1
         crafted += bool(r['modifier_path'])
+        pets.update(w for w in item_lines.pet_rolls(sources(r), r['seed']))
         shown = item_lines.rolled(r['base_path'], sources(r), roll)
         have = collections.Counter(float(v) for _, x in game[r['id']] for v in NUM.findall(x))
         for key, line in shown:
             if key is None or key == 'granted':
                 continue                    # read off the record, not rolled
-            if key.startswith('pet:'):
-                # IAGD holds these as row type 71, which ROWS leaves out: 17 of
-                # them on 7 items disagree, a pet-bonus roll seedroll does not
-                # model (TODO.md). Counted and printed until that is lifted.
-                pet_skipped += 1
-                continue
             lines += 1
             for v in map(float, NUM.findall(line)):
                 if have[v] > 0:
@@ -129,10 +127,65 @@ def against_the_game():
                 bad.append(f"#{r['id']} {r['base_path']}: the game prints {text!r}; we do not")
     print(f'{len(items)} IAGD items: {compared} compared on {lines} rolled lines, '
           f'{attached} left out for an attached record, {crafted} crafted')
-    if pet_skipped:
-        print(f'UNCOMPARED -- {pet_skipped} pet bonus lines: their roll is unmodelled (TODO.md)')
+    print(f'pet bonuses compared, by the record naming them: {dict(pets)}')
+    if not pets['base'] or not (pets['prefix'] or pets['suffix']):
+        bad.append(f'no base or no affix pet bonus compared ({dict(pets)}): '
+                   'seedroll.roll_pet is held to the game on one carrier only')
     if not crafted:
         print('UNCOVERED -- no crafted item in IAGD, so seedroll.MODIFIER_SLOT is held to nothing')
+    return bad
+
+
+def every_pet_record_rolls():
+    """Every pet bonus record an equipment item or an affix names rolls."""
+    ca = sqlite3.connect(os.path.join(S.ROOT, 'cache', 'catalogue.sqlite'))
+    carriers = [p for (p,) in ca.execute(
+        "SELECT i.path FROM item_stat s JOIN item i ON i.id = s.item_id "
+        "WHERE s.field = 'petBonusName' AND i.is_equipment = 1")]
+    affixes = [p for (p,) in ca.execute(
+        "SELECT DISTINCT a.path FROM affix_stat s JOIN affix a ON a.id = s.affix_id "
+        "WHERE s.field = 'petBonusName'")]
+    assert carriers and affixes, 'no pet bonus in the catalogue -- the check would pass on nothing'
+    bad = []
+    for which, paths in (('base', carriers), ('suffix', affixes)):
+        for path in paths:
+            try:
+                item_lines.pet_rolls({which: path}, 1)
+            except ValueError as e:
+                bad.append(str(e))
+    print(f'{len(carriers)} items and {len(affixes)} affixes name a pet bonus; all roll'
+          if not bad else f'{len(bad)} pet bonus records refuse to roll')
+    return bad
+
+
+# Items whose base AND affix each name a pet bonus: none in IAGD, so these are
+# pinned from the game's own tooltips (_Nazeem's worn head and main hand,
+# screenshots 2026-09-30). One stream shared by the two records, in either
+# order, misses both; each record on its own fresh stream matches both.
+TWO_PET_SOURCES = [
+    (54545303, {'base': 'records/items/gearhead/b015e_head.dbr',
+                'prefix': 'records/items/lootaffixes/prefix/b_ar034_ar_f.dbr'},
+     {'offensiveTotalDamageModifier': 40, 'characterLifeModifier': 14,
+      'characterOffensiveAbilityModifier': 4, 'defensiveAether': 20, 'defensiveChaos': 22}),
+    (765158018, {'base': 'records/items/gearweapons/caster/b308f_dagger.dbr',
+                 'suffix': 'records/items/lootaffixes/suffix/b_wpn104_melee1h_g.dbr'},
+     {'offensiveChaosModifier': 100, 'offensiveTotalDamageModifier': 82,
+      'characterOffensiveAbilityModifier': 7}),
+]
+
+
+def two_pet_sources():
+    bad = []
+    for seed, srcs, want in TWO_PET_SOURCES:
+        got = {}
+        for roll in item_lines.pet_rolls(srcs, seed).values():
+            for f, v in roll.stats.items():
+                assert f not in got, f'{f} on both pet records: the pin cannot tell them apart'
+                got[f] = v
+        for f, v in want.items():
+            if got.get(f) != v:
+                bad.append(f"seed {seed}: pet {f} rolls {got.get(f)}, the game shows {v}")
+    print(f'{len(TWO_PET_SOURCES)} items with two pet sources pinned to the game')
     return bad
 
 
@@ -241,7 +294,8 @@ def additions_are_unpinned():
 
 
 def main():
-    bad = against_the_game() + base_only_is_refused() + additions_are_unpinned()
+    bad = (against_the_game() + every_pet_record_rolls() + two_pet_sources()
+           + base_only_is_refused() + additions_are_unpinned())
     if bad:
         print(f'\nFAIL ({len(bad)})')
         for b in bad[:30]:
