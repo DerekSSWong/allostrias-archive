@@ -26,9 +26,10 @@ Pool members roll. They are LootRandomizer records with their own
 lootRandomizerJitter, so their bands come from the same roll_band as affixes
 -- 8% Fire Resist at jitter 50 is 4-12, not a flat 8.
 
-Pet bonuses do NOT roll. They are petbonus.tpl records carrying stats
-directly, and jitter is left NULL rather than defaulted to zero, because zero
-would assert "measured, does not roll" where NULL says "different mechanism".
+A pet bonus carries no jitter of its own and rolls at its item's: banded at
+BASE_JITTER when the item rolls, NULL when it does not (a component's), because
+zero would assert "measured, does not roll" where NULL says "different
+mechanism". The value an item actually rolled is seedroll.roll_pet's.
 
 SKILL MODIFIERS HAVE NO NAME OF THEIR OWN, and that is the game's design
 rather than a gap here: a Skill_Modifier record carries no skillDisplayName

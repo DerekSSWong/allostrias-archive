@@ -351,7 +351,7 @@ def without_bonus(roll):
             else:
                 del stats[f]
     return seedroll.Roll(stats, {f: p for f, p in parts.items() if p},
-                         roll.unmodeled, roll.proc_lines, roll.conversions)
+                         roll.unmodeled, roll.proc_lines, roll.conversions, roll.seed)
 
 
 def bonus_kind(roll):

@@ -30,7 +30,7 @@ back to unrolled values) and never a shrug: a desynced stream still produces
 perfectly plausible numbers.
 
 ⚠️ NOT A GENERAL ITEM READER. It covers the item's own record plus its prefix and
-suffix -- what IAGD covers. Components, augments, crafting bonuses and relic
+suffix -- what IAGD covers -- and the pet bonuses they name (roll_pet). Components, augments, crafting bonuses and relic
 completion bonuses are separate records fed to the sheet unrolled, on the
 unverified assumption that they do not jitter.
 """
@@ -473,12 +473,15 @@ class Roll:
     conversions: every damage conversion the item carries, as {field, in, out,
     value}, in draw order. stats[<field>] holds only the FIRST pair's value; an
     item whose base and affix convert different types has two, and the game
-    prints both (four items in IAGD, 8 of 8 values exact, 2026-09-28)."""
+    prints both (four items in IAGD, 8 of 8 values exact, 2026-09-28).
+    seed: the item seed it was rolled from, which its pet bonuses roll from too
+    (roll_pet); None for a record the game does not roll."""
 
-    def __init__(self, stats, parts, unmodeled, proc_lines, conversions=()):
+    def __init__(self, stats, parts, unmodeled, proc_lines, conversions=(), seed=None):
         self.stats, self.parts = stats, parts
         self.unmodeled, self.proc_lines = unmodeled, proc_lines
         self.conversions = list(conversions)
+        self.seed = seed
 
 
 def _drawn_fields(entry):
@@ -514,9 +517,11 @@ def _span_conflicts(sources):
     return out
 
 
-def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=None):
+def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=None,
+            base_jitter=BASE_JITTER):
     """Roll one item. `base`/`prefix`/`suffix`/`modifier` are raw DBRs as `rec()`
     returns them; `modifier` is the crafting bonus (see MODIFIER_KINDS).
+    `base_jitter` is the base record's jitter percent; only roll_pet changes it.
 
     Draw order across sources is per-store and NOT uniform: Char, Skill and the
     retaliation modifiers draw prefix -> suffix -> base (the base LAST), while the
@@ -614,7 +619,7 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
             ch_f = field + 'Chance'
             tot_min = tot_spread = 0.0
             any_drawn = False
-            for which, src, pct, active, is_base in (('base', values, BASE_JITTER, True, True),
+            for which, src, pct, active, is_base in (('base', values, base_jitter, True, True),
                                                      ('prefix', p_values, pfx_pct, has_p, False),
                                                      ('suffix', s_values, sfx_pct, has_s, False)):
                 if not active or (min_f not in src and max_f not in src):
@@ -649,7 +654,7 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
                 continue
             draw_skill_early()
             tot = 0.0
-            for which, src, pct, active in (('base', values, BASE_JITTER, True),
+            for which, src, pct, active in (('base', values, base_jitter, True),
                                             ('prefix', p_values, pfx_pct, has_p),
                                             ('suffix', s_values, sfx_pct, has_s)):
                 if active and min_f in src:
@@ -668,7 +673,7 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
             sfx = '2' if field.endswith('2') else ''
             in_key, out_key = 'conversionInType' + sfx, 'conversionOutType' + sfx
             acc, acc_order = {}, []
-            for which, src, src_text, pct, active in (('base', values, text, BASE_JITTER, True),
+            for which, src, src_text, pct, active in (('base', values, text, base_jitter, True),
                                                       ('prefix', p_values, p_text, pfx_pct, has_p),
                                                       ('suffix', s_values, s_text, sfx_pct, has_s)):
                 if not active:
@@ -708,7 +713,7 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
                     # One object per source, so a source draws its (value, duration) pair
                     # CONSECUTIVELY -- not all values and then all durations.
                     v_tot = d_tot = 0.0
-                    for which, src, pct, active in (('base', values, BASE_JITTER, True),
+                    for which, src, pct, active in (('base', values, base_jitter, True),
                                                     ('prefix', p_values, pfx_pct, has_p),
                                                     ('suffix', s_values, sfx_pct, has_s)):
                         if not active:
@@ -726,20 +731,20 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
 
             if kind == 'Skill':
                 if field in SKILL_EARLY and (pfx_has_skill or sfx_has_skill):
-                    bj = jitter_skill(bv, BASE_JITTER, rng)
+                    bj = jitter_skill(bv, base_jitter, rng)
                     part(field, 'base', bj)
                     result[field] = state['early'].get(field, 0.0) + bj
                     continue
                 pj = jitter_skill(pv, pfx_pct, rng) if has_p else 0.0
                 sj = jitter_skill(sv, sfx_pct, rng) if has_s else 0.0
-                bj = jitter_skill(bv, BASE_JITTER, rng)
+                bj = jitter_skill(bv, base_jitter, rng)
             elif kind in ('Dmg', 'Def', 'RetalMod', 'ReflexMax'):
-                bj = jitter_char(bv, BASE_JITTER, rng)
+                bj = jitter_char(bv, base_jitter, rng)
                 pj = jitter_char(pv, pfx_pct, rng) if has_p else 0.0
                 sj = jitter_char(sv, sfx_pct, rng) if has_s else 0.0
             else:                                  # Char: the base draws LAST
                 order = [('prefix', pv, pfx_pct, has_p), ('suffix', sv, sfx_pct, has_s),
-                         ('base', bv, BASE_JITTER, True)]
+                         ('base', bv, base_jitter, True)]
                 if has_m:
                     order.insert(MODIFIER_SLOT, ('modifier', m_values.get(field, 0.0), mod_pct, True))
                 drawn = {w: jitter_char(v, pct, rng) if on else 0.0 for w, v, pct, on in order}
@@ -814,7 +819,24 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
             biggest = max(got, key=lambda k: abs(got[k]))
             got[biggest] += residue
 
-    return Roll(result, parts, sorted(unmodeled), proc_lines, conversions)
+    return Roll(result, parts, sorted(unmodeled), proc_lines, conversions, seed)
+
+
+# A pet bonus ROLLS, as a record of its own: a FRESH stream from the item's seed,
+# not the item's stream continued; the jitter of the record naming it (the base's
+# BASE_JITTER, an affix's lootRandomizerJitter); and no attributeScalePercent.
+# Settled against the game 2026-09-30: all 157 IAGD items whose base names one
+# and all 7 whose affix does, every line exact; with the scale, 101 of the 157
+# miss, and at 20% instead of the affix's 12, all 7 do. Two worn items whose base
+# AND affix each name one (_Nazeem's head and main hand, in-game tooltips) match
+# only with each record on its own fresh stream -- one stream shared, in either
+# order, misses both. tests/test_seedroll_game.py pins those two.
+def roll_pet(pet, seed, carrier=None):
+    """Roll the pet bonus record `pet` for an item of `seed`. `carrier` is the
+    affix record that names it, or None when the base does."""
+    jitter = BASE_JITTER if carrier is None else \
+        parse_stats(carrier)[0].get('lootRandomizerJitter', 0.0)
+    return compute(pet, seed, scale_override=0, base_jitter=jitter)
 
 
 # The roll engine's inputs that are NOT player stats, so `is_stat` drops them and the
