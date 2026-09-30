@@ -229,8 +229,10 @@ class Contrib:
 # toggle id the player contributions carry and lets the PAGE decide what is
 # switched on, which is this build's whole architecture and means the two tabs
 # cannot disagree about whether a source is running.
-def pet_stats_at(P, target, index, source, toggle=None, kind='item'):
-    """Fold one petbonus record into the pet bucket. True if it had anything."""
+def pet_stats_at(P, target, index, source, toggle=None, kind='item', rolled=None):
+    """Fold one petbonus record into the pet bucket. True if it had anything.
+    `rolled` is its roll on a worn item (item_lines.pet_rolls): the record's
+    fields at the values rolled, where `index` would read the stored ones."""
     d = rec(target)
     if not d:
         return False
@@ -242,7 +244,7 @@ def pet_stats_at(P, target, index, source, toggle=None, kind='item'):
             arr = [float(v) for v in vals]
         except ValueError:
             continue                          # a path or a tag, never a stat
-        stats[f] = arr[index] if index < len(arr) else arr[-1]
+        stats[f] = rolled.stats[f] if rolled else arr[index] if index < len(arr) else arr[-1]
     # `via` is the petbonus record the numbers were actually read from.
     # A devotion node legitimately grants a stat to the player AND the
     # same stat to pets from two DIFFERENT records, so the source path
@@ -1417,20 +1419,19 @@ def gather(pr, ca, dir_name, icons):
                 if n and l:
                     plus_mastery[n[0]] = plus_mastery.get(n[0], 0) + int(float(l[0]))
 
-        # Channel 1, the item half.
-        tgt = pet_target(r['base_path'])
-        if tgt:
-            pet_stats_at(P, tgt, 0, name, kind='base')
-        for col, ckind in (('prefix_path', 'prefix'), ('suffix_path', 'suffix')):
-            tgt = pet_target(r[col])
-            if tgt:
-                pet_stats_at(P, tgt, 0, aff_src.get(ckind) or name, kind=ckind)
+        # Channel 1, the item half. A pet bonus rolls on a stream of its own
+        # (seedroll.roll_pet), so it holds even where the item's roll refused.
+        paths = {k: r[f'{k}_path'] for k in ('base', 'prefix', 'suffix') if r[f'{k}_path']}
+        pets = item_lines.pet_rolls(paths, r['seed'])
+        for ckind, pet in pets.items():
+            pet_stats_at(P, pet_target(paths[ckind]), 0,
+                         name if ckind == 'base' else aff_src.get(ckind) or name,
+                         kind=ckind, rolled=pet)
 
         # The tooltip prints what the stash cards print: item_lines.rolled(), the
         # composition test_seedroll_game.py holds to the game's own tooltips.
         # Its +skill lines (every source, not just the base) are the Skill
         # modifiers block, its granted skills their own; the rest are lines.
-        paths = {k: r[f'{k}_path'] for k in ('base', 'prefix', 'suffix') if r[f'{k}_path']}
         shown = item_lines.rolled(r['base_path'], paths, roll) if not roll.unmodeled else []
         is_grant = lambda k: bool(k) and k.startswith(('skill:', 'mastery:'))
 
