@@ -695,6 +695,28 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 .scard[data-r="Epic"] .tile{border-color:#1E5C74; box-shadow:inset 0 0 12px rgba(57,171,207,.3)}
 .scard[data-r="Rare"] .tile{border-color:#1E5E24}
 .scard .sreq{margin:6px 0 0; font:12px Jura,system-ui,sans-serif; color:var(--dim)}
+/* The Required Level filter: a box at each end of one track carrying two
+   thumbs. The two range inputs lie on top of each other and take the pointer
+   only at their thumbs; the fill between the thumbs is drawn by stashLevelSync().
+   A thumb's centre runs from 5px to 100% - 5px, so the fill is measured on that. */
+.slv{display:flex; align-items:center; gap:var(--s2)}
+.slv input[type=number]{width:3.6em; padding:3px 2px; background:var(--sunk); color:var(--ink);
+  border:1px solid var(--rule-hi); font:11.5px Jura,system-ui,sans-serif; text-align:center}
+.slv input[type=number]:focus{outline:1px solid var(--gold-dim); border-color:var(--gold-dim)}
+.slvtrk{position:relative; width:170px; height:18px}
+.slvtrk::before, .slvfill{content:""; position:absolute; top:8px; height:2px}
+.slvtrk::before{left:5px; right:5px; background:var(--rule-hi)}
+.slvfill{background:var(--gold-dim)}
+.slvtrk input{position:absolute; inset:0; width:100%; height:100%; margin:0; background:none;
+  -webkit-appearance:none; appearance:none; pointer-events:none}
+.slvtrk input::-webkit-slider-runnable-track{background:none}
+.slvtrk input::-moz-range-track{background:none}
+.slvtrk input::-webkit-slider-thumb{-webkit-appearance:none; pointer-events:auto; cursor:pointer;
+  width:10px; height:16px; background:var(--gold); border:1px solid var(--gold-deep); border-radius:0}
+.slvtrk input::-moz-range-thumb{pointer-events:auto; cursor:pointer;
+  width:10px; height:16px; background:var(--gold); border:1px solid var(--gold-deep); border-radius:0}
+.slvtrk input:hover::-webkit-slider-thumb{filter:brightness(1.2)}
+.slvtrk input:hover::-moz-range-thumb{filter:brightness(1.2)}
 /* Up to 1,898 cards: the browser lays out only those near the viewport, and
    holds each other at the median card's content height (310 px) until it has
    been seen, then at its own. 0.44 s -> under 0.1 s for Atlas. */
@@ -889,7 +911,8 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
      augment are left off; a crafting bonus rolls with the item and is counted in its lines, as the
      game prints it (a relic's is not applied by the game and is left off). An item the replay cannot
      roll yet shows no numbers rather than unrolled ones. Personal grades each item as Affixes grades
-     an affix, by its lines and not by how high they rolled.</p>
+     an affix, by its lines and not by how high they rolled. Required Level keeps the items whose
+     Required Player Level falls in its span.</p>
   <p><strong>Augments &amp; Components</strong> lists every augment, component and rune in the game
      with how each is had: the faction and standing that sells it, whether it needs a blueprint and
      how that blueprint is had — sold, dropped, a quest reward, or known from the start — and whether
@@ -1621,8 +1644,10 @@ __AFFIX_JS__
 
      Grading is kept until what it read changes, as the Affixes view's is. */
   let GST = JSON.parse($("gearstash").textContent);
+  /* The Required Level filter's whole span: it filters nothing at its ends. */
+  const LV = [1, 100];
   const sview = {rows: [{op: "AND", text: ""}], slots: new Set(), srcs: new Set(), rars: new Set(),
-                 open: {}, mode: "personal", sig: null, got: null};
+                 lv: [...LV], open: {}, mode: "personal", sig: null, got: null};
 
   /* Rewritten only when a Refresh brings a new atlas: every write re-parses it. */
   let satlasSet = null;
@@ -1694,6 +1719,9 @@ __AFFIX_JS__
     if (sview.slots.size && !stashSlots(it).some(sl => sview.slots.has(sl))) return false;
     if (sview.srcs.size && !it.x.some(([s]) => sview.srcs.has(s))) return false;
     if (sview.rars.size && !sview.rars.has(it.r || "Common")) return false;
+    /* A merged card's [lo, hi] matches when it meets the span; no requirement is level 1. */
+    const lv = [].concat(it.lv || 1);
+    if (lv[lv.length - 1] < sview.lv[0] || lv[0] > sview.lv[1]) return false;
     return GS.rowsMatch(stashLines(it), sliveRows(), true);
   }
 
@@ -1743,10 +1771,38 @@ __AFFIX_JS__
         .map(v => chip("src", v, sview.srcs.has(v))).join("")}</div></div>`
       + `<div><div class="aslotlbl">Rarity</div><div class="aslotrow">${
       STASH_RARITIES.filter(v => rars.has(v))
-        .map(v => chip("rar", v, sview.rars.has(v))).join("")}</div></div>`;
+        .map(v => chip("rar", v, sview.rars.has(v))).join("")}</div></div>`
+      + `<div><div class="aslotlbl">Required Level</div><div class="slv">${levelBox(0)}<span class="slvtrk">`
+      + `<span class="slvfill" id="slvfill"></span>${levelThumb(0)}${levelThumb(1)}</span>${levelBox(1)}</div></div>`;
     $("sslots").innerHTML = GST.slotGroups.map((entry, i) =>
       `<div class="aslotcol">${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}${
         i === 0 ? source : ""}</div>`).join("");
+    stashLevelSync(true);
+  }
+
+  const LV_NAME = ["Lowest required level", "Highest required level"];
+  const levelBox = i => `<input type="number" id="slvn${i}" data-slvn="${i}" min="${LV[0]}" max="${
+    LV[1]}" step="1" value="${sview.lv[i]}" aria-label="${LV_NAME[i]}">`;
+  const levelThumb = i => `<input type="range" id="slv${i}" data-slv="${i}" min="${LV[0]}" max="${
+    LV[1]}" step="1" value="${sview.lv[i]}" aria-label="${LV_NAME[i]}">`;
+  const levelOn = () => sview.lv[0] > LV[0] || sview.lv[1] < LV[1];
+  /* One end of the span, kept inside LV and never past the other end. */
+  function setStashLevel(i, v){
+    v = Math.min(LV[1], Math.max(LV[0], Math.round(v)));
+    sview.lv[i] = i ? Math.max(v, sview.lv[0]) : Math.min(v, sview.lv[1]);
+  }
+  /* The thumbs and fill follow sview.lv; the boxes too unless one is being typed in. */
+  function stashLevelSync(boxes){
+    const at = v => `calc(5px + (100% - 10px) * ${(v - LV[0]) / (LV[1] - LV[0])})`;
+    sview.lv.forEach((v, i) => {
+      $("slv" + i).value = String(v);
+      if (boxes) $("slvn" + i).value = String(v);
+    });
+    const f = $("slvfill").style;
+    f.left = at(sview.lv[0]);
+    f.width = `calc(${at(sview.lv[1])} - ${at(sview.lv[0])})`;
+    /* Thumbs that meet: the one that can still move away from the other is on top. */
+    $("slv0").style.zIndex = sview.lv[0] > (LV[0] + LV[1]) / 2 ? "1" : "";
   }
 
   /* The tiers a stash card can wear (build.py's `r`), best first. */
@@ -1759,7 +1815,8 @@ __AFFIX_JS__
   }
 
   function renderStashList(){
-    const filtering = sliveRows().length || sview.slots.size || sview.srcs.size || sview.rars.size;
+    const filtering = sliveRows().length || sview.slots.size || sview.srcs.size || sview.rars.size
+                    || levelOn();
     const all = GST.items.map((it, i) => [it, i]);
     const hits = all.filter(([it]) => stashMatches(it));
     const cards = list => `<div class="scards">${list.map(([it, i]) => scard(it, i)).join("")}</div>`;
@@ -1827,6 +1884,7 @@ __AFFIX_JS__
     }
     if (t.closest("#sclear")){
       sview.rows = [{op: "AND", text: ""}]; sview.slots.clear(); sview.srcs.clear(); sview.rars.clear(); sview.open = {};
+      sview.lv = [...LV];
       $("sterms").innerHTML = termsHtml(sview.rows, "si");
       renderStashSlots(); renderStashList(); return true;
     }
@@ -1853,6 +1911,20 @@ __AFFIX_JS__
     if (i === undefined || e.target.tagName !== "SELECT") return;
     sview.rows[Number(i)].op = e.target.value;
     renderStashList();
+  });
+  /* The Required Level span: a thumb moves its box with it; a box moves its
+     thumb as it is typed in, and is put right (clamped, ordered) when left. */
+  document.addEventListener("input", e => {
+    const d = e.target.dataset || {}, i = d.slv !== undefined ? d.slv : d.slvn;
+    if (i === undefined) return;
+    const v = parseFloat(e.target.value);
+    if (!Number.isFinite(v)) return;
+    setStashLevel(Number(i), v);
+    stashLevelSync(d.slv !== undefined);
+    renderStashList();
+  });
+  document.addEventListener("change", e => {
+    if (e.target.dataset && e.target.dataset.slvn !== undefined) stashLevelSync(true);
   });
 
   /* ---- the Augments & Components view -------------------------------------

@@ -2211,6 +2211,33 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   fire('click', sstub('#sclear', {}));
   want(get('stashn')._html===`${G.items.length} items`, 'Clear did not drop the stash chip');
 
+  // Required Level: a thumb and a box each narrow to the span and move each
+  // other; one end never passes the other; a box typed out of range is put
+  // right when left; Clear restores 1-100.
+  want(get('sslots')._html.includes('type="range" id="slv0"') && get('sslots')._html.includes('id="slvn1"'),
+       'the stash has no Required Level slider and boxes');
+  const lvOf=it=>[].concat(it.lv||1);
+  const lvN=(a,b)=>G.items.filter(it=>{ const l=lvOf(it); return l[l.length-1]>=a && l[0]<=b; }).length;
+  const lvs=G.items.map(it=>lvOf(it)[0]).sort((a,b)=>a-b), mid=lvs[lvs.length>>1];
+  const lvin=(k,i,v)=>fire('input', {dataset:{[k]:String(i)}, value:String(v), tagName:'INPUT'});
+  lvin('slv', 0, mid);
+  want(get('stashn')._html===`${lvN(mid,100)} of ${G.items.length} items`, `level ${mid}-100: the stash says "${get('stashn')._html}", expected ${lvN(mid,100)}`);
+  want(get('slvn0').value===String(mid), 'the low thumb did not move its box');
+  lvin('slvn', 1, mid);
+  want(lvN(mid,mid)>0 && lvN(mid,mid)<lvN(mid,100), `level ${mid}-${mid} should narrow ${mid}-100, matched ${lvN(mid,mid)}`);
+  want(get('stashn')._html===`${lvN(mid,mid)} of ${G.items.length} items`, `level ${mid}-${mid}: the stash says "${get('stashn')._html}"`);
+  want(get('slv1').value===String(mid), 'the high box did not move its thumb');
+  lvin('slv', 0, 100);
+  want(get('slv0').value===String(mid) && get('slvn0').value===String(mid), 'the low thumb passed the high one');
+  lvin('slvn', 1, 500);
+  fire('change', {dataset:{slvn:'1'}, value:'500', tagName:'INPUT'});
+  want(get('slvn1').value==='100' && get('stashn')._html===`${lvN(mid,100)} of ${G.items.length} items`,
+       `a high box of 500 was not put right to 100: box ${get('slvn1').value}, "${get('stashn')._html}"`);
+  fire('click', sstub('#sclear', {}));
+  want(get('stashn')._html===`${G.items.length} items` && get('slvn0').value==='1' && get('slvn1').value==='100',
+       'Clear did not restore the level span to 1-100');
+  if (!G.items.some(it=>!it.lv)) uncovered.push('every stash item has a Required Player Level, so none is taken as level 1');
+
   // A verdict click re-grades the stash.
   const readBy=new Set(G.fr.flat());
   const before=JSON.stringify(sgroups());
