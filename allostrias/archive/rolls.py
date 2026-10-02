@@ -54,11 +54,21 @@ def roll_band(value: float, jitter: float) -> tuple[float, float]:
     the band 4-6 -- and the item rolled +6 / +4 / +4. Same band, three separate
     draws, both extremes hit. One line's roll says nothing about another's, and
     no record anywhere states how many draws are taken.
+
+    AN END UNDER 1 IN MAGNITUDE SNAPS BACK TO THE STORED VALUE, as
+    seedroll.jitter_char does: the draws step by 1 from `value - half`, and one
+    landing inside (-1, 1) yields `value` instead. A stored 1 rolls 1-2, never
+    0-2, and a 0.5 s duration rolls 0.5-1.5, never from -0.5.
     """
     if not jitter:
         return (value, value)
     half = max(1, math.floor(abs(value) * jitter / 100.0))
-    return (value - half, value + half)
+    lo, hi = value - half, value + half
+    if -1 < lo < 1:
+        lo = min(value, lo + math.ceil(1 - lo))      # the first draw at 1 or over
+    if -1 < hi < 1:
+        hi = max(value, hi - math.ceil(1 + hi))      # the last draw at -1 or under
+    return (lo, hi)
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +291,35 @@ for _f in _MISC_MOD:
 ROLLED = frozenset(_SCALES)
 CONVERSION = frozenset(_CONV)
 
+# The Max of a flat-damage pair is NOT banded on its own value. The game draws the
+# Min, then the SPREAD (Max - Min) on a draw of its own, and adds the spread to the
+# scaled Min unscaled (seedroll.compute, the Flat kinds). Beast Slayer's Mark
+# stores 4-6 and the game shows "3-4/5-8": a Max of 4-8, where banding 6 alone
+# gives 5-7. Alazra's Ruby (2-4, "1-2/3-6") and Cruel Edge (3-11, "2-9/4-13")
+# agree; tests/test_bands.py holds all three.
+PAIR_MAX = frozenset(_expand(_FLAT + _SLOW_FLAT + _RETAL_FLAT, ('Max',)))
+
+
+def pair_min(attrs: dict, field: str) -> float:
+    """The record's Min for a pair's Max field (`attrs` as values.non_default
+    gives it), 0 when the record has none or `field` is no pair's Max."""
+    if field not in PAIR_MAX:
+        return 0.0
+    v = attrs.get(field[:-3] + 'Min')
+    return float(v[0]) if v else 0.0
+
+
+def pair_max_band(min_value: float, max_value: float, jitter: float,
+                  scale_pct: float = 0.0, scales: bool = False) -> tuple[float, float]:
+    """(lo, hi) of a pair's Max: the Min's band, scaled when the field scales,
+    plus the spread's band. A record with no Min is all spread."""
+    mlo, mhi = roll_band(min_value, jitter) if min_value else (0.0, 0.0)
+    if scales and scale_pct:
+        mlo, mhi = scale(mlo, scale_pct), scale(mhi, scale_pct)
+    spread = max(0.0, max_value - min_value)
+    slo, shi = roll_band(spread, jitter) if spread else (0.0, 0.0)
+    return (mlo + slo, mhi + shi)
+
 # Statuses a band can carry. Anything not positively known is 'unmodeled', and
 # an unmodeled field gets NO band rather than a guessed one.
 ROLLED_STATUS, FIXED_STATUS, UNMODELED_STATUS = 'rolled', 'fixed', 'unmodeled'
@@ -355,11 +394,13 @@ def scale(value: float, scale_pct: float) -> int:
 
 def band(field: str, value: float, jitter: float = BASE_JITTER,
          scale_pct: float = 0.0, item_class: str = '',
-         rolls: bool = True) -> tuple[float | None, float | None, str]:
+         rolls: bool = True, pair_min: float = 0.0) -> tuple[float | None, float | None, str]:
     """(lo, hi, status) for one stored stat value.
 
     `rolls=False` means the whole RECORD is never jittered -- a component,
     augment or relic -- and every value is exactly what is stored.
+
+    `pair_min` is the record's Min when `field` is a pair's Max (PAIR_MAX).
 
     Returns no band for anything not positively known to roll. A field this
     module has never heard of comes back 'unmodeled' with lo/hi None, which is
@@ -380,6 +421,8 @@ def band(field: str, value: float, jitter: float = BASE_JITTER,
                 min(100.0, value * (1.0 + frac)), ROLLED_STATUS)
     if field not in ROLLED:
         return (None, None, UNMODELED_STATUS)
+    if field in PAIR_MAX:
+        return (*pair_max_band(pair_min, value, jitter, scale_pct, _SCALES[field]), ROLLED_STATUS)
     lo, hi = roll_band(value, jitter)
     if _SCALES[field] and scale_pct:
         lo, hi = scale(lo, scale_pct), scale(hi, scale_pct)

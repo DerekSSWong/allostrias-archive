@@ -234,7 +234,8 @@ class Collector:
                 continue
             lo, hi, status = R.band(row.field, row.num, R.BASE_JITTER,
                                     scale_pct, record_class,
-                                    rolls=record_rolls)
+                                    rolls=record_rolls,
+                                    pair_min=R.pair_min(attrs, row.field))
             self.stat_rows.append((item_id, row.field, row.idx, row.num, None,
                                    lo, hi, status))
 

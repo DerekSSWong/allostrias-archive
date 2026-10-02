@@ -51,6 +51,24 @@ for field, value, pct, scale_pct, cls, want in (
 print(f'{len(R.ROLLED)} fields modelled; 8 band cases exact, '
       'including the Class-gated weapon-damage split')
 
+# -- 1b. a pair's Max is the Min plus its own spread, and a draw under 1 snaps --
+# Against the game's "worst-min - worst-max / best-min - best-max" text, read off
+# grimtools by the user (2026-10-02). Banding each Max on its own value gave
+# 5-7, 3-5 and 9-13: the last right by luck, the first two wrong.
+for path, game in (('records/items/gearaccessories/medals/c001_medal.dbr', (3, 4, 5, 8)),
+                   ('records/items/gearaccessories/necklaces/c001_necklace.dbr', (1, 2, 3, 6)),
+                   ('records/items/gearweapons/axe1h/c001_axe.dbr', (2, 9, 4, 13))):
+    got = {f[-3:]: (lo, hi) for f, lo, hi in conn.execute(
+        "SELECT s.field, s.lo, s.hi FROM item_stat s JOIN item i ON i.id = s.item_id "
+        "WHERE i.path = ? AND s.field IN ('offensivePhysicalMin', 'offensivePhysicalMax', "
+        "'offensiveFireMin', 'offensiveFireMax', 'offensiveBonusPhysicalMin', "
+        "'offensiveBonusPhysicalMax') AND s.roll = 'rolled'", (path,))}
+    (mlo, mhi), (xlo, xhi) = got['Min'], got['Max']
+    assert (mlo, xlo, mhi, xhi) == game, f'{path}: {mlo}-{xlo}/{mhi}-{xhi}, game {game}'
+assert R.roll_band(1, 20) == (1, 2), R.roll_band(1, 20)       # 0 snaps back to 1
+assert R.roll_band(0.5, 20) == (0.5, 1.5), R.roll_band(0.5, 20)
+print('3 damage pairs equal the game\'s; a draw under 1 snaps to the stored value')
+
 # -- 2. the three statuses are all populated -------------------------------
 status = dict(conn.execute(
     'SELECT roll, count(*) FROM item_stat WHERE roll IS NOT NULL GROUP BY roll'))

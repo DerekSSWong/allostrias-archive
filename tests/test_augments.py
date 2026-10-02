@@ -24,6 +24,7 @@ from allostrias import settings as S                    # noqa: E402
 from allostrias import item_lines as IL                 # noqa: E402
 from allostrias import item_stats as I                  # noqa: E402
 from allostrias.augments import build as AG             # noqa: E402
+from allostrias import sources as SR                    # noqa: E402
 from allostrias.db.extract import recipes               # noqa: E402
 from allostrias.sheet import build as SB                # noqa: E402
 
@@ -77,7 +78,7 @@ def drops(item_id):
     if not names:
         return 0
     named = sorted(n for n in names if n)
-    return [len(names), named if len(named) == len(names) <= AG.DROP_NAMED else []]
+    return [len(names), named if len(named) == len(names) <= SR.DROP_NAMED else []]
 
 quest = lambda item_id: int(bool(ca.execute('SELECT 1 FROM quest_reward WHERE item_id = ?',
                                             (item_id,)).fetchone()))

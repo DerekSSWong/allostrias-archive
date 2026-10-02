@@ -20,10 +20,8 @@ as the Gear Stash grades an item.
 What the character has is the PAGE's to compare: standings ship per character in
 the sheet bundle, blueprints per core here. Nothing below knows a character.
 
-A SOURCE THE DATA DOES NOT HAVE IS SHOWN AS MISSING, never guessed: three named
-augments no vendor stocks say so. A quest reward (quest_reward) is its own
-source, never a drop. A drop names who drops it when that is DROP_NAMED or
-fewer named holders -- Kilrian's Shattered Soul, from Kilrian, the Tainted Soul.
+The sources and held counts are allostrias/sources.py's, shared with the Gear
+Catalogue. Three named augments no vendor stocks say so.
 """
 import json
 import os
@@ -34,6 +32,7 @@ import sys
 from .. import settings as S
 from .. import item_lines
 from .. import item_stats as I
+from .. import sources as SR
 from ..affixes import build as AB
 from ..archive.textures import Textures
 from ..gearstash import build as GB
@@ -61,92 +60,11 @@ SLOT_FLAGS = {
 # the chips, and a coarse bucket is never a label (Black Tallow is amulet+medal).
 APPLIED = re.compile(r'\(((?:Applied to|Used in)[^)]*)\)\s*$')
 
-GAMEFACTIONS = 'records/game/gamefactions.dbr'
-
-# A drop from this many named holders or fewer lists them; more is just "Drops".
-DROP_NAMED = 3
-
-
-def dropped_by(ca, item_id):
-    """0 when nothing drops it; else [holders, [names]] -- the names only when
-    every holder is named and there are DROP_NAMED or fewer of them."""
-    rows = ca.execute('SELECT DISTINCT h.name FROM item_drop d JOIN holder h ON h.id = d.holder_id '
-                      'WHERE d.item_id = ?', (item_id,)).fetchall()
-    if not rows:
-        return 0
-    names = sorted(r[0] for r in rows if r[0])
-    return [len(rows), names if len(names) == len(rows) <= DROP_NAMED else []]
-
-
-def quest_given(ca, item_id):
-    return int(bool(ca.execute('SELECT 1 FROM quest_reward WHERE item_id = ?', (item_id,)).fetchone()))
-
-
-def standings():
-    """[[name, reputation it starts at]] for the positive tiers, lowest first, from
-    gamefactions.dbr's factionTagN / factionValueN pairs."""
-    g = SB.rec(GAMEFACTIONS)
-    out = []
-    for n in range(1, 9):
-        tag, value = g.get(f'factionTag{n}'), g.get(f'factionValue{n}')
-        if tag and value and float(value[0]) > 0:
-            out.append([SB.tag(tag[0]), int(float(value[0]))])
-    return sorted(out, key=lambda t: t[1])
-
 
 def item_type(path, cls):
     if cls == 'ItemRelic':
         return 'Component'
     return 'Rune' if path.startswith(RUNE_FOLDER) else 'Augment'
-
-
-def sold_by(ca, item_id, tiers):
-    """[[faction id, standing]] -- the lowest standing each faction sells it at
-    (two vendors of one faction can stock it at different tiers)."""
-    rank = [n for n, _ in tiers]
-    out = {}
-    for f, s in ca.execute('SELECT v.faction_id, s.standing FROM vendor_stock s '
-                           'JOIN vendor v ON v.id = s.vendor_id WHERE s.item_id = ?', (item_id,)):
-        out[f] = min(out.get(f, s), s, key=rank.index)
-    return sorted([f, s] for f, s in out.items())
-
-
-def held(cfg):
-    """{record path: {where: count}} across the materials tab, the transfer stash
-    and Item Assistant. A mode other than the main one is named, as the Gear Stash
-    names it."""
-    out = {}
-
-    def add(path, where, n):
-        spot = out.setdefault(path.lower(), {})
-        spot[where] = spot.get(where, 0) + n
-
-    st = sqlite3.connect(os.path.join(S.ROOT, 'cache', 'stash.sqlite'))
-    mode = lambda m: '' if m == 'gst' else f' ({m})'
-    for path, m, n in st.execute('SELECT item_path, mode, count FROM reagent WHERE count > 0'):
-        add(path, 'Materials' + mode(m), n)
-    for path, m, n in st.execute('SELECT s.base_path, p.mode, s.stack FROM stash_item s '
-                                 'JOIN stash_page p ON p.id = s.page_id'):
-        add(path, 'Transfer' + mode(m), n)
-    iagd = os.path.join(S.ROOT, 'cache', 'stash_iagd.sqlite')
-    if cfg.iagd and os.path.exists(iagd):
-        for path, n in sqlite3.connect(iagd).execute('SELECT base_path, stack FROM iagd_item'):
-            add(path, 'IAGD', n)
-    return out
-
-
-def unlocked():
-    """{'t': [blueprint path], 'h': [...]}: every blueprint any formulas file of
-    that core lists (t softcore, h hardcore; gst.MODE_RE's last letter). A core
-    with no formulas file is ABSENT, so the page can say "unknown" rather than
-    "not unlocked"."""
-    st = sqlite3.connect(os.path.join(S.ROOT, 'cache', 'stash.sqlite'))
-    out = {}
-    for mode, path in st.execute('SELECT mode, blueprint_path FROM formula'):
-        out.setdefault(mode[-1], set()).add(path.lower())
-    for (mode,) in st.execute("SELECT mode FROM source_file WHERE kind = 'formulas'"):
-        out.setdefault(mode[-1], set())
-    return out
 
 
 def main(out_dir=None):
@@ -157,16 +75,12 @@ def main(out_dir=None):
     ca.row_factory = sqlite3.Row
     icons = SB.Icons(Textures('Items.arc'), Textures('UI.arc'))
     ix = GB.Index()
-    tiers = standings()
-    have = held(cfg)
-    known = unlocked()
+    tiers = SR.standings()
+    SR.check_standings(ca, tiers)
+    have = SR.held(cfg)
+    bps = SR.Blueprints(ca, tiers)
 
-    missing = {r['standing'] for r in ca.execute('SELECT DISTINCT standing FROM vendor_stock')} \
-        - {n for n, _ in tiers}
-    if missing:
-        raise SystemExit(f'vendor standings gamefactions.dbr does not price: {sorted(missing)}')
-
-    bps, bp_ix, items = [], {}, []
+    items = []
     for r in ca.execute("""SELECT id, path, class, coalesce(display_name, name) n, classification,
                                   level_req FROM item
                            WHERE class IN ('ItemEnchantment', 'ItemRelic') AND name IS NOT NULL
@@ -186,19 +100,8 @@ def main(out_dir=None):
             'i': icons.want(SB.item_icon(d) or (d.get('relicBitmap') or [None])[0]),
             'l': [[text, GB._verdict_key(ix, key)] for key, text in shown],
             'g': GB.grading(ix, {'base': d}, roll, shown),
-            'buy': sold_by(ca, r['id'], tiers),
-            'drop': dropped_by(ca, r['id']), 'quest': quest_given(ca, r['id']),
-            'bp': [],
+            **SR.sources(ca, [r['id']], tiers), 'bp': bps.of([r['id']]),
         }
-        for b in ca.execute("""SELECT b.id, b.path, x.known FROM recipe x JOIN item b ON b.id = x.blueprint_id
-                               WHERE x.output_item_id = ? ORDER BY b.path""", (r['id'],)):
-            if b['path'] not in bp_ix:
-                bp_ix[b['path']] = len(bps)
-                bps.append({
-                    'k': b['known'], 'buy': sold_by(ca, b['id'], tiers),
-                    'drop': dropped_by(ca, b['id']), 'quest': quest_given(ca, b['id']),
-                })
-            card['bp'].append(bp_ix[b['path']])
         if not card['sl']:
             raise SystemExit(f'{path}: no slot flag')
         own = have.get(path.lower())
@@ -206,13 +109,11 @@ def main(out_dir=None):
             card['own'] = sorted(own.items())
         items.append(card)
 
-    paths = list(bp_ix)
     sheet, frames = icons.pack()
     bundle = {
-        'items': items, 'bps': bps, **ix.tables(),
+        'items': items, 'bps': bps.table(), **ix.tables(),
         # Blueprint indexes each core's formulas files list; a core with none is absent.
-        'unlocked': {core: sorted(bp_ix[p] for p in paths if p.lower() in got)
-                     for core, got in known.items()},
+        'unlocked': bps.unlocked(SR.unlocked()),
         'factions': {f: n for f, n in ca.execute('SELECT id, name FROM faction')},
         'standings': tiers,
         'coarse': AB.COARSE_SLOT, 'slotGroups': AB.shipped_slot_groups(),
@@ -224,7 +125,7 @@ def main(out_dir=None):
         json.dump(bundle, fh, separators=(',', ':'))
     kinds = {t: sum(1 for c in items if c['t'] == t) for t in ('Augment', 'Component', 'Rune')}
     print(f"{len(items)} cards ({', '.join(f'{n} {t}' for t, n in kinds.items())}), "
-          f"{len(bps)} blueprints, {sum(1 for c in items if 'own' in c)} held, "
+          f"{len(bundle['bps'])} blueprints, {sum(1 for c in items if 'own' in c)} held, "
           f"unlocked {', '.join(f'{k}: {len(v)}' for k, v in bundle['unlocked'].items())}, "
           f"{len(frames)} icons, {os.path.getsize(p) / 1e6:.2f} MB -> {p}")
 

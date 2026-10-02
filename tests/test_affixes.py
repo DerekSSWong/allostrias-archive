@@ -18,6 +18,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from _oracle import sibling                         # noqa: E402
 from allostrias import settings as S               # noqa: E402
+from allostrias.archive import rolls as R          # noqa: E402
 from allostrias.archive.rolls import roll_band     # noqa: E402
 from allostrias.db import catalogue                # noqa: E402
 
@@ -94,6 +95,26 @@ for row in csv.DictReader(open(oracle_path, encoding='utf-8')):
         continue                      # skill/text lines carry no band
     (oracle_pet if row['bucket'] == 'pet' else oracle)[PREFIX + row['file']][row['field']] = (
         float(row['value']), float(row['lo']), float(row['hi']))
+
+# TWO NAMED DIVERGENCES, both seedroll's and both settled against the game's
+# text 2026-10-02 (rolls.roll_band, rolls.PAIR_MAX): a draw under 1 in magnitude
+# snaps back to the stored value, and a flat-damage pair's Max is the Min plus
+# its own spread. gd-lib has neither. They are applied to the ORACLE here, so
+# every other band, and these recomputed, must still match exactly.
+jitter_of = dict(conn.execute('SELECT path, jitter FROM affix'))
+pairs = snaps = 0
+for table in (oracle, oracle_pet):
+    for path, fields in table.items():
+        j = jitter_of.get(path) or 0.0
+        for f, (v, lo, hi) in list(fields.items()):
+            if f in R.PAIR_MAX:
+                fields[f] = (v, *R.pair_max_band(fields.get(f[:-3] + 'Min', (0.0,))[0], v, j))
+                pairs += 1
+            elif -1 < lo < 1 or -1 < hi < 1:
+                fields[f] = (v, *R.roll_band(v, j))
+                snaps += 1
+print(f'  oracle corrected: {pairs} pair-Max bands to Min + spread, {snaps} sub-1 ends snapped')
+assert pairs and snaps, 'a correction touches no oracle line, so it is untested'
 
 mine = collections.defaultdict(dict)
 for row in conn.execute(

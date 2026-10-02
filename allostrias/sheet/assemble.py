@@ -7,8 +7,9 @@ OUT = os.path.join(S.ROOT, 'cache', 'sheet')
 AFFIXES = os.path.join(S.ROOT, 'cache', 'affixes')
 GEARSTASH = os.path.join(S.ROOT, 'cache', 'gearstash')
 AUGMENTS = os.path.join(S.ROOT, 'cache', 'augments')
+GEARCAT = os.path.join(S.ROOT, 'cache', 'gearcat')
 
-def main(out_dir=None, affixes_dir=None, gearstash_dir=None, augments_dir=None):
+def main(out_dir=None, affixes_dir=None, gearstash_dir=None, augments_dir=None, gearcat_dir=None):
     out_dir = out_dir or OUT
     shell = open(os.path.join(HERE, 'shell.html')).read()
     b = json.load(open(os.path.join(out_dir, 'sheet.json')))
@@ -125,11 +126,18 @@ def main(out_dir=None, affixes_dir=None, gearstash_dir=None, augments_dir=None):
     augments = os.path.join(augments_dir or AUGMENTS, 'augments.json')
     if not os.path.exists(augments):
         raise SystemExit(f'no augments bundle at {augments}: run allostrias.augments.build first')
+    gearcat = os.path.join(gearcat_dir or GEARCAT, 'gearcat.json')
+    account = os.path.join(gearcat_dir or GEARCAT, 'account.json')
+    if not (os.path.exists(gearcat) and os.path.exists(account)):
+        raise SystemExit(f'no gear catalogue bundle in {os.path.dirname(gearcat)}: '
+                         'run allostrias.gearcat.build first')
     for token, value in [('__SEARCH_JS__', open(os.path.join(ax_dir, 'search.js')).read()),
                          ('__AFFIX_JS__', open(os.path.join(ax_dir, 'affixes.js')).read()),
                          ('__AFFIXES__', open(corpus).read().replace('</', '<\\u002f')),
                          ('__GEARSTASH__', open(stash).read().replace('</', '<\\u002f')),
-                         ('__AUGMENTS__', open(augments).read().replace('</', '<\\u002f'))]:
+                         ('__AUGMENTS__', open(augments).read().replace('</', '<\\u002f')),
+                         ('__GEARCAT__', open(gearcat).read().replace('</', '<\\u002f')),
+                         ('__GEARCAT_ACCOUNT__', open(account).read().replace('</', '<\\u002f'))]:
         if token not in shell:
             raise SystemExit(f'{token} missing from the shell')
         shell = shell.replace(token, value)

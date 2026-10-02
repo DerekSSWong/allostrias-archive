@@ -25,6 +25,7 @@ from . import build
 from ..affixes import build as affix_build
 from ..gearstash import build as stash_build
 from ..augments import build as aug_build
+from ..gearcat import build as cat_build
 from .. import settings as S
 from ..archive import gst
 from ..db import character, iagd, stash
@@ -60,6 +61,8 @@ def refresh():
     build.main()
     stash_build.main()
     aug_build.main()
+    # The catalogue's cards move with no save; what is held and unlocked does.
+    cat_build.account()
     assemble.main()
     b = json.load(open(os.path.join(BUNDLE, 'sheet.json')))
     return {
@@ -72,6 +75,7 @@ def refresh():
         'atlas': b['atlas'],
         'gearstash': json.load(open(os.path.join(stash_build.OUT, 'gearstash.json'))),
         'augments': json.load(open(os.path.join(aug_build.OUT, 'augments.json'))),
+        'gearcatAccount': json.load(open(os.path.join(cat_build.OUT, 'account.json'))),
         'stashErrors': stash_errors,
     }
 
@@ -120,6 +124,7 @@ def main():
     # it: built once here, not on every Refresh -- and not even here when the
     # catalogue, the code and the archives are what it was last built from.
     affix_build.main(reuse=True)
+    cat_build.main(reuse=True)
     print(f"  {refresh()['seconds']}s")
     print(f'http://localhost:{port}')
     HTTPServer(('127.0.0.1', port), Handler).serve_forever()

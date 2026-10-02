@@ -28,6 +28,7 @@ from _oracle import sibling                              # noqa: E402
 from allostrias import settings as S                     # noqa: E402
 from allostrias import item_stats as I                   # noqa: E402
 from allostrias.affixes import build as B                # noqa: E402
+from allostrias.archive import rolls as R                 # noqa: E402
 from allostrias.db import catalogue                      # noqa: E402
 
 cfg = S.load()
@@ -146,6 +147,30 @@ else:
         theirs[path].add((r['bucket'], r['field'], f('value'), f('lo'), f('hi'),
                           r['source'].strip().lower()))
         their_slots[path] = r['slots']
+    # TWO NAMED DIVERGENCES, as in test_affixes.py: a draw under 1 snaps back to
+    # the stored value (rolls.roll_band), and a flat-damage pair's Max is the Min
+    # plus its own spread (rolls.PAIR_MAX). The table has neither.
+    jitter_of = dict(conn.execute('SELECT path, jitter FROM affix'))
+    pairs = snaps = 0
+    for path, rows in theirs.items():
+        value = {(b, f): v for b, f, v, _, _, _ in rows}
+        j = jitter_of.get(path) or 0.0
+        for row in list(rows):
+            b, f, v, lo, hi, src = row
+            if lo is None:
+                continue
+            if f in R.PAIR_MAX:
+                band = R.pair_max_band(value.get((b, f[:-3] + 'Min')) or 0.0, v, j)
+                pairs += 1
+            elif -1 < lo < 1 or -1 < hi < 1:
+                band = R.roll_band(v, j)
+                snaps += 1
+            else:
+                continue
+            rows.discard(row)
+            rows.add((b, f, v, *(round(x, 6) for x in band), src))
+    assert pairs and snaps, 'a correction touches no table line, so it is untested'
+    print(f'  table corrected: {pairs} pair-Max bands to Min + spread, {snaps} sub-1 ends snapped')
     assert set(theirs) == set(by_path), (
         f'records: {len(set(theirs) - set(by_path))} only in the table, '
         f'{len(set(by_path) - set(theirs))} only here')

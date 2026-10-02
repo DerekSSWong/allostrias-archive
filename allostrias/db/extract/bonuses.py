@@ -85,7 +85,7 @@ def _stat_rows(bonus_id, attrs, jitter):
             yield (bonus_id, row.field, row.idx, None, None, None, row.txt)
             continue
         lo, hi, _status = R.band(row.field, row.num, jitter,
-                                 rolls=bool(jitter))
+                                 rolls=bool(jitter), pair_min=R.pair_min(attrs, row.field))
         yield (bonus_id, row.field, row.idx, row.num, lo, hi, None)
 
 

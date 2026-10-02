@@ -323,6 +323,11 @@ def merge_band(lo_line, hi_line):
     if lo_line == hi_line:
         return lo_line
     a, b = _NUM.split(lo_line), _NUM.split(hi_line)
+    # '1 Second' / '3 Seconds': a unit's plural follows the number, so the high
+    # end's wording is the range's.
+    singular = lambda parts: [re.sub(r'^(\s+\w+?)s\b', r'\1', p) for p in parts]
+    if a != b and singular(a) == singular(b):
+        a = b
     if a != b:
         raise ValueError(f'lines differ in shape: {lo_line!r} / {hi_line!r}')
     na, nb = _NUM.findall(lo_line), _NUM.findall(hi_line)

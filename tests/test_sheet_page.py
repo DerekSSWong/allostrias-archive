@@ -32,6 +32,7 @@ from allostrias.sheet import assemble, build            # noqa: E402
 from allostrias.affixes import build as affix_build     # noqa: E402
 from allostrias.gearstash import build as stash_build   # noqa: E402
 from allostrias.augments import build as aug_build      # noqa: E402
+from allostrias.gearcat import build as cat_build       # noqa: E402
 
 CHECK = os.path.join(ROOT, 'allostrias', 'sheet', 'check.js')
 OUT = os.path.join(S.ROOT, 'cache', 'sheet-frozen')
@@ -69,7 +70,9 @@ stash_build.main(out_dir=OUT)
 # Account-wide too (blueprints, held materials), so likewise live; the
 # characters' standings come with the frozen profile, in the sheet bundle.
 aug_build.main(out_dir=OUT)
-assemble.main(out_dir=OUT, affixes_dir=OUT, gearstash_dir=OUT, augments_dir=OUT)
+# The catalogue reads no save; the held counts in its account file are live.
+cat_build.main(out_dir=OUT)
+assemble.main(out_dir=OUT, affixes_dir=OUT, gearstash_dir=OUT, augments_dir=OUT, gearcat_dir=OUT)
 
 # Every "+N to <skill>" a worn PREFIX or SUFFIX grants reaches that skill's
 # effective level -- summed straight off the affix records, so a build that

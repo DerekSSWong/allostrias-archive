@@ -10,6 +10,8 @@ const bundle = html.match(/<script id="bundle" type="application\/json">([\s\S]*
 const affixJson = html.match(/<script id="affixes" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const stashJson = html.match(/<script id="gearstash" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const augJson = html.match(/<script id="augments" type="application\/json">([\s\S]*?)<\/script>/)[1];
+const catJson = html.match(/<script id="gearcat" type="application\/json">([\s\S]*?)<\/script>/)[1];
+const accJson = html.match(/<script id="gearcatacct" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const code = html.match(/<script>\n([\s\S]*?)<\/script>/)[1];
 // A block of lines as the page prints them (the user's rule, 2026-09-29): a
 // granted skill's own lines lose the "X: " the data keeps, and its header bolds
@@ -35,6 +37,8 @@ els.bundle=new El(); els.bundle._html=bundle;
 els.affixes=new El(); els.affixes._html=affixJson;
 els.gearstash=new El(); els.gearstash._html=stashJson;
 els.augments=new El(); els.augments._html=augJson;
+els.gearcat=new El(); els.gearcat._html=catJson;
+els.gearcatacct=new El(); els.gearcatacct._html=accJson;
 // The Affixes view's download, captured: a link the page clicks, and the blob
 // it points at.
 const saved=[];
@@ -1142,7 +1146,7 @@ const fire=(ev,target)=>(handlers[ev]||[]).forEach(fn=>fn({target}));
 const anchor=(kind,dataset)=>{
   const el={ id:'', dataset,
     getBoundingClientRect:()=>({left:20,top:120,right:300,bottom:172,width:280,height:52}) };
-  el.closest=sel=>(sel==='.geo'||sel==='.row') ? (sel===kind?el:null) : el;
+  el.closest=sel=>(sel==='.geo'||sel==='.row'||sel==='.ccb') ? (sel===kind?el:null) : el;
   return el;
 };
 
@@ -1464,6 +1468,8 @@ want(!/\.wrap\{[^}]*margin-left:|\.cols\{[^}]*margin-left:/.test(html),
        `the third navigation button is not Gear Stash: ${navBtns[2]}`);
   want(/data-view="augments"[^>]*>Augments &amp; Components$/.test(navBtns[3]||''),
        `the fourth navigation button is not Augments & Components: ${navBtns[3]}`);
+  want(/data-view="gearcat"[^>]*>Gear Catalogue$/.test(navBtns[4]||''),
+       `the fifth navigation button is not Gear Catalogue: ${navBtns[4]}`);
   for (const st of ['', ':hover', ':active', ':disabled'])
     want(new RegExp(`\\.navbtn\\.char${st}\\{[^}]*border-image(-source)?:url\\("data:image/png;base64,[^"]{200,}`).test(html),
          `the Character button has no ${st||'resting'} art`);
@@ -2445,6 +2451,103 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   fire('click', nav('character'));
 }
 
+// ---- the Gear Catalogue view ------------------------------------------------
+// Driven like Augments & Components; every expectation derived HERE from the two
+// bundles -- the cards and the account's held counts.
+{
+  const G=JSON.parse(catJson), A=JSON.parse(accJson);
+  G.items.forEach((it,i)=>{ it.own=A.own[i]; });
+  const asRec=g=>[0,0,0,0,0,g[0],g[1],g[2]];
+  const sskills=c=>({...skillsOf(c), ...Object.fromEntries((c.masteries||[]).map(m=>['mastery:'+m.n,'priority']))});
+  const cstub=(sel, dataset)=>{ const el={id:'', dataset}; el.closest=s=>(s===sel||s==='#catview')?el:null; return el; };
+  const nav=v=>{ const el={id:'', dataset:{view:v}}; el.closest=s=>s==='.navbtn'?el:null; return el; };
+  const cgroups=()=>{ const out={};
+    for (const m of get('clist')._html.matchAll(/<details class="agrade" data-g="([^"]*)"[^>]*>[\s\S]*?<span class="n">([^<]*)<\/span>/g)) out[m[1]]=m[2];
+    return out; };
+  const ccards=()=>get('clist')._html.split('<div class="acard scard ccard"').slice(1);
+  const cardAt=h=>G.items[Number((/^ data-i="(\d+)"/.exec(h)||[])[1])];
+  const count=n=>get('catn')._html===`${n} of ${G.items.length} items`;
+  const held=it=>(it.own||[]).reduce((a,[,c])=>a+c,0);
+
+  fire('click', nav('gearcat'));
+  want(get('catview').hidden===false && ['mainview','affixview','stashview','augview'].every(v=>get(v).hidden===true),
+       'choosing Gear Catalogue did not show its view alone');
+  want(get('catn')._html===`${G.items.length} items`, `the view counts "${get('catn')._html}", the bundle ${G.items.length}`);
+  for (const t of ['MI','Epic','Legendary','Relic'])
+    want(G.items.some(it=>it.t===t), `the catalogue holds no ${t}`);
+
+  // Personal: every grade group's count is the scorer's, a variant card by its best variant.
+  const want_=AXE.wantedFields(paintedVerdicts(), G), by={};
+  for (const it of G.items){
+    const best=(it.gv||[it.g]).map(g=>AXE.score(asRec(g), want_, sskills(opener), G))
+      .reduce((a,b)=>b[0]>a[0]?b:a);
+    by[best[1]]=(by[best[1]]||0)+1;
+  }
+  const groups=cgroups();
+  for (const g of Object.keys(by))
+    want(groups[g]===String(by[g]), `catalogue grade ${g}: the page shows ${groups[g]}, the scorer ${by[g]}`);
+  want(G.items.some(it=>it.gv), 'no catalogue card folds variants');
+
+  // Atlas: every card, its lines verbatim, its level span, its held count, its sources.
+  fire('click', cstub('#cmode', {}));
+  want(get('cmodelbl')._html==='Atlas' && !/class="agrade"/.test(get('clist')._html), 'the catalogue Atlas still shows grade groups');
+  const cards=ccards();
+  want(cards.length===G.items.length, `the catalogue Atlas renders ${cards.length} of ${G.items.length}`);
+  want(cards.every(h=>displayed(cardAt(h).l.map(([t])=>t)).every(l=>h.includes(l))), 'a catalogue card does not print its bundle lines');
+  const reqOf=it=>`Required Player Level: ${Array.isArray(it.lv) ? `[${it.lv[0]}–${it.lv[1]}]` : it.lv}</p>`;
+  want(cards.every(h=>{ const it=cardAt(h); return !it.lv || h.includes(reqOf(it)); }), 'a catalogue card does not print its level span');
+  want(G.items.some(it=>Array.isArray(it.lv)), 'no catalogue card spans several levels');
+  want(cards.every(h=>{ const n=held(cardAt(h)); return n ? h.includes(`Held ×${n}`) : !h.includes('Held ×'); }),
+       'a catalogue card misprints how many are held');
+  want(cards.every(h=>{ const it=cardAt(h); return !it.drop || h.includes(it.drop[1].length ? `Drops from ${escT(it.drop[1].join(', '))}` : 'Random drop'); }),
+       'a dropped catalogue item does not say so');
+  want(cards.every(h=>{ const it=cardAt(h); return !it.nv || h.includes(`${it.nv} variants`); }), 'a folded card does not say how many variants');
+
+  // A relic's completion bonus opens its pool in the tooltip.
+  const relic=G.items.findIndex(it=>it.cb!==undefined);
+  want(relic>=0, 'no relic carries a completion bonus pool');
+  const rh=cards.find(h=>cardAt(h)===G.items[relic]);
+  want(rh && rh.includes(`data-cb="${G.items[relic].cb}"`), 'a relic card has no completion bonus line');
+  const cbEl={id:'', dataset:{cb:String(G.items[relic].cb)}, getBoundingClientRect:()=>({left:20,top:120,right:300,bottom:140,width:280,height:20})};
+  cbEl.closest=sel=>(sel==='.geo'||sel==='.row') ? null : cbEl;
+  fire('pointerover', cbEl);
+  const pool=G.pools[G.items[relic].cb];
+  want(get('tip').hidden===false && pool.every(ls=>get('tip')._html.includes(escT(ls.join(' · ')))),
+       'hovering a completion bonus does not list its pool');
+  fire('pointerover', {id:'', closest:()=>null});
+
+  // Chips, the level span and search each narrow to what the bundle says.
+  const chip=(k,v)=>fire('click', cstub('.achip', {[k]:v}));
+  for (const t of ['MI','Relic']){
+    const n=G.items.filter(it=>it.t===t).length;
+    chip('ctype', t); want(count(n), `${t}: the catalogue says "${get('catn')._html}", expected ${n}`); chip('ctype', t);
+  }
+  const nHeld=G.items.filter(it=>held(it)).length;
+  if (nHeld){ chip('cheld', 'Held'); want(count(nHeld), `Held: the catalogue says "${get('catn')._html}", expected ${nHeld}`); chip('cheld', 'Held'); }
+  else uncovered.push('nothing in the catalogue is held');
+  const oneH=G.items.filter(it=>it.t!=='Relic' && G.coarse[it.sl]==='1H Weapon').length;
+  chip('cslot', '1H Weapon'); want(count(oneH), `1H Weapon: the catalogue says "${get('catn')._html}", expected ${oneH}`); chip('cslot', '1H Weapon');
+  const lvOf=it=>[].concat(it.lv||1);
+  const lvN=(a,b)=>G.items.filter(it=>{ const l=lvOf(it); return l[l.length-1]>=a && l[0]<=b; }).length;
+  want(G.items.some(it=>lvOf(it)[0]>100), 'no catalogue card requires more than level 100, so an open end is untested');
+  fire('input', {dataset:{clv:'0'}, value:'50', tagName:'INPUT'});
+  const over=G.items.filter(it=>lvOf(it)[lvOf(it).length-1]>=50).length;
+  want(count(over), `level 50 and up: the catalogue says "${get('catn')._html}", expected ${over} -- an end at 100 is open`);
+  fire('input', {dataset:{clvn:'1'}, value:'60', tagName:'INPUT'});
+  want(count(lvN(50,60)) && get('clv1').value==='60', `level 50-60: the catalogue says "${get('catn')._html}", expected ${lvN(50,60)}`);
+  fire('click', cstub('#cclear', {}));
+  want(get('catn')._html===`${G.items.length} items` && get('clvn0').value==='1', 'Clear did not restore the catalogue');
+  fire('input', {dataset:{ci:'0'}, value:'bysmiel', tagName:'INPUT'});
+  const bys=G.items.filter(it=>/bysmiel/i.test(JSON.stringify([it.n, it.l]))).length;
+  want(bys>0 && get('catn')._html.endsWith(` of ${G.items.length} items`) && parseInt(get('catn')._html)>=bys,
+       `"bysmiel": the catalogue says "${get('catn')._html}", at least ${bys} carry it`);
+  fire('click', cstub('#cclear', {}));
+  fire('click', cstub('#cmode', {}));
+  want(get('cmodelbl')._html==='Personal', 'the catalogue mode switch did not come back to Personal');
+  console.log(`gear catalogue: ${G.items.length} cards, grades ${JSON.stringify(by)}, ${nHeld} held, ${G.pools.length} completion pools`);
+  fire('click', nav('character'));
+}
+
 (async () => {
 // The download button hands over EXACTLY the filter the scorer renders.
 {
@@ -2463,14 +2566,17 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   const reboot=v=>{
     global.window.localStorage.setItem('allostria.view', v);
     for (const k of Object.keys(els))
-      if (!['bundle','affixes','gearstash','augments'].includes(k)) delete els[k];
+      if (!['bundle','affixes','gearstash','augments','gearcat','gearcatacct'].includes(k)) delete els[k];
     for (const k of Object.keys(handlers)) delete handlers[k];
     new Function(code)();
   };
   reboot('stash');
   want(get('stashview').hidden===false && get('mainview').hidden===true,
        'a reload did not return to the Gear Stash');
-  reboot('nav5');
+  reboot('gearcat');
+  want(get('catview').hidden===false && get('mainview').hidden===true,
+       'a reload did not return to the Gear Catalogue');
+  reboot('nav6');
   want(get('mainview').hidden===false, 'a reload onto an unassigned button did not open on Character');
   // ...and on the character last chosen, while their save is still here.
   const other=B.characters.find(c=>c.dir!==opener.dir);

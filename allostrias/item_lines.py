@@ -36,7 +36,7 @@ def _only(txt, pattern):
     return '\n'.join(l for l in txt.splitlines() if keep.match(l.partition('=')[0])) + '\n'
 
 
-def rolled(base_path, sources, roll):
+def rolled(base_path, sources, roll, pets=None):
     """[(key, line)] for one item, in the order the game prints them.
 
     `sources` is {'base'|'prefix'|'suffix': record path} for the records the
@@ -47,6 +47,9 @@ def rolled(base_path, sources, roll):
     scorer's pet rows read), `granted` for a granted skill's block, or None
     for a line nobody grades (a skill modifier). Granted skills come
     last, every source's, as the game prints them.
+
+    `pets` is {which: Roll} for the pet bonuses, when the caller has them
+    another way than from the seed (the Gear Catalogue: each end of a band).
     """
     if roll.unmodeled:
         raise ValueError('a refused roll has no lines: ' + ', '.join(roll.unmodeled))
@@ -54,7 +57,8 @@ def rolled(base_path, sources, roll):
     base_txt = texts['base']
     # A record the game does not roll (stored_roll) has no seed, and its pet
     # bonus prints as stored.
-    pets = pet_rolls(sources, roll.seed) if roll.seed is not None else {}
+    if pets is None:
+        pets = pet_rolls(sources, roll.seed) if roll.seed is not None else {}
 
     nums = _numbers(roll)
     head = ''.join(l + '\n' for l in base_txt.splitlines()
@@ -195,6 +199,10 @@ def stored_roll(txt):
                     'value': stats.get('conversionPercentage' + m.group(1), 100.0)}
                    for f in fields for m in [re.match(r'^conversionInType(\d*)$', f)]
                    if m and 'conversionOutType' + m.group(1) in fields]
+    # A pair with no percentage converts 100%, as the renderer prints it; the
+    # stats carry it too, so a grader reads the line the card shows.
+    for c in conversions:
+        stats.setdefault(c['field'], c['value'])
     return Roll(stats, {f: {'base': v} for f, v in stats.items()}, [], [], conversions)
 
 

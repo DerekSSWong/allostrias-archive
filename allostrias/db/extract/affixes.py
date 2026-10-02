@@ -18,6 +18,7 @@ Two properties of this data that the table shape has to respect:
     here could detect. See the schema note.
 """
 from ...archive import values as V
+from ...archive import rolls as R
 from ...archive.rolls import roll_band
 
 AFFIX_PREFIX = 'records/items/lootaffixes/'
@@ -74,7 +75,8 @@ def _banded(affix_id, attrs, jitter):
         if row.txt is not None:
             yield (affix_id, row.field, row.idx, None, None, None, row.txt)
         else:
-            lo, hi = roll_band(row.num, jitter)
+            lo, hi = (R.pair_max_band(R.pair_min(attrs, row.field), row.num, jitter)
+                      if row.field in R.PAIR_MAX else roll_band(row.num, jitter))
             yield (affix_id, row.field, row.idx, row.num, lo, hi, None)
 
 

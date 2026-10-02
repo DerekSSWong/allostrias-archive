@@ -747,6 +747,15 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
 .gsrc .no{color:#E0674F}
 .gsrc .unk{color:var(--faint)}
 .gsrc span{white-space:nowrap}
+
+/* ---------- the Gear Catalogue view ----------
+   The Gear Stash's cards with the Augments & Components view's source rows. A
+   relic's completion bonus is a line that opens the pool in the tooltip; the
+   catalogue's icon sheet is its own, in <style id="catatlas">. */
+.ccb{margin:6px 0 0; font:12px Jura,system-ui,sans-serif; color:var(--dim); cursor:help;
+  text-decoration:underline dotted; text-underline-offset:3px; width:max-content}
+.ccb:hover, .ccb:focus{color:var(--ink); outline:none}
+.cown{color:var(--gold)}
 </style>
 
 <div class="rail" id="rail" data-open="0">
@@ -770,15 +779,15 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
     </div>
   </div>
 
-  <!-- Character is this view; Affixes, Gear Stash and Augments & Components
-       have their own. The other three have neither: choosing one hides this
+  <!-- Character is this view; Affixes, Gear Stash, Augments & Components and
+       Gear Catalogue have their own. The other two have neither: choosing one hides this
        view and shows nothing in its place. -->
   <nav class="navbar" id="navbar" aria-label="Sections">
     <button class="navbtn char" type="button" data-view="character" aria-current="page">Character</button>
     <button class="navbtn" type="button" data-view="affixes">Affixes</button>
     <button class="navbtn" type="button" data-view="stash">Gear Stash</button>
     <button class="navbtn long" type="button" data-view="augments">Augments &amp; Components</button>
-    <button class="navbtn" type="button" data-view="nav5" aria-label="Unassigned"></button>
+    <button class="navbtn long" type="button" data-view="gearcat">Gear Catalogue</button>
     <button class="navbtn" type="button" data-view="nav6" aria-label="Unassigned"></button>
     <button class="navbtn" type="button" data-view="nav7" aria-label="Unassigned"></button>
   </nav>
@@ -884,6 +893,31 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
       <div id="glist"></div>
     </div>
   </section>
+
+  <!-- The Gear Catalogue view: every MI, Epic and Legendary item and every
+       relic, at the ranges they roll. Personal grades them for the character on
+       screen and sets its standing and the account's blueprints against each
+       source; Atlas lists them all, ungraded. -->
+  <style id="catatlas"></style>
+  <section class="panel affixview" id="catview" hidden>
+    <div class="hd ahd">
+      <div class="amodebox"><span class="amodelbl" id="cmodelbl" aria-hidden="true">Personal</span>
+      <button class="amode" id="cmode" type="button" role="switch" aria-checked="false"
+              aria-label="Atlas view" title="Personal / Atlas"><span class="ml" data-m="personal" title="Personal"></span><span
+              class="trk"><span class="knob"></span></span><span class="ml" data-m="atlas" title="Atlas"></span></button></div>
+      <span class="n" id="catn"></span></div>
+    <div class="bd">
+      <div class="aquery">
+        <div id="cterms"></div>
+        <div class="aqbar">
+          <button class="abtn" type="button" id="cadd">+ Term</button>
+          <button class="abtn" type="button" id="cclear">Clear</button>
+        </div>
+      </div>
+      <div class="aslots" id="cslots"></div>
+      <div id="clist"></div>
+    </div>
+  </section>
 </div>
 
 <div class="tipfloat panel" id="tip" role="tooltip" hidden></div>
@@ -926,12 +960,23 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
      source once the account has unlocked it, and counts what is held in the materials tab, the
      transfer stash and Item Assistant.
      Reputation is read from the save's faction block by GDStash's slot order.</p>
+  <p><strong>Gear Catalogue</strong> lists every Monster Infrequent, Epic and Legendary item and every
+     relic the game data gives a source, each line at the range it rolls between — the item's own
+     stats only, not the random affixes an MI can roll. An item that comes in several levels shows its
+     highest-level version, with Required Player Level spanning the lowest to the highest; versions
+     sharing that level (a helm in three resistance variants) fold into one card that says which lines
+     only some carry. A line marked "roll range not modeled" is the stored value of a stat whose roll
+     the archive does not model. Hover a relic's completion bonus for the pool it is rolled from.
+     Sources, standing and blueprints read as on Augments &amp; Components; Held counts every copy of
+     any version in the transfer stash and Item Assistant.</p>
 </footer>
 
 <script id="bundle" type="application/json">__BUNDLE__</script>
 <script id="affixes" type="application/json">__AFFIXES__</script>
 <script id="gearstash" type="application/json">__GEARSTASH__</script>
 <script id="augments" type="application/json">__AUGMENTS__</script>
+<script id="gearcat" type="application/json">__GEARCAT__</script>
+<script id="gearcatacct" type="application/json">__GEARCAT_ACCOUNT__</script>
 <script>
 __SEARCH_JS__
 __AFFIX_JS__
@@ -1723,9 +1768,7 @@ __AFFIX_JS__
     if (sview.slots.size && !stashSlots(it).some(sl => sview.slots.has(sl))) return false;
     if (sview.srcs.size && !it.x.some(([s]) => sview.srcs.has(s))) return false;
     if (sview.rars.size && !sview.rars.has(it.r || "Common")) return false;
-    /* A merged card's [lo, hi] matches when it meets the span; no requirement is level 1. */
-    const lv = [].concat(it.lv || 1);
-    if (lv[lv.length - 1] < sview.lv[0] || lv[0] > sview.lv[1]) return false;
+    if (!levelMatches(sview, it)) return false;
     return GS.rowsMatch(stashLines(it), sliveRows(), true);
   }
 
@@ -1776,37 +1819,51 @@ __AFFIX_JS__
       + `<div><div class="aslotlbl">Rarity</div><div class="aslotrow">${
       STASH_RARITIES.filter(v => rars.has(v))
         .map(v => chip("rar", v, sview.rars.has(v))).join("")}</div></div>`
-      + `<div><div class="aslotlbl">Required Level</div><div class="slv">${levelBox(0)}<span class="slvtrk">`
-      + `<span class="slvfill" id="slvfill"></span>${levelThumb(0)}${levelThumb(1)}</span>${levelBox(1)}</div></div>`;
+      + levelHtml("s", sview);
     $("sslots").innerHTML = GST.slotGroups.map((entry, i) =>
       `<div class="aslotcol">${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}${
         i === 0 ? source : ""}</div>`).join("");
-    stashLevelSync(true);
+    levelSync("s", sview, true);
   }
 
+  /* The Required Level filter, in every view that has one. A view is named by
+     the prefix of its ids and data attributes ("s": slv0, slvn0, slvfill) and
+     keeps its span in `.lv`; LEVEL_VIEWS maps the prefix to the view and the
+     list a change re-renders. */
   const LV_NAME = ["Lowest required level", "Highest required level"];
-  const levelBox = i => `<input type="number" id="slvn${i}" data-slvn="${i}" min="${LV[0]}" max="${
-    LV[1]}" step="1" value="${sview.lv[i]}" aria-label="${LV_NAME[i]}">`;
-  const levelThumb = i => `<input type="range" id="slv${i}" data-slv="${i}" min="${LV[0]}" max="${
-    LV[1]}" step="1" value="${sview.lv[i]}" aria-label="${LV_NAME[i]}">`;
-  const levelOn = () => sview.lv[0] > LV[0] || sview.lv[1] < LV[1];
-  /* One end of the span, kept inside LV and never past the other end. */
-  function setStashLevel(i, v){
-    v = Math.min(LV[1], Math.max(LV[0], Math.round(v)));
-    sview.lv[i] = i ? Math.max(v, sview.lv[0]) : Math.min(v, sview.lv[1]);
+  const LEVEL_VIEWS = {s: () => [sview, renderStashList], c: () => [cview, renderCatList]};
+  const levelBox = (p, view, i) => `<input type="number" id="${p}lvn${i}" data-${p}lvn="${i}" min="${
+    LV[0]}" max="${LV[1]}" step="1" value="${view.lv[i]}" aria-label="${LV_NAME[i]}">`;
+  const levelThumb = (p, view, i) => `<input type="range" id="${p}lv${i}" data-${p}lv="${i}" min="${
+    LV[0]}" max="${LV[1]}" step="1" value="${view.lv[i]}" aria-label="${LV_NAME[i]}">`;
+  const levelHtml = (p, view) => `<div><div class="aslotlbl">Required Level</div><div class="slv">${
+    levelBox(p, view, 0)}<span class="slvtrk"><span class="slvfill" id="${p}lvfill"></span>${
+    levelThumb(p, view, 0)}${levelThumb(p, view, 1)}</span>${levelBox(p, view, 1)}</div></div>`;
+  const levelOn = view => view.lv[0] > LV[0] || view.lv[1] < LV[1];
+  /* A card's [lo, hi] matches when it meets the span; no requirement is level 1.
+     An end left at its limit is open: three joke items require level 101. */
+  function levelMatches(view, it){
+    const lv = [].concat(it.lv || 1);
+    return (view.lv[0] <= LV[0] || lv[lv.length - 1] >= view.lv[0])
+        && (view.lv[1] >= LV[1] || lv[0] <= view.lv[1]);
   }
-  /* The thumbs and fill follow sview.lv; the boxes too unless one is being typed in. */
-  function stashLevelSync(boxes){
+  /* One end of the span, kept inside LV and never past the other end. */
+  function setLevel(view, i, v){
+    v = Math.min(LV[1], Math.max(LV[0], Math.round(v)));
+    view.lv[i] = i ? Math.max(v, view.lv[0]) : Math.min(v, view.lv[1]);
+  }
+  /* The thumbs and fill follow view.lv; the boxes too unless one is being typed in. */
+  function levelSync(p, view, boxes){
     const at = v => `calc(5px + (100% - 10px) * ${(v - LV[0]) / (LV[1] - LV[0])})`;
-    sview.lv.forEach((v, i) => {
-      $("slv" + i).value = String(v);
-      if (boxes) $("slvn" + i).value = String(v);
+    view.lv.forEach((v, i) => {
+      $(p + "lv" + i).value = String(v);
+      if (boxes) $(p + "lvn" + i).value = String(v);
     });
-    const f = $("slvfill").style;
-    f.left = at(sview.lv[0]);
-    f.width = `calc(${at(sview.lv[1])} - ${at(sview.lv[0])})`;
+    const f = $(p + "lvfill").style;
+    f.left = at(view.lv[0]);
+    f.width = `calc(${at(view.lv[1])} - ${at(view.lv[0])})`;
     /* Thumbs that meet: the one that can still move away from the other is on top. */
-    $("slv0").style.zIndex = sview.lv[0] > (LV[0] + LV[1]) / 2 ? "1" : "";
+    $(p + "lv0").style.zIndex = view.lv[0] > (LV[0] + LV[1]) / 2 ? "1" : "";
   }
 
   /* The tiers a stash card can wear (build.py's `r`), best first. */
@@ -1820,7 +1877,7 @@ __AFFIX_JS__
 
   function renderStashList(){
     const filtering = sliveRows().length || sview.slots.size || sview.srcs.size || sview.rars.size
-                    || levelOn();
+                    || levelOn(sview);
     const all = GST.items.map((it, i) => [it, i]);
     const hits = all.filter(([it]) => stashMatches(it));
     const cards = list => `<div class="scards">${list.map(([it, i]) => scard(it, i)).join("")}</div>`;
@@ -1916,19 +1973,25 @@ __AFFIX_JS__
     sview.rows[Number(i)].op = e.target.value;
     renderStashList();
   });
-  /* The Required Level span: a thumb moves its box with it; a box moves its
+  /* A Required Level span: a thumb moves its box with it; a box moves its
      thumb as it is typed in, and is put right (clamped, ordered) when left. */
   document.addEventListener("input", e => {
-    const d = e.target.dataset || {}, i = d.slv !== undefined ? d.slv : d.slvn;
-    if (i === undefined) return;
-    const v = parseFloat(e.target.value);
-    if (!Number.isFinite(v)) return;
-    setStashLevel(Number(i), v);
-    stashLevelSync(d.slv !== undefined);
-    renderStashList();
+    const d = e.target.dataset || {};
+    for (const p in LEVEL_VIEWS){
+      const thumb = d[p + "lv"] !== undefined, i = thumb ? d[p + "lv"] : d[p + "lvn"];
+      if (i === undefined) continue;
+      const v = parseFloat(e.target.value);
+      if (!Number.isFinite(v)) return;
+      const [view, list] = LEVEL_VIEWS[p]();
+      setLevel(view, Number(i), v);
+      levelSync(p, view, thumb);
+      list();
+      return;
+    }
   });
   document.addEventListener("change", e => {
-    if (e.target.dataset && e.target.dataset.slvn !== undefined) stashLevelSync(true);
+    const d = e.target.dataset || {};
+    for (const p in LEVEL_VIEWS) if (d[p + "lvn"] !== undefined) levelSync(p, LEVEL_VIEWS[p]()[0], true);
   });
 
   /* ---- the Augments & Components view -------------------------------------
@@ -1973,15 +2036,19 @@ __AFFIX_JS__
   }
 
   const gliveRows = () => gview.rows.filter(r => r.text.trim() !== "");
-  const facName = f => AUG.factions[f] || f;
-  const standingAt = s => (AUG.standings.find(([n]) => n === s) || [])[1];
-  const bpsOf = it => it.bp.map(b => AUG.bps[b]);
+
+  /* How a card is had, for every view that prints it (Augments & Components,
+     Gear Catalogue): `B` is the view's bundle, carrying the factions, standings
+     and blueprints its cards index (allostrias/sources.py). */
+  const facName = (B, f) => B.factions[f] || f;
+  const standingAt = (B, s) => (B.standings.find(([n]) => n === s) || [])[1];
+  const bpsOf = (B, it) => it.bp.map(b => B.bps[b]);
 
   /* Which source chips a card answers to. */
-  function sourceKinds(it){
+  function sourceKinds(B, it){
     const out = [];
     if (it.buy.length) out.push("Faction vendor");
-    for (const b of bpsOf(it)){
+    for (const b of bpsOf(B, it)){
       if (b.k) out.push("Default blueprint");
       if (b.buy.length) out.push("Faction blueprint");
       if (b.drop) out.push("Dropped blueprint");
@@ -1989,12 +2056,12 @@ __AFFIX_JS__
     }
     if (it.drop) out.push("Drops");
     if (it.quest) out.push("Quest reward");
-    if (!out.length || bpsOf(it).some(b => !b.k && !b.buy.length && !b.drop && !b.quest))
+    if (!out.length || bpsOf(B, it).some(b => !b.k && !b.buy.length && !b.drop && !b.quest))
       out.push("Not in the game data");
     return [...new Set(out)];
   }
-  function factionsOf(it){
-    return [...new Set([...it.buy, ...bpsOf(it).flatMap(b => b.buy)].map(([f]) => f))];
+  function factionsOf(B, it){
+    return [...new Set([...it.buy, ...bpsOf(B, it).flatMap(b => b.buy)].map(([f]) => f))];
   }
   function augSlots(it){
     const out = it.sl.slice();
@@ -2004,8 +2071,8 @@ __AFFIX_JS__
 
   /* The blueprint state for this character's core, or null when the account
      has no formulas file for it: unknown, which is not "locked". */
-  function bpUnlocked(ch, it){
-    const got = AUG.unlocked[ch.hardcore ? "h" : "t"];
+  function bpUnlocked(B, ch, it){
+    const got = B.unlocked[ch.hardcore ? "h" : "t"];
     return got ? it.bp.some(b => got.includes(b)) : null;
   }
 
@@ -2013,30 +2080,31 @@ __AFFIX_JS__
   const dropText = d => d[1].length ? `Drops from ${d[1].join(", ")}` : "Random drop";
 
   /* A card's source rows: [text, extra html]. `text` is what search reads and
-     what the card prints; the extra is Personal's, for this character. */
-  function sourceRows(it, ch){
+     what the card prints; the extra is Personal's, for this character. `held`
+     adds how many are held -- Personal's on this view, always on the catalogue. */
+  function sourceRows(B, it, ch, held = !!ch){
     const rep = (f, s) => {
       if (!ch) return "";
-      const have = (ch.factions || {})[f], need = standingAt(s);
+      const have = (ch.factions || {})[f], need = standingAt(B, s);
       if (have === undefined) return ` <span class="unk">(standing unknown)</span>`;
       return ` <span class="${have >= need ? "ok" : "no"}">${have.toLocaleString("en-US")} / ${
         need.toLocaleString("en-US")}</span>`;
     };
-    const rows = it.buy.map(([f, s]) => [`${facName(f)} · ${s}`, rep(f, s), facName(f)]);
+    const rows = it.buy.map(([f, s]) => [`${facName(B, f)} · ${s}`, rep(f, s), facName(B, f)]);
     /* The user's rules (2026-09-29): a craftable item says "Craftable" and
        nothing about its blueprint -- craftable is a default recipe, or (for a
        character) a blueprint the account has unlocked. Otherwise the blueprint's
        source: "random drop" whenever it drops, whatever else gives it. The
        item's own rows stay either way, under the same rule: a drop hides its
        quest reward. */
-    const bps = bpsOf(it);
+    const bps = bpsOf(B, it);
     if (bps.length){
-      const u = ch ? bpUnlocked(ch, it) : false;
+      const u = ch ? bpUnlocked(B, ch, it) : false;
       if (bps.some(b => b.k) || u) rows.push(["Craftable", "", null, ch ? "ok" : null]);
       else {
         if (u === null) rows.push(["Blueprint", ` <span class="unk">(no formulas file for this mode)</span>`]);
         for (const b of bps){
-          for (const [f, s] of b.buy) rows.push([`Blueprint: ${facName(f)} · ${s}`, rep(f, s), facName(f)]);
+          for (const [f, s] of b.buy) rows.push([`Blueprint: ${facName(B, f)} · ${s}`, rep(f, s), facName(B, f)]);
           if (b.drop) rows.push([b.drop[1].length ? `Blueprint: drops from ${b.drop[1].join(", ")}`
                                                   : "Blueprint: random drop", ""]);
           else if (b.quest) rows.push(["Blueprint: quest reward", ""]);
@@ -2047,21 +2115,32 @@ __AFFIX_JS__
     if (it.drop) rows.push([dropText(it.drop), ""]);
     else if (it.quest) rows.push(["Quest reward", ""]);
     if (!rows.length) rows.push(["No source in the game data", ""]);
-    const n = ch ? (it.own || []).reduce((a, [, c]) => a + c, 0) : 0;
+    const n = held ? (it.own || []).reduce((a, [, c]) => a + c, 0) : 0;
     if (n) rows.push([`Held: ${n} (` + it.own.map(([w, c]) =>
                         it.own.length > 1 ? `${w} ${c}` : w).join(", ") + ")", ""]);
     return rows;
   }
+  /* The rows as the card prints them. The faction's name is emphasised where it
+     appears; everything else in a row is plain, so a search mark lands on the
+     text as printed. */
+  function sourceHtml(rows, h){
+    return rows.map(([t, extra, fac, cls]) => {
+      const at = fac ? t.indexOf(fac) : -1;
+      const body = at < 0 ? h(t) : h(t.slice(0, at)) + `<b>${h(fac)}</b>` + h(t.slice(at + fac.length));
+      return `<li${clsAttr(cls)}>${body}${extra}</li>`;
+    }).join("");
+  }
+
   function augLines(it){
     if (!it._nl) it._nl = [it.n, it.t, it.a, ...it.l.map(l => l[0]),
-                           ...sourceRows(it, null).map(([t]) => t)].map(l => GS.normalise(l));
+                           ...sourceRows(AUG, it, null).map(([t]) => t)].map(l => GS.normalise(l));
     return it._nl;
   }
   function augMatches(it){
     if (gview.types.size && !gview.types.has(it.t)) return false;
     if (gview.slots.size && !augSlots(it).some(sl => gview.slots.has(sl))) return false;
-    if (gview.srcs.size && !sourceKinds(it).some(s => gview.srcs.has(s))) return false;
-    if (gview.facs.size && !factionsOf(it).some(f => gview.facs.has(f))) return false;
+    if (gview.srcs.size && !sourceKinds(AUG, it).some(s => gview.srcs.has(s))) return false;
+    if (gview.facs.size && !factionsOf(AUG, it).some(f => gview.facs.has(f))) return false;
     return GS.rowsMatch(augLines(it), gliveRows(), true);
   }
 
@@ -2070,13 +2149,7 @@ __AFFIX_JS__
     const ch = gview.mode === "atlas" ? null : CH[state.i];
     const got = ch ? ((gview.got[idx] || {}).v || {}) : null;
     const gutter = k => got ? `<span class="vd"${k && got[k] ? ` data-v="${got[k]}"` : ""}></span>` : "";
-    /* The faction's name is emphasised where it appears; everything else in a
-       source row is plain, so a search mark lands on the text as printed. */
-    const src = sourceRows(it, ch).map(([t, extra, fac, cls]) => {
-      const at = fac ? t.indexOf(fac) : -1;
-      const body = at < 0 ? h(t) : h(t.slice(0, at)) + `<b>${h(fac)}</b>` + h(t.slice(at + fac.length));
-      return `<li${clsAttr(cls)}>${body}${extra}</li>`;
-    }).join("");
+    const src = sourceHtml(sourceRows(AUG, it, ch), h);
     return `<div class="acard scard gcard" data-i="${idx}" data-r="${esc(it.r)}">
       <div class="sh"><span class="tile">${gicon(it.i, 46)}</span><span>
         <span class="sn t-${esc(it.r)}">${h(it.n)}</span>
@@ -2090,7 +2163,7 @@ __AFFIX_JS__
     const have = new Set(), types = new Set(), srcs = new Set(), facs = new Set();
     for (const it of AUG.items){
       augSlots(it).forEach(sl => have.add(sl)); types.add(it.t);
-      sourceKinds(it).forEach(s => srcs.add(s)); factionsOf(it).forEach(f => facs.add(f));
+      sourceKinds(AUG, it).forEach(s => srcs.add(s)); factionsOf(AUG, it).forEach(f => facs.add(f));
     }
     const chip = (attr, v, on, label = v) => `<button class="achip" type="button" data-${attr}="${
       esc(v)}" aria-pressed="${on}">${esc(label)}</button>`;
@@ -2100,8 +2173,8 @@ __AFFIX_JS__
       .map(v => chip("gslot", v, gview.slots.has(v))));
     const kinds = col("Type", AUG_TYPES.filter(v => types.has(v)).map(v => chip("gtype", v, gview.types.has(v))))
       + col("Source", AUG_SOURCES.filter(v => srcs.has(v)).map(v => chip("gsrc", v, gview.srcs.has(v))));
-    const factions = col("Faction", [...facs].sort((a, b) => facName(a).localeCompare(facName(b)))
-      .map(f => chip("gfac", f, gview.facs.has(f), facName(f))));
+    const factions = col("Faction", [...facs].sort((a, b) => facName(AUG, a).localeCompare(facName(AUG, b)))
+      .map(f => chip("gfac", f, gview.facs.has(f), facName(AUG, f))));
     $("gslots").innerHTML = AUG.slotGroups.map((entry, i) =>
       `<div class="aslotcol">${i === 0 ? kinds : ""}${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}${
         i === AUG.slotGroups.length - 1 ? factions : ""}</div>`).join("");
@@ -2200,6 +2273,237 @@ __AFFIX_JS__
     if (i === undefined || e.target.tagName !== "SELECT") return;
     gview.rows[Number(i)].op = e.target.value;
     renderAugList();
+  });
+
+  /* ---- the Gear Catalogue view ---------------------------------------------
+     Every Monster Infrequent, Epic and Legendary item and every relic the game
+     data gives a source (allostrias/gearcat/build.py), each line at the range
+     it rolls between: the highest-level record's, with Required Player Level
+     spanning every level the item comes in. Personal grades each card as the
+     Gear Stash grades an item -- a card folding several variants by its best
+     one -- and sets the character's standing and the account's blueprints
+     against its sources, as Augments & Components does. Held counts every
+     copy of any record a card stands for, in both modes.
+
+     The cards ship once (gearcat); what is held and unlocked is the account's
+     and arrives apart (gearcatacct), refreshed with the saves. */
+  let CAT = JSON.parse($("gearcat").textContent);
+  function catAccount(acc){
+    CAT.unlocked = acc.unlocked;
+    CAT.items.forEach((it, i) => { it.own = acc.own[i]; });
+  }
+  catAccount(JSON.parse($("gearcatacct").textContent));
+  const cview = {rows: [{op: "AND", text: ""}], types: new Set(), slots: new Set(), srcs: new Set(),
+                 facs: new Set(), held: false, lv: [...LV], open: {}, mode: "personal", sig: null, got: null};
+  const CAT_TYPES = [["MI", "Monster Infrequent"], ["Epic", "Epic"], ["Legendary", "Legendary"], ["Relic", "Relic"]];
+  const catType = it => (CAT_TYPES.find(([t]) => t === it.t) || [, it.t])[1];
+
+  let catatlasSet = null;
+  function catAtlas(){
+    if (catatlasSet === CAT.atlas) return;
+    $("catatlas").textContent = '.cico{background-image:url("' + CAT.atlas + '")}';
+    catatlasSet = CAT.atlas;
+  }
+  const cicon = (i, box) => atlasIcon(CAT, "cico", i, box);
+
+  function catGraded(){
+    const ch = CH[state.i];
+    affixIndex();                             // loads the shared grade scale
+    const skills = stashSkills(ch);
+    const sig = ch.dir + "\n" + JSON.stringify(state.vmap || {}) + "\n"
+              + Object.keys(skills).sort().join("|");
+    if (cview.sig === sig && cview.got) return;
+    const want = AX.wantedFields(state.vmap || {}, CAT);
+    cview.got = CAT.items.map(it => {
+      let best = null;
+      for (const g of it.gv || [it.g]){
+        const rec = asRec(g), [sc, gr] = AX.score(rec, want, skills, CAT);
+        if (!best || sc > best.s) best = {s: sc, g: gr, v: AX.match(rec, want, skills, CAT)};
+      }
+      return best;
+    });
+    cview.sig = sig;
+  }
+
+  const cliveRows = () => cview.rows.filter(r => r.text.trim() !== "");
+  const catSlots = it => it.t === "Relic" ? [] : CAT.coarse[it.sl] ? [it.sl, CAT.coarse[it.sl]] : [it.sl];
+  const catHeld = it => (it.own || []).reduce((a, [, c]) => a + c, 0);
+  const catKind = it => it.t === "Relic" ? "Relic" : `${it.sl} · ${catType(it)}`;
+  function catSetText(it){
+    const s = CAT.sets[it.set];
+    return s ? [s.n, ...s.members.map(([n]) => n), ...s.tiers.flatMap(([, ls]) => ls), ...s.after] : [];
+  }
+  function catLines(it){
+    if (!it._nl) it._nl = [it.n, catKind(it), ...it.l.map(l => l[0]), ...catSetText(it),
+                           ...sourceRows(CAT, it, null).map(([t]) => t)].map(l => GS.normalise(l));
+    return it._nl;
+  }
+  function catMatches(it){
+    if (cview.types.size && !cview.types.has(it.t)) return false;
+    if (cview.slots.size && !catSlots(it).some(sl => cview.slots.has(sl))) return false;
+    if (cview.srcs.size && !sourceKinds(CAT, it).some(s => cview.srcs.has(s))) return false;
+    if (cview.facs.size && !factionsOf(CAT, it).some(f => cview.facs.has(f))) return false;
+    if (cview.held && !catHeld(it)) return false;
+    if (!levelMatches(cview, it)) return false;
+    return GS.rowsMatch(catLines(it), cliveRows(), true);
+  }
+
+  function ccard(it, idx){
+    const rows = cliveRows(), h = t => hl(t, rows), set = CAT.sets[it.set], walk = grantWalker();
+    const ch = cview.mode === "atlas" ? null : CH[state.i];
+    const got = ch ? ((cview.got[idx] || {}).v || {}) : null;
+    const gutter = k => got ? `<span class="vd"${k && got[k] ? ` data-v="${got[k]}"` : ""}></span>` : "";
+    const held = catHeld(it), pool = it.cb !== undefined ? CAT.pools[it.cb] : null;
+    return `<div class="acard scard ccard" data-i="${idx}" data-r="${esc(it.r)}">
+      <div class="sh"><span class="tile">${cicon(it.i, 46)}</span><span>
+        <span class="sn t-${esc(it.r)}">${badge({badge: it.b})}${h(it.n)}</span>
+        <span class="sm">${h(catKind(it))}${it.nv ? ` · ${it.nv} variants` : ""}${
+          held ? ` · <span class="cown">Held ×${held}</span>` : ""}</span>
+        ${set ? `<span class="sm">${h(set.n)}</span>` : ""}</span></div>
+      <ul>${it.l.map(([t, k], _, __, g = walk(t)) => `${g.head !== undefined ? RULE_LI : ""}<li${
+          clsAttr(g.cls)}>${gutter(k)}<span>${grantInner(g, h)}</span></li>`).join("")}</ul>
+      ${pool ? `<p class="ccb" data-cb="${it.cb}" tabindex="0">Completion bonus: one of ${pool.length}</p>` : ""}${
+      set ? `<div class="trule"></div><div class="sset"><b>${h(set.n)}</b>
+        <span class="sm smem">${set.members.map(([n]) => h(n)).join(" · ")}</span>${
+        setTiersHtml(set, null, h)}</div>` : ""}
+      <div class="trule"></div><ul class="gsrc">${sourceHtml(sourceRows(CAT, it, ch, true), h)}</ul>${
+      reqLine(it.lv)}</div>`;
+  }
+
+  /* A relic's completion bonus pool: one of these is rolled when the relic is
+     crafted. */
+  function poolTip(i){
+    const pool = CAT.pools[i];
+    return pool ? `<div class="tip"><h3>Completion bonus</h3>
+      <div class="kind">One of ${pool.length}, rolled when the relic is crafted</div>
+      <div class="trule"></div><ul>${pool.map(ls => `<li>${ls.map(esc).join(" · ")}</li>`).join("")}</ul></div>` : "";
+  }
+
+  function renderCatSlots(){
+    const have = new Set(), types = new Set(), srcs = new Set(), facs = new Set();
+    let anyHeld = false;
+    for (const it of CAT.items){
+      catSlots(it).forEach(sl => have.add(sl)); types.add(it.t);
+      sourceKinds(CAT, it).forEach(s => srcs.add(s)); factionsOf(CAT, it).forEach(f => facs.add(f));
+      anyHeld = anyHeld || catHeld(it) > 0;
+    }
+    const chip = (attr, v, on, label = v) => `<button class="achip" type="button" data-${attr}="${
+      esc(v)}" aria-pressed="${on}">${esc(label)}</button>`;
+    const col = (label, list) => list.length ? `<div><div class="aslotlbl">${esc(label)}</div><div class="aslotrow">${
+      list.join("")}</div></div>` : "";
+    const group = grp => col(grp.label, grp.values.filter(v => have.has(v))
+      .map(v => chip("cslot", v, cview.slots.has(v))));
+    const first = col("Type", CAT_TYPES.filter(([t]) => types.has(t))
+        .map(([t, label]) => chip("ctype", t, cview.types.has(t), label)))
+      + col("Source", AUG_SOURCES.filter(v => srcs.has(v)).map(v => chip("csrc", v, cview.srcs.has(v))))
+      + col("Owned", anyHeld ? [chip("cheld", "Held", cview.held)] : [])
+      + levelHtml("c", cview);
+    const factions = col("Faction", [...facs].sort((a, b) => facName(CAT, a).localeCompare(facName(CAT, b)))
+      .map(f => chip("cfac", f, cview.facs.has(f), facName(CAT, f))));
+    $("cslots").innerHTML = CAT.slotGroups.map((entry, i) =>
+      `<div class="aslotcol">${i === 0 ? first : ""}${(Array.isArray(entry) ? entry : [entry]).map(group).join("")}${
+        i === CAT.slotGroups.length - 1 ? factions : ""}</div>`).join("");
+    levelSync("c", cview, true);
+  }
+
+  function renderCatList(){
+    const filtering = cliveRows().length || cview.types.size || cview.slots.size || cview.srcs.size
+                    || cview.facs.size || cview.held || levelOn(cview);
+    const all = CAT.items.map((it, i) => [it, i]);
+    const hits = all.filter(([it]) => catMatches(it));
+    const cards = list => `<div class="scards">${list.map(([it, i]) => ccard(it, i)).join("")}</div>`;
+    $("catn").textContent = filtering ? `${hits.length} of ${all.length} items` : `${all.length} items`;
+    if (cview.mode === "atlas"){
+      const order = CAT.slotGroups.flatMap(e => (Array.isArray(e) ? e : [e]).flatMap(g => g.values));
+      const rank = sl => { const i = order.indexOf(sl); return i < 0 ? order.length : i; };
+      hits.sort(([a], [b]) => rank(a.sl) - rank(b.sl) || a.n.localeCompare(b.n));
+      $("clist").innerHTML = hits.length ? cards(hits) : `<p class="note">Nothing matches.</p>`;
+      return;
+    }
+    const by = {}, order = [...AX.gradeOrder()].reverse();
+    order.forEach(g => { by[g] = []; });
+    for (const [it, i] of all) by[cview.got[i].g].push([it, i]);
+    const score = i => cview.got[i].s;
+    $("clist").innerHTML = order.map(g => {
+      const inG = by[g];
+      const hitsG = inG.filter(([it]) => catMatches(it))
+        .sort(([a, i], [b, j]) => score(j) - score(i) || a.n.localeCompare(b.n));
+      const open = g in cview.open ? cview.open[g] : filtering ? hitsG.length > 0 : g !== "F";
+      return `<details class="agrade" data-g="${g}"${open ? " open" : ""}>
+        <summary><h2><span class="g">${g}</span></h2>
+          <span class="n">${filtering ? `${hitsG.length} of ${inG.length}` : inG.length}</span></summary>
+        <div class="agbody">${open ? (hitsG.length ? cards(hitsG)
+                                                : `<p class="note">Nothing here matches.</p>`) : ""}</div>
+      </details>`;
+    }).join("");
+  }
+
+  function renderCat(){
+    catAtlas();
+    const atlas = cview.mode === "atlas";
+    if (!atlas) catGraded();
+    $("cmode").setAttribute("aria-checked", String(atlas));
+    $("cmodelbl").textContent = atlas ? "Atlas" : "Personal";
+    if (!$("cterms").innerHTML) $("cterms").innerHTML = termsHtml(cview.rows, "ci");
+    renderCatSlots(); renderCatList();
+  }
+
+  /* true when the click was the view's own. Same rules as augClick(). */
+  function catClick(e){
+    const t = e.target;
+    const sum = t.closest(".agrade > summary");
+    if (sum){
+      e.preventDefault();
+      const d = sum.parentElement;
+      cview.open[d.dataset.g] = !d.hasAttribute("open");
+      renderCatList(); return true;
+    }
+    const chip = t.closest(".achip");
+    if (chip){
+      const d = chip.dataset;
+      if (d.cheld !== undefined) cview.held = !cview.held;
+      else {
+        const [set, v] = d.ctype !== undefined ? [cview.types, d.ctype]
+                       : d.csrc !== undefined ? [cview.srcs, d.csrc]
+                       : d.cfac !== undefined ? [cview.facs, d.cfac] : [cview.slots, d.cslot];
+        set.has(v) ? set.delete(v) : set.add(v);
+      }
+      renderCatSlots(); renderCatList(); return true;
+    }
+    if (t.closest("#cadd")){
+      cview.rows.push({op: "AND", text: ""});
+      $("cterms").innerHTML = termsHtml(cview.rows, "ci"); return true;
+    }
+    if (t.closest("#cclear")){
+      cview.rows = [{op: "AND", text: ""}];
+      [cview.types, cview.slots, cview.srcs, cview.facs].forEach(s => s.clear());
+      cview.held = false; cview.lv = [...LV]; cview.open = {};
+      $("cterms").innerHTML = termsHtml(cview.rows, "ci");
+      renderCatSlots(); renderCatList(); return true;
+    }
+    const rm = t.closest("[data-cirm]");
+    if (rm){
+      cview.rows.splice(Number(rm.dataset.cirm), 1);
+      $("cterms").innerHTML = termsHtml(cview.rows, "ci"); renderCatList(); return true;
+    }
+    if (t.closest("#cmode")){
+      cview.mode = cview.mode === "atlas" ? "personal" : "atlas";
+      renderCat(); return true;
+    }
+    return false;
+  }
+
+  document.addEventListener("input", e => {
+    const i = e.target.dataset && e.target.dataset.ci;
+    if (i === undefined || e.target.tagName === "SELECT") return;
+    cview.rows[Number(i)].text = e.target.value;
+    renderCatList();
+  });
+  document.addEventListener("change", e => {
+    const i = e.target.dataset && e.target.dataset.ci;
+    if (i === undefined || e.target.tagName !== "SELECT") return;
+    cview.rows[Number(i)].op = e.target.value;
+    renderCatList();
   });
 
   /* ---- hand-set verdicts --------------------------------------------------
@@ -2714,6 +3018,8 @@ __AFFIX_JS__
   }
 
   function tipFor(el){
+    const cb = el.closest(".ccb");
+    if (cb) return poolTip(Number(cb.dataset.cb));
     const ch = CH[state.i];
     const g = el.closest(".geo");
     if (g) return itemTip(ch, state.worn[Number(g.dataset.e)]);
@@ -2743,7 +3049,7 @@ __AFFIX_JS__
   }
 
   function hover(e){
-    const el = e.target && e.target.closest && e.target.closest(".geo, .row, #tip");
+    const el = e.target && e.target.closest && e.target.closest(".geo, .row, .ccb, #tip");
     if (!el) return hideTip();
     if (el.id !== "tip") showTip(tipFor(el), el);   // over the tooltip itself: leave it up
   }
@@ -2758,6 +3064,7 @@ __AFFIX_JS__
     if (state.view === "affixes") renderAffixes();
     if (state.view === "stash") renderStash();
     if (state.view === "augments") renderAug();
+    if (state.view === "gearcat") renderCat();
   }
 
   function render(){
@@ -2776,7 +3083,8 @@ __AFFIX_JS__
   /* Which view the navigation bar has selected. Character is the page as it
      has always been; any other button hides it, leaving the drawer, the
      character bar and the navigation bar. The marker follows aria-current. */
-  const VIEWS = {character: "mainview", affixes: "affixview", stash: "stashview", augments: "augview"};
+  const VIEWS = {character: "mainview", affixes: "affixview", stash: "stashview", augments: "augview",
+                 gearcat: "catview"};
   const VIEW_KEY = "allostria.view";
   function setView(view){
     state.view = view;
@@ -2786,6 +3094,7 @@ __AFFIX_JS__
     if (view === "affixes") renderAffixes();
     if (view === "stash") renderStash();
     if (view === "augments") renderAug();
+    if (view === "gearcat") renderCat();
     document.querySelectorAll(".navbtn").forEach(b => {
       if (b.dataset.view === view) b.setAttribute("aria-current", "page");
       else b.removeAttribute("aria-current");
@@ -2798,6 +3107,7 @@ __AFFIX_JS__
     if (e.target.closest("#affixview") && affixClick(e)) return;
     if (e.target.closest("#stashview") && stashClick(e)) return;
     if (e.target.closest("#augview") && augClick(e)) return;
+    if (e.target.closest("#catview") && catClick(e)) return;
     if (e.target.closest(".railtab")){
       drawer($("rail").getAttribute("data-open") !== "1"); return;
     }
@@ -2877,6 +3187,7 @@ __AFFIX_JS__
       /* The stash is re-read with the saves: a new bundle, graded afresh. */
       if (d.gearstash){ GST = d.gearstash; sview.sig = null; sview.got = null; }
       if (d.augments){ AUG = d.augments; gview.sig = null; gview.got = null; }
+      if (d.gearcatAccount) catAccount(d.gearcatAccount);
       /* A save can gain or lose a character, so the index we were on may no
          longer be the same person. Hold the NAME, not the position. */
       const wasName = (CH[state.i] || {}).name;
