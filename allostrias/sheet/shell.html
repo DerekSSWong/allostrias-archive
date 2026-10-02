@@ -701,7 +701,11 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
    A thumb's centre runs from 5px to 100% - 5px, so the fill is measured on that. */
 .slv{display:flex; align-items:center; gap:var(--s2)}
 .slv input[type=number]{width:3.6em; padding:3px 2px; background:var(--sunk); color:var(--ink);
-  border:1px solid var(--rule-hi); font:11.5px Jura,system-ui,sans-serif; text-align:center}
+  border:1px solid var(--rule-hi); font:11.5px Jura,system-ui,sans-serif; text-align:center;
+  -moz-appearance:textfield; appearance:textfield}
+/* No spin buttons: the thumbs do that job. The arrow keys still step the box. */
+.slv input[type=number]::-webkit-inner-spin-button,
+.slv input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none; margin:0}
 .slv input[type=number]:focus{outline:1px solid var(--gold-dim); border-color:var(--gold-dim)}
 .slvtrk{position:relative; width:170px; height:18px}
 .slvtrk::before, .slvfill{content:""; position:absolute; top:8px; height:2px}
