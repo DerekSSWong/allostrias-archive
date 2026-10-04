@@ -107,6 +107,33 @@ for name, lv in (("Alazra's Ruby", 15), ("Beast Slayer's Mark", 22), ('Mythical 
     assert card(name)['lv'] == lv, f"{name}: level {card(name)['lv']}, the game {lv}"
 print('the game\'s text: 12 cards, every pinned line and level exact')
 
+# ---- cards a secret gives, found against grimtools (2026-10-02) -------------------
+# Each was hidden as sourceless until the drop walk read chest tables and items
+# outside records/items/, or (INTERACTIONS) an object gives it.
+for name, source in (("Vanquisher's Helm", 'drop'), ('Shedowhert', 'drop'), ('Stormheart', 'drop'),
+                     ("Lokarr's Boots", 'drop'), ('Mildly Amusing Box', 'drop'),
+                     ('Shadowheart', 'talk'), ('Chillheart', 'talk'), ("Sahdina's Memento", 'talk')):
+    assert card(name).get(source), f'{name}: no {source} source'
+from allostrias.archive.arc import Arc                   # noqa: E402
+convs = {}
+for arc_path in [p.replace('Quests.arc', 'Conversations.arc') for p in cfg.quest_arc_paths]:
+    if os.path.exists(arc_path):
+        with Arc(arc_path) as arc:
+            convs.update({n: (arc.read_file(i) or b'').lower()
+                          for i, n in enumerate(arc.names) if n.endswith('.cnv')})
+for item, (conv, _) in SR.INTERACTIONS.items():
+    assert item.encode() in convs.get(conv, b''), f'{conv} no longer names {item}'
+print(f'{len(SR.INTERACTIONS)} interactions, each still named by its conversation')
+
+# ---- MI farm zones and the blacksmiths' crafting bonuses ----------------------------
+assert card("Kyzogg's Skull")['zn'] == [[['The Burial Cave', 1]], 1], card("Kyzogg's Skull").get('zn')
+assert all('zn' not in it for it in items if it['t'] != 'MI'), 'a non-MI card names farm zones'
+smiths = {n: lines for names, lines in B['craft'] for n in names}
+assert ['+8–12% Retaliation Damage'] in smiths['Ignus'], smiths.get('Ignus')   # IAGD #2050 rolled 10
+assert all(it.get('cr') == (1 if it['bp'] else None) for it in items if it['t'] != 'Relic')
+print(f"{sum('zn' in it for it in items)} MIs with farm zones; {len(B['craft'])} blacksmith tables, "
+      f"{sum('cr' in it for it in items)} craftable cards")
+
 # ---- relics ------------------------------------------------------------------------
 relics = [it for it in items if it['t'] == 'Relic']
 assert len(relics) == sum(1 for k in groups if k[0] == 'relic')
@@ -121,9 +148,15 @@ print(f"{len(relics)} relics, {sum('cb' in it for it in relics)} with a completi
 
 # ---- an unbanded stat ----------------------------------------------------------------
 flagged = [t for it in items for t, _ in it['l'] if GC.UNBANDED in t]
-assert flagged, 'no line is flagged unbanded, so the flag is untested'
 assert all('–' not in t for t in flagged), [t for t in flagged if '–' in t]
-print(f'{len(flagged)} unbanded lines, each a single stored value')
+if not flagged:
+    print('UNCOVERED -- no line is unbanded today, so the flag prints nowhere')
+# The last ones were Fumble and % current health, banded since rolls.py took
+# seedroll's settled ADDITIONS (2026-10-02).
+for name, word in (('Maleficus', 'Fumble'), ("Demonslayer's Life-Ender", "Enemy's Health")):
+    line = next(t for t, _ in card(name)['l'] if word in t)
+    assert '–' in line and GC.UNBANDED not in line, f'{name}: {line!r} is not a range'
+print(f'{len(flagged)} unbanded lines; Fumble and % current health are ranges')
 
 # ---- held ------------------------------------------------------------------------------
 have = SR.held(cfg)

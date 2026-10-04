@@ -334,7 +334,15 @@ BASE_ONLY = {'offensivePercentCurrentLifeMin', 'defensiveBonusProtection'}
 # field as the bonus, which none of the 11 does -- so that case is REFUSED rather
 # than guessed. The 11 carry Char bonuses only, so only the Char store is pinned;
 # a bonus with a damage, defence or retaliation field is REFUSED too.
-MODIFIER_KINDS = {'Char'}
+MODIFIER_KINDS = {'Char', 'RetalMod'}
+# RetalMod (2026-10-02): one item, a helm crafted with +10% to All Retaliation
+# Damage (IAGD #2050), its only source of the field. Drawn at the field's own place
+# in the order, every number matches the game; not drawn, the three draws after it
+# move (Poison/Acid 37 -> 31, Elemental 31 -> 27, conversion 24 -> 27%). A draw
+# anywhere before Poison/Acid Resist would match equally -- the field's own place is
+# the simplest, as for Char. Where it falls against a base or affix carrying the
+# same field is not settled, so that item is refused (MODIFIER_ALONE).
+MODIFIER_ALONE = {'RetalMod'}
 MODIFIER_SLOT = 2
 
 
@@ -742,6 +750,15 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
                 bj = jitter_char(bv, base_jitter, rng)
                 pj = jitter_char(pv, pfx_pct, rng) if has_p else 0.0
                 sj = jitter_char(sv, sfx_pct, rng) if has_s else 0.0
+                if has_m and kind in MODIFIER_KINDS and field in m_values:
+                    # MODIFIER_KINDS: drawn at the field's own place, the only
+                    # source carrying it (any other is refused below).
+                    mj = jitter_char(m_values[field], mod_pct, rng)
+                    part(field, 'modifier', mj)
+                    result[field] = apply_scale(bj + pj + sj + mj, sp) if scales else bj + pj + sj + mj
+                    for which, j in (('base', bj), ('prefix', pj), ('suffix', sj)):
+                        part(field, which, j)
+                    continue
             else:                                  # Char: the base draws LAST
                 order = [('prefix', pv, pfx_pct, has_p), ('suffix', sv, sfx_pct, has_s),
                          ('base', bv, base_jitter, True)]
@@ -802,6 +819,8 @@ def compute(base, seed, prefix=None, suffix=None, scale_override=None, modifier=
     unmodeled += [f + ' [crafting bonus and an affix share it: draw order unpinned]'
                   for f in m_values if kinds.get(f) in MODIFIER_KINDS
                   and (f in p_values or f in s_values)]
+    unmodeled += [f + ' [crafting bonus and the base share it: draw order unpinned]'
+                  for f in m_values if kinds.get(f) in MODIFIER_ALONE and f in values]
     for f in m_values:
         if f in result and kinds.get(f) in MODIFIER_KINDS:
             continue

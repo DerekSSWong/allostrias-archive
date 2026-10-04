@@ -65,6 +65,33 @@ __CLASS_IMAGES__
 
 :focus-visible{outline:2px solid var(--gold); outline-offset:2px}
 ::selection{background:#3A2E18; color:#F0E4CE}
+/* The game's own scrollbar, on every scrolling box (sheet/build.py): the thick
+   frame's scroll rail, its arrow buttons, and a thumb that stretches through its
+   middle. Chromium and Safari draw it; Firefox has no such pseudo-elements, so it
+   gets the colours alone -- behind @supports, because Chromium ignores all of this
+   art once scrollbar-color is set. The art is vertical; a horizontal bar gets the
+   colours. */
+::-webkit-scrollbar{width:__SCROLL_W__px; height:12px; background:#000}
+::-webkit-scrollbar-track:vertical{background:#000 url("__SCROLL_TRACK__") repeat-y center top / __SCROLL_W__px auto}
+::-webkit-scrollbar-thumb:vertical{min-height:40px; border-style:solid; border-color:transparent;
+  border-width:__SCROLL_THUMB_W__; border-image:url("__SCROLL_THUMB__") __SCROLL_THUMB_CAP__ fill stretch}
+::-webkit-scrollbar-thumb:vertical:hover{filter:brightness(1.15)}
+::-webkit-scrollbar-track:horizontal{background:#0A0907}
+::-webkit-scrollbar-thumb:horizontal{background:var(--gold-dim); border:3px solid #0A0907}
+::-webkit-scrollbar-corner{background:#000}
+::-webkit-scrollbar-button{width:0; height:0}
+::-webkit-scrollbar-button:vertical:start:decrement,
+::-webkit-scrollbar-button:vertical:end:increment{display:block; height:__SCROLL_BTN_H__px;
+  background:no-repeat center / 100% 100%}
+::-webkit-scrollbar-button:vertical:start:decrement{background-image:url("__SCROLL_UP_UP__")}
+::-webkit-scrollbar-button:vertical:start:decrement:hover{background-image:url("__SCROLL_UP_OVER__")}
+::-webkit-scrollbar-button:vertical:start:decrement:active{background-image:url("__SCROLL_UP_DOWN__")}
+::-webkit-scrollbar-button:vertical:end:increment{background-image:url("__SCROLL_DOWN_UP__")}
+::-webkit-scrollbar-button:vertical:end:increment:hover{background-image:url("__SCROLL_DOWN_OVER__")}
+::-webkit-scrollbar-button:vertical:end:increment:active{background-image:url("__SCROLL_DOWN_DOWN__")}
+@supports not selector(::-webkit-scrollbar){
+  *{scrollbar-color:var(--gold-dim) #000}
+}
 /* Side padding must clear the panel ornaments, which hang fully outside the
    panel edge (21px for the clasp) -- otherwise they overflow the viewport and
    open a horizontal scrollbar at narrow widths. */
@@ -966,7 +993,9 @@ footer code{font-family:Jura,ui-monospace,monospace; font-size:12px; color:var(-
      highest-level version, with Required Player Level spanning the lowest to the highest; versions
      sharing that level (a helm in three resistance variants) fold into one card that says which lines
      only some carry. A line marked "roll range not modeled" is the stored value of a stat whose roll
-     the archive does not model. Hover a relic's completion bonus for the pool it is rolled from.
+     the archive does not model. Hover a relic's completion bonus for the pool it is rolled from,
+     or a crafted item's crafting bonus for every blacksmith's table.
+     An MI's Farm row names the zones its droppers are placed in most, by grimtools' spawn data.
      Sources, standing and blueprints read as on Augments &amp; Components; Held counts every copy of
      any version in the transfer stash and Item Assistant.</p>
 </footer>
@@ -2010,7 +2039,7 @@ __AFFIX_JS__
                  facs: new Set(), open: {}, mode: "personal", sig: null, got: null};
   const AUG_TYPES = ["Augment", "Component", "Rune"];
   const AUG_SOURCES = ["Faction vendor", "Faction blueprint", "Dropped blueprint",
-                       "Default blueprint", "Drops", "Quest reward", "Not in the game data"];
+                       "Default blueprint", "Drops", "Quest reward", "Interaction", "Not in the game data"];
 
   let gatlasSet = null;
   function augAtlas(){
@@ -2056,6 +2085,7 @@ __AFFIX_JS__
     }
     if (it.drop) out.push("Drops");
     if (it.quest) out.push("Quest reward");
+    if (it.talk) out.push("Interaction");
     if (!out.length || bpsOf(B, it).some(b => !b.k && !b.buy.length && !b.drop && !b.quest))
       out.push("Not in the game data");
     return [...new Set(out)];
@@ -2114,6 +2144,10 @@ __AFFIX_JS__
     }
     if (it.drop) rows.push([dropText(it.drop), ""]);
     else if (it.quest) rows.push(["Quest reward", ""]);
+    for (const t of it.talk || []) rows.push([`Interaction: ${t}`, ""]);
+    /* An MI's best zones: where its droppers are placed most (sources.farm_zones). */
+    if (it.zn) rows.push([`Farm: ${it.zn[0].map(([z]) => z).join(" · ")}${
+      it.zn[1] > it.zn[0].length ? ` (+${it.zn[1] - it.zn[0].length} more zones)` : ""}`, ""]);
     if (!rows.length) rows.push(["No source in the game data", ""]);
     const n = held ? (it.own || []).reduce((a, [, c]) => a + c, 0) : 0;
     if (n) rows.push([`Held: ${n} (` + it.own.map(([w, c]) =>
@@ -2363,6 +2397,7 @@ __AFFIX_JS__
       <ul>${it.l.map(([t, k], _, __, g = walk(t)) => `${g.head !== undefined ? RULE_LI : ""}<li${
           clsAttr(g.cls)}>${gutter(k)}<span>${grantInner(g, h)}</span></li>`).join("")}</ul>
       ${pool ? `<p class="ccb" data-cb="${it.cb}" tabindex="0">Completion bonus: one of ${pool.length}</p>` : ""}${
+      it.cr ? `<p class="ccb" data-cr="1" tabindex="0">Crafting bonus: one, by blacksmith</p>` : ""}${
       set ? `<div class="trule"></div><div class="sset"><b>${h(set.n)}</b>
         <span class="sm smem">${set.members.map(([n]) => h(n)).join(" · ")}</span>${
         setTiersHtml(set, null, h)}</div>` : ""}
@@ -2377,6 +2412,16 @@ __AFFIX_JS__
     return pool ? `<div class="tip"><h3>Completion bonus</h3>
       <div class="kind">One of ${pool.length}, rolled when the relic is crafted</div>
       <div class="trule"></div><ul>${pool.map(ls => `<li>${ls.map(esc).join(" · ")}</li>`).join("")}</ul></div>` : "";
+  }
+
+  /* A crafted item's bonus: one from the table of the blacksmith who makes it.
+     Every craftable card shares the one list (gearcat/build.py crafting_bonuses). */
+  function craftTip(){
+    return `<div class="tip"><h3>Crafting bonus</h3>
+      <div class="kind">One, rolled from the crafting blacksmith's table</div>
+      <div class="trule"></div>${CAT.craft.map(([names, lines]) => `<div class="blk"><b>${
+        names.map(esc).join(", ")}</b><ul>${lines.map(ls => `<li>${ls.map(esc).join(" · ")}</li>`).join("")
+      }</ul></div>`).join("")}</div>`;
   }
 
   function renderCatSlots(){
@@ -3019,7 +3064,7 @@ __AFFIX_JS__
 
   function tipFor(el){
     const cb = el.closest(".ccb");
-    if (cb) return poolTip(Number(cb.dataset.cb));
+    if (cb) return cb.dataset.cr ? craftTip() : poolTip(Number(cb.dataset.cb));
     const ch = CH[state.i];
     const g = el.closest(".geo");
     if (g) return itemTip(ch, state.worn[Number(g.dataset.e)]);

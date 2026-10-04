@@ -1717,11 +1717,18 @@ class Icons:
             return None
         return self.paths.setdefault(path.strip(), len(self.paths))
 
-    def pack(self):
+    def pack(self, fit=None):
+        """(sheet, frames). `fit` shrinks every icon to fit a fit x fit box -- the
+        Gear Catalogue's 3,600 icons are drawn in a 46 px tile and, at full size,
+        were 2.9 MB of a page with a 16 MB limit. Never enlarged."""
         got = {}
         for path, idx in self.paths.items():
             im = self.items.get(path) or self.ui.get(path)
             if im is not None:
+                k = min(1, fit / im.width, fit / im.height) if fit else 1
+                if k < 1:
+                    im = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))),
+                                   Image.LANCZOS)
                 got[idx] = im
         order = sorted(got, key=lambda i: (-got[i].height, -got[i].width))
         W = 512
@@ -2034,6 +2041,38 @@ def build_chrome(ui):
         raise SystemExit('mainmenu/slidercenter is fully transparent')
     rail = rail.crop((bb[0], 0, bb[2], rail.height))
     out['skillRail'], out['skillRailW'] = png_b64(rail), rail.width
+    # The game's scrollbar, for every scrolling box on the page: the rail the
+    # thick frame swaps in down its right edge (mainmenu/borderthickscroll_rm),
+    # with the 16px arrow buttons and stretching thumb of generic/scrollboxwide_*.
+    # The rail's ends carry notches and no row of it repeats exactly, so its
+    # notch-free middle is the tile. A button is its arrow over a slice of the
+    # rail; the thumb is padded to the rail's width, transparent at the sides, so
+    # the rails show past it as in game.
+    def tex(path):
+        im = ui.get(path + '.tex')
+        if im is None:
+            raise SystemExit(f'UI.arc has no {path}')
+        return im.convert('RGBA')
+    track = tex('mainmenu/borderthickscroll_rm')
+    track = track.crop((0, 100, track.width, track.height - 100))
+    W = track.width
+    out['scrollW'] = W
+    out['scrollTrack'] = png_b64(track)
+    parts = [tex(f'generic/scrollboxwide_scrollslider{k}') for k in ('top', 'center', 'bottom')]
+    thumb = Image.new('RGBA', (W, sum(p.height for p in parts)), (0, 0, 0, 0))
+    y = 0
+    for part in parts:
+        thumb.alpha_composite(part, ((W - part.width) // 2, y))
+        y += part.height
+    out['scrollThumb'], out['scrollThumbCap'] = png_b64(thumb), (parts[0].height, parts[2].height)
+    for way in ('up', 'down'):
+        for state in ('up', 'over', 'down'):
+            arrow = tex(f'generic/scrollboxwide_buttoncarrow{way}{state}')
+            btn = track.crop((0, 0, W, arrow.height + 4))
+            btn.alpha_composite(arrow, ((W - arrow.width) // 2, 2))
+            out[f'scroll_{way}_{state}'] = png_b64(btn)
+    out['scrollBtnH'] = btn.height
+
     # The selected button's marker, hung under it.
     mark = ui.get('mainmenu/buttonscrolldowndown.tex')
     if mark is None:

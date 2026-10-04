@@ -19,6 +19,7 @@ The user's rules (2026-10-02):
   - The item's own stats only: the random affixes an MI rolls are left off.
   - A relic's completion bonus pool is listed in a hover tooltip.
   - Held counts every copy of any record a card stands for.
+  - An MI names the zones its droppers spawn in most (sources.farm_zones).
   - Only records the game data gives a source count (SCOPE).
 
 A STAT THE CATALOGUE CANNOT BAND (item_stat.roll 'unmodeled') prints at its stored
@@ -63,6 +64,10 @@ SCOPE = """
     ORDER BY path"""
 
 RELIC = 'ItemArtifact'
+# Icons are stored at the size the card's tile draws them (`cicon(it.i, 46)` in
+# sheet/shell.html): 1.6 MB of atlas instead of 2.9, in a page held under 16 MB.
+# A high-DPI screen gets them soft; fitting 92 px would have saved 0.25 MB.
+ICON_FIT = 46
 
 # Fields the catalogue leaves 'unmodeled' that are known not to roll: a +skill
 # level does not jitter (db/extract/bonuses.py), and racialBonus* is printed at the
@@ -231,6 +236,47 @@ class Pools:
         return [text for _, text, _, _ in AB.display(I.read_rel(path) or '', stats, None, {})]
 
 
+# ---- blacksmith crafting bonuses ---------------------------------------------------
+# A crafted Epic or Legendary takes one random bonus from the BLACKSMITH who makes
+# it, not from its blueprint: each smith's record names a table (enhancementTable)
+# of a few crafting affixes, and four smiths share the Celestial one. The bonus
+# lands on any slot -- Item Assistant holds the same records on rings, maces and
+# helms, and the records carry no slot field. A relic's is not applied by the game
+# (gearstash/build.py), so relics get none.
+SMITHS = 'records/creatures/npcs/merchants/'
+
+
+def crafting_bonuses(ca):
+    """[[smith names, [[lines] per bonus]]] per distinct table, each line at its
+    band (affix_stat, the affix extractor's roll_band)."""
+    by_table = {}
+    for path in SB.RECORDS.paths(SMITHS):
+        rec = SB.rec(path) or {}
+        table = (rec.get('enhancementTable') or [None])[0]
+        if table:
+            name = SB.tag((rec.get('description') or [None])[0])
+            if not name:
+                raise SystemExit(f'{path}: a blacksmith with no name')
+            by_table.setdefault(table, set()).add(name)
+    out = []
+    for table, names in sorted(by_table.items()):
+        t = SB.rec(table) or {}
+        slots = {int(k[14:]): v[0] for k, v in t.items()
+                 if k.startswith('randomizerName') and k[14:].isdigit() and v and v[0]}
+        members = [slots[n] for n in sorted(slots)]
+        lines = []
+        for m in members:
+            row = ca.execute('SELECT id FROM affix WHERE path = ?', (m,)).fetchone()
+            if row is None:
+                raise SystemExit(f'{table}: {m} is in no affix record')
+            stats = {f: (v, lo, hi, txt) for f, v, lo, hi, txt in ca.execute(
+                'SELECT field, value, lo, hi, txt FROM affix_stat WHERE affix_id = ? AND idx = 0',
+                (row[0],))}
+            lines.append([text for _, text, _, _ in AB.display(I.read_rel(m) or '', stats, None, {})])
+        out.append([sorted(names), lines])
+    return out
+
+
 # ---- the bundle ---------------------------------------------------------------------
 
 def card(ca, ix, icons, pools, bps, tiers, rows):
@@ -256,6 +302,12 @@ def card(ca, ix, icons, pools, bps, tiers, rows):
         out['gv'] = grades                # the page grades a card by its best variant
     if len(top) > 1:
         out['nv'] = len(top)
+    if not top[0]['class'] == RELIC and top[0]['is_mi']:
+        zones = SR.farm_zones(ca, ids)
+        if zones:
+            out['zn'] = zones
+    if out['bp'] and top[0]['class'] != RELIC:
+        out['cr'] = 1                     # a blacksmith's crafting bonus (crafting_bonuses)
     set_path = (base.get('itemSetName') or [None])[0]
     if set_path:
         out['set'] = ix.set(set_path)
@@ -322,9 +374,10 @@ def main(out_dir=None, reuse=False):
     SR.check_standings(ca, tiers)
     pools, bps = Pools(ca), SR.Blueprints(ca, tiers)
     items = [card(ca, ix, icons, pools, bps, tiers, rows) for rows in gs]
-    sheet, frames = icons.pack()
+    sheet, frames = icons.pack(fit=ICON_FIT)
     bundle = {
-        'items': items, 'bps': bps.table(), 'pools': pools.rows, **ix.tables(),
+        'items': items, 'bps': bps.table(), 'pools': pools.rows, 'craft': crafting_bonuses(ca),
+        **ix.tables(),
         'factions': {f: n for f, n in ca.execute('SELECT id, name FROM faction')},
         'standings': tiers,
         'coarse': AB.COARSE_SLOT, 'slotGroups': AB.shipped_slot_groups(),

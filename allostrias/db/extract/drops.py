@@ -51,7 +51,14 @@ from ...archive import values as V
 # like it is not; see the module docstring.
 TABLE_CLASSES = frozenset({
     'LootItemTable_DynWeight', 'LootMasterTable', 'LevelTable'})
-ITEM_PREFIX = 'records/items/'
+# A chest's, urn's or breakable's own table names items in weighted slots
+# (`loot6Name1`) and carries NO Class -- only this template says what it is.
+# Without it every FixedItemContainer and Destructible reached nothing:
+# Vanquisher's set (Port Valbury's boss chest), the Shadowheart joke daggers
+# (an urn cluster), Stormheart (an ancient urn) all read as having no source.
+# Found 2026-10-02 checking hidden Gear Catalogue cards against grimtools.
+FIXED_LOOT_TEMPLATE = 'database/templates/fixeditemloot.tpl'
+FIXED_LOOT_CLASS = 'FixedItemLoot'      # what loot_table.class says for one
 MONSTER_CLASS = 'Monster'
 # A holder's direct loot slot: an item record, dropped as itself.
 DIRECT_FIELD = re.compile(r'^lootMisc\d+Item\d+$')
@@ -97,8 +104,10 @@ class Collector:
 
     def offer(self, path: str, _attrs: dict, kept: dict):
         record_class = V.first_str(kept, 'Class') or ''
+        if not record_class and V.first_str(kept, 'templateName') == FIXED_LOOT_TEMPLATE:
+            record_class = FIXED_LOOT_CLASS
         direct = {v.lower() for f, vs in kept.items() if DIRECT_FIELD.match(f)
-                  for v in vs if isinstance(v, str) and v.lower().startswith(ITEM_PREFIX)}
+                  for v in vs if isinstance(v, str) and v.lower().endswith('.dbr')}
         self.graph[path] = (record_class, _references(kept), direct)
         if record_class == MONSTER_CLASS:
             # Collected in the one pass that already holds the record. A
@@ -123,7 +132,8 @@ class Collector:
         item_ids = {row['path']: row['id']
                     for row in conn.execute('SELECT id, path FROM item')}
 
-        tables = {p for p, (cls, _, _) in graph.items() if cls in TABLE_CLASSES}
+        tables = {p for p, (cls, _, _) in graph.items()
+                  if cls in TABLE_CLASSES or cls == FIXED_LOOT_CLASS}
 
         def expand(roots: frozenset[str]) -> set[str]:
             """Every item record reachable from these tables, following nesting.
@@ -149,7 +159,7 @@ class Collector:
                 for ref in graph.get(current, ('', (), ()))[1]:
                     if ref in tables:
                         stack.append(ref)
-                    elif ref.startswith(ITEM_PREFIX) and ref in graph:
+                    elif ref in item_ids:
                         found.add(ref)
             return found
 
@@ -180,6 +190,8 @@ class Collector:
                 classification, min_lvl, max_lvl, xp))
             if roots not in memo:
                 memo[roots] = expand(roots)
+            # An item is any record in `item`, wherever it lives: Lokarr's set is
+            # in records/storyelements/ and drops through an ordinary table.
             for item_path in memo[roots] | direct:
                 item_id = item_ids.get(item_path)
                 if item_id is not None:

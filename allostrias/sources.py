@@ -30,12 +30,29 @@ SUMMONS = ('Pet', 'PetPlayerScaling', 'Turret')
 _DROPS = ('FROM item_drop d JOIN holder h ON h.id = d.holder_id '
           f"WHERE h.class NOT IN ({', '.join(repr(c) for c in SUMMONS)})")
 
+# Items an object gives when interacted with: {item record: (conversation, the
+# object's name)}. A conversation (.cnv, Conversations.arc) names items it gives
+# AND items it takes -- bounties, offerings -- in one undecoded format, so a
+# mention is not a source. These three are, by grimtools' interaction data
+# (2026-10-02); tests/test_gearcat.py holds each conversation to still naming its
+# item.
+INTERACTIONS = {
+    'records/items/gearaccessories/necklaces/b100_necklace_sahdina.dbr':
+        ('gdareaf/object_secretritual_gdx1.cnv', "Sahdina's Memento"),
+    'records/items/gearweapons/caster/d307_dagger.dbr':
+        ('gdareah/object_burntofferingsaltar_01b.cnv', 'Purifying Altar'),
+    'records/items/gearweapons/swords1h/d205_sword.dbr':
+        ('gdareag/object_specialaltar_01.cnv', 'Chillheart'),
+}
+
 # True for an item row `i` the game data gives any source: a drop, a vendor, a
-# quest or a blueprint. Every source row the page prints answers to one of these.
+# quest, a blueprint or an interaction. Every source row the page prints answers
+# to one of these.
 SOURCED = f"""(EXISTS (SELECT 1 {_DROPS} AND d.item_id = i.id)
                OR EXISTS (SELECT 1 FROM vendor_stock WHERE item_id = i.id)
                OR EXISTS (SELECT 1 FROM quest_reward WHERE item_id = i.id)
-               OR EXISTS (SELECT 1 FROM recipe WHERE output_item_id = i.id))"""
+               OR EXISTS (SELECT 1 FROM recipe WHERE output_item_id = i.id)
+               OR i.path IN ({', '.join(repr(p) for p in INTERACTIONS)}))"""
 
 
 # Every function below takes `ids`: the records one card stands for -- one for an
@@ -52,6 +69,28 @@ def dropped_by(ca, ids):
         return 0
     names = sorted(r[0] for r in rows if r[0])
     return [len(rows), names if len(names) == len(rows) <= DROP_NAMED else []]
+
+
+# How many zones a card names; the rest are counted.
+ZONES_SHOWN = 3
+
+
+def farm_zones(ca, ids):
+    """[[zone, placements] for the top ZONES_SHOWN, how many zones in all] for
+    the named monsters that drop it, or None. A zone ranks by how often those
+    monsters are placed there (monster_zone, grimtools' spawns): more placements,
+    more chances. A boss the spawn data does not place has no zone and adds none."""
+    zones = {}
+    for zone, n in ca.execute(f"""SELECT z.zone_name, sum(z.placements) FROM monster_zone z
+                                   WHERE z.zone_name IS NOT NULL AND z.monster_tag IN (
+                                     SELECT DISTINCT h.name_tag {_DROPS} AND h.is_monster = 1
+                                     AND h.name IS NOT NULL AND d.item_id IN {_in(ids)})
+                                   GROUP BY z.zone_name""", ids):
+        zones[zone] = n
+    if not zones:
+        return None
+    ranked = sorted(zones.items(), key=lambda z: (-z[1], z[0]))
+    return [[list(z) for z in ranked[:ZONES_SHOWN]], len(ranked)]
 
 
 def quest_given(ca, ids):
@@ -90,9 +129,15 @@ def sold_by(ca, ids, tiers):
 
 
 def sources(ca, ids, tiers):
-    """The item's own source fields as a card ships them."""
-    return {'buy': sold_by(ca, ids, tiers), 'drop': dropped_by(ca, ids),
-            'quest': quest_given(ca, ids)}
+    """The item's own source fields as a card ships them; `talk` (the objects
+    that give it, INTERACTIONS) only where there is one."""
+    out = {'buy': sold_by(ca, ids, tiers), 'drop': dropped_by(ca, ids),
+           'quest': quest_given(ca, ids)}
+    talk = sorted({INTERACTIONS[p][1] for (p,) in ca.execute(
+        f'SELECT path FROM item WHERE id IN {_in(ids)}', ids) if p in INTERACTIONS})
+    if talk:
+        out['talk'] = talk
+    return out
 
 
 class Blueprints:

@@ -95,14 +95,26 @@ def direct_drop(path):
                for f, vs in (SB.rec(h) or {}).items())
 
 
+# ⚠️ NOR a chest's own table (drops.FIXED_LOOT_CLASS, no Class field): an urn's
+# secret -- Fewmet Grips, Cauldron of Excitement -- drops here and not there. A
+# diff is excused on that ground only where such a table names a carrier, read off
+# the table's own record.
+in_chest_tables = {v.lower() for (t,) in conn.execute(
+                       'SELECT path FROM loot_table WHERE class = ?', (drops.FIXED_LOOT_CLASS,))
+                   for vs in (SB.rec(t) or {}).values() for v in vs
+                   if isinstance(v, str) and v.endswith('.dbr')}
+
 differ = [t for t in set(bases) | set(theirs_bases) if bases.get(t) != theirs_bases.get(t)]
 direct = [t for t in differ if any(direct_drop(p) for p in carriers.get(t, []))]
-unexplained = [t for t in differ if t not in direct
+chest = [t for t in differ if t not in direct
+         and any(p in in_chest_tables for p in carriers.get(t, []))]
+unexplained = [t for t in differ if t not in direct and t not in chest
                and not all(patched(p) for p in carriers.get(t, []))]
 assert not unexplained, (f'{len(unexplained)} base lines differ from GD Lens on records '
                          f'the game has not changed: {unexplained[:5]}')
 print(f'  {len(bases) - len(differ)} base lines identical; {len(differ)} differ: {len(direct)} '
-      f'dropped from a direct loot slot GD Lens does not follow ({direct[:3]}), the rest '
+      f'dropped from a direct loot slot GD Lens does not follow ({direct[:3]}), {len(chest)} '
+      f'from a chest table it does not read ({chest[:3]}), the rest '
       f'carried only by records added or patched since the snapshot')
 
 # Both engines, same colours. The grades are arbitrary but cover every one,

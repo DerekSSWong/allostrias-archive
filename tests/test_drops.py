@@ -32,8 +32,24 @@ one = lambda sql, *a: conn.execute(sql, a).fetchone()[0]
 classes = dict(conn.execute(
     'SELECT class, count(*) FROM loot_table GROUP BY class'))
 print(f'loot tables by class: {classes}')
-assert set(classes) == D.TABLE_CLASSES, classes
+assert set(classes) == D.TABLE_CLASSES | {D.FIXED_LOOT_CLASS}, classes
 assert classes['LevelTable'] > 1000, classes
+
+# -- 1b. the two routes the walk once missed, each pinned to its source -----
+# A chest's own table has no Class (D.FIXED_LOOT_TEMPLATE); an item outside
+# records/items/ is still an item. Both found against grimtools, 2026-10-02.
+for item, holder in (
+        ('records/items/gearhead/d210_head.dbr',            # Vanquisher's Helm
+         'records/items/lootchests/d06_bosschest_portvalbury.dbr'),
+        ('records/items/enemygear/d307a_dagger.dbr',          # Shedowhert, an urn
+         'records/items/lootchests/questchests/areaa_swordchest_01_break.dbr'),
+        ('records/storyelements/signs/signf.dbr',           # Lokarr's Boots
+         'records/creatures/enemies/special/livingplant_02.dbr')):
+    assert one('SELECT count(*) FROM item_drop d JOIN item i ON i.id = d.item_id '
+               'JOIN holder h ON h.id = d.holder_id WHERE i.path = ? AND h.path = ?',
+               item, holder), f'{item} does not drop from {holder}'
+print(f"  {classes[D.FIXED_LOOT_CLASS]} chest tables; Vanquisher's Helm, Shedowhert and "
+      "Lokarr's Boots each reached")
 
 # -- 2. holders are not only creatures ------------------------------------
 kinds = dict(conn.execute('SELECT kind, count(*) FROM holder GROUP BY kind'))
@@ -75,7 +91,12 @@ with A.Database(cfg.arz_paths) as db:
     graph = {}
     for path, attrs in db.iter_records():
         kept = V.non_default(attrs)
-        graph[path] = (V.first_str(kept, 'Class') or '', D._references(kept))
+        # A chest's table is known by its template, read off the record here
+        # rather than taken from the code under test.
+        cls = V.first_str(kept, 'Class') or (
+            'FixedItemLoot' if V.first_str(kept, 'templateName')
+            == 'database/templates/fixeditemloot.tpl' else '')
+        graph[path] = (cls, D._references(kept))
 print(f'  graph {len(graph)} records in {time.time() - t0:.0f}s')
 
 
@@ -110,8 +131,9 @@ def holders_of(table_classes, target):
     return found
 
 
-with_lt = holders_of(D.TABLE_CLASSES, GIRDLE)
-without_lt = holders_of(D.TABLE_CLASSES - {'LevelTable'}, GIRDLE)
+WALKED = D.TABLE_CLASSES | {'FixedItemLoot'}
+with_lt = holders_of(WALKED, GIRDLE)
+without_lt = holders_of(WALKED - {'LevelTable'}, GIRDLE)
 print(f'  with LevelTable    {len(with_lt):4} holders')
 print(f'  WITHOUT LevelTable {len(without_lt):4} holders  '
       f'({len(with_lt) - len(without_lt)} lost)')

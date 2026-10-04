@@ -215,19 +215,16 @@ assert text_banded == 0, 'a text value was given a numeric band'
 # rows across the whole catalogue are actual STATS this module cannot place.
 # The set shrank from 15 fields to 11 when non-equipment stopped rolling: four
 # of them occur only on components and relics, which are now 'unrolled'
-# rather than unknown.
+# rather than unknown. It shrank to 6 when rolls.py took seedroll's settled
+# ADDITIONS (Fumble, % current life, Elemental Resist chance), 2026-10-02.
 # They are pinned BY NAME: a count would let a game update add a new rollable
 # stat and have it silently join the no-band pile, which is the one outcome
 # that looks identical to working.
 UNMODELLED_STATS = {
-    'defensiveElementalResistanceChance',
     'defensiveFreezeChance',
     'defensivePhysicalChance',
     'defensiveProtectionChance',
     'offensiveFreezeMax',
-    'offensiveFumbleDurationMin',
-    'offensiveFumbleMin',
-    'offensivePercentCurrentLifeMin',
     'retaliationSlowManaLeachDurationMin',
     'retaliationSlowManaLeachMin',
 }

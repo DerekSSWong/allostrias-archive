@@ -2515,6 +2515,22 @@ want(/summary\.hd:hover::after\{background-image:url\("data:image\/png;base64,/.
   want(get('tip').hidden===false && pool.every(ls=>get('tip')._html.includes(escT(ls.join(' · ')))),
        'hovering a completion bonus does not list its pool');
   fire('pointerover', {id:'', closest:()=>null});
+  // A crafted item's bonus opens every blacksmith's table; a relic has none.
+  const crafted=cards.filter(h=>cardAt(h).cr);
+  want(crafted.length && crafted.every(h=>h.includes('data-cr="1"')), 'no craftable card has a crafting bonus line');
+  want(!cards.some(h=>cardAt(h).t==='Relic' && h.includes('data-cr=')), 'a relic shows a crafting bonus');
+  const crEl={id:'', dataset:{cr:'1'}, getBoundingClientRect:cbEl.getBoundingClientRect};
+  crEl.closest=sel=>(sel==='.geo'||sel==='.row') ? null : crEl;
+  fire('pointerover', crEl);
+  want(G.craft.length && G.craft.every(([names, lines])=>get('tip')._html.includes(escT(names.join(', ')))
+       && lines.every(ls=>get('tip')._html.includes(escT(ls.join(' · '))))),
+       'hovering a crafting bonus does not list every blacksmith\'s table');
+  fire('pointerover', {id:'', closest:()=>null});
+  // An MI names its farm zones, the first three in order and how many more.
+  const farmed=cards.filter(h=>cardAt(h).zn);
+  want(farmed.length && farmed.every(h=>{ const [top, n]=cardAt(h).zn;
+         return h.includes('Farm: '+escT(top.map(([z])=>z).join(' · '))) && (n<=top.length || h.includes(`(+${n-top.length} more zones)`)); }),
+       'an MI card misprints its farm zones');
 
   // Chips, the level span and search each narrow to what the bundle says.
   const chip=(k,v)=>fire('click', cstub('.achip', {[k]:v}));

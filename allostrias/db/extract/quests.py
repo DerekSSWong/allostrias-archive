@@ -20,7 +20,6 @@ import re
 
 from ... import settings as S
 from ...archive.arc import Arc
-from . import drops
 
 PATH = re.compile(rb'records/[a-z0-9_/&]+\.dbr')
 
@@ -54,7 +53,7 @@ def extract(conn, db, _tags) -> dict[str, int]:
                 ref = v.lower() if isinstance(v, str) else None
                 if ref in tables:
                     out |= expand(ref, seen)
-                elif ref in items and ref.startswith(drops.ITEM_PREFIX):
+                elif ref in items:
                     out.add(ref)
         return out
 

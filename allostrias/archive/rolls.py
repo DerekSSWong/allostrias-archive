@@ -118,6 +118,10 @@ _SLOW_FLAT = (
     'offensiveSlowLifeLeach', 'offensiveSlowManaLeach',
 )
 _DMG = (
+    # Not IAGD's: seedroll.ADDITIONS, "7% Reduction to Enemy's Health" on
+    # Demonslayer's Life-Ender, scaled. Base records only: seedroll refuses it on
+    # an affix, where its draw is unsettled.
+    'offensivePercentCurrentLifeMin',
     'offensiveTotalDamageModifier', 'offensiveCritDamageModifier',
     'offensivePhysicalModifier', 'offensivePierceModifier', 'offensiveFireModifier',
     'offensiveColdModifier', 'offensiveLightningModifier', 'offensivePoisonModifier',
@@ -147,6 +151,8 @@ _OFF_SLOW = (
     ('offensiveSlowTotalSpeed', True), ('offensiveSlowAttackSpeed', True),
     ('offensiveSlowSpellCastSpeed', True), ('offensiveSlowRunSpeed', True),
     ('offensiveSlowOffensiveAbility', False), ('offensiveSlowDefensiveAbility', False),
+    # Not IAGD's: seedroll.ADDITIONS, settled against the game. Unscaled.
+    ('offensiveFumble', False),
 )
 _OFF_REDUC = (
     'offensivePhysicalReductionPercent', 'offensiveElementalReductionPercent',
@@ -234,6 +240,7 @@ FIXED = frozenset({
     'defensiveProtection',          # armour: 0 draws
     'defensiveBonusProtection',     # "+N Armor": 0 draws, see seedroll.FIXED
     'defensiveBlock', 'defensiveBlockChance', 'blockAbsorption', 'blockRecoveryTime',
+    'defensiveElementalResistanceChance',   # seedroll.ADDITIONS: no draw
 })
 
 # Suffixes that turn a base field name into the actual record fields.
@@ -251,6 +258,8 @@ _COMP_KINDS = {
 def _expand(fields, suffixes):
     return {f + s for f in fields for s in suffixes}
 
+
+_OFF_SLOW_DURATION = frozenset(f + 'DurationMin' for f, _ in _OFF_SLOW)
 
 # field -> takes the item scale
 _SCALES: dict[str, bool] = {}
@@ -371,6 +380,8 @@ def is_fixed(field: str, item_class: str = '') -> bool:
         return True                      # weapon base damage
     if field.startswith('offensiveSlow') and field.endswith('DurationMin'):
         return True
+    if field in _OFF_SLOW_DURATION:
+        return True                      # seedroll echoes an OffSlow duration
     # Resistance CAPS. Upstream's note says they draw no RNG; ASSUMED fixed on
     # that alone, not verified against a max-resist reading in game.
     if field.startswith('defensive') and field.endswith('MaxResist'):

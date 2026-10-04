@@ -172,6 +172,11 @@ def diverges(field):
     return any(r.search(field) for r in _DIVERGED_RE)
 
 
+# A requirement reduction whose tag is not tagChar<field>: "12% Reduction to
+# Attribute Requirements" (IAGD #2015, the suffix b_ar001_to_e).
+REQ_TAGS = {'characterGlobalReqReduction': 'tagCharItemGlobalReduction'}
+
+
 def _game_tag(tag, value):
     """A tags_ui format string with colour codes stripped and {%.0f0} filled."""
     fmt = re.sub(r'\{\^.\}', '', UI_TAGS[tag])
@@ -490,10 +495,10 @@ def process_stats_fields(txt):
             seen_lines.append((field, f"{sign}{_fmt_num(val)}% Max {_resist_label(kind)}"))
         elif (re.fullmatch(r'character[A-Za-z0-9]+ReqReduction', field)
               and field != 'characterWeaponStrengthReqReduction'
-              and f'tagChar{field[9:]}' in UI_TAGS):
+              and REQ_TAGS.get(field, f'tagChar{field[9:]}') in UI_TAGS):
             # tagCharHuntingDexterityReqReduction = -{%.0f0}% Cunning Requirement
             # for Ranged Weapons -- the game's string, sign and all.
-            seen_lines.append((field, _game_tag(f'tagChar{field[9:]}', val)))
+            seen_lines.append((field, _game_tag(REQ_TAGS.get(field, f'tagChar{field[9:]}'), val)))
         elif (re.fullmatch(r'defensive[A-Za-z]+Duration', field)
               and field[len('defensive'):-len('Duration')] in DAMAGE_TYPES):
             # "8% Reduction in Frostburn Duration" -- defensiveColdDuration.
@@ -1609,6 +1614,7 @@ MODIFIER_EXTRAS = [
     ('offensiveDamageMultModifier', 'tagDamageModifierDamageMult'),   # Total Damage Modified by N%
     ('damageAbsorptionPercent', 'SkillDamageAbsorptionPercent'),      # N% Damage Absorption
     ('projectilePiercing', 'ProjectilePiercingChanceMod'),            # +N% Chance to pass through Enemies
+    ('skillManaCostReduction', 'SkillManaCostReduction'),             # -N% Skill Energy Cost
 ]
 
 
